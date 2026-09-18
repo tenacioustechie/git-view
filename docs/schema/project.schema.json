@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Git View project version 1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "name", "repositories"],
+  "properties": {
+    "version": { "const": 1, "type": "integer" },
+    "name": { "type": "string", "minLength": 1, "pattern": "\\S" },
+    "repositories": {
+      "type": "array",
+      "maxItems": 1000,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path"],
+        "properties": {
+          "path": { "type": "string", "minLength": 1, "pattern": "\\S" },
+          "label": { "type": "string", "minLength": 1, "pattern": "\\S" }
+        }
+      }
+    }
+  }
+}

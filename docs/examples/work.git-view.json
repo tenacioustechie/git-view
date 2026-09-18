@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "name": "Work",
+  "repositories": [
+    { "path": "./api", "label": "API" },
+    { "path": "./web", "label": "Web" },
+    { "path": "../shared-library" }
+  ]
+}
