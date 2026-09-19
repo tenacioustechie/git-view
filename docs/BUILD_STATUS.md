@@ -69,7 +69,33 @@ diagnostics; typed project/batch/query shapes in `src/api/types.ts`. Native smok
 instrumentation is gated behind Cargo `native-smoke` and `VITE_NATIVE_SMOKE=1`,
 and excluded from normal release builds.
 
-M1: integrated, native smoke and Windows integrated acceptance still pending.
-M2 and M3: intentionally gated until M1 accepted. No release artifacts yet.
+## M1 local acceptance gate passed
+
+Mac native smoke passed at `06a67843d797dba0bf5533c828dd3ba224a65635`:
+`VITE_NATIVE_SMOKE=1 pnpm build`,
+`cargo build --manifest-path src-tauri/Cargo.toml --features native-smoke,tauri/custom-protocol`,
+`python3 scripts/native-smoke.py /tmp/git-view-native-m1-mac-warm.json`.
+All 11 real DOM/IPC checks passed: mixed group pull, historical/working/merge-parent
+diffs, one-file stage/commit, explicit local push, failed hook/draft retention,
+invalid launch rejection, warm welcome, invoking-cwd repository and project routing.
+Dirty fixture file content remained unchanged. Tests use disposable local remotes.
+
+`pnpm tauri build --bundles app` produced the normal unsigned Mac arm64 release at
+`src-tauri/target/release/bundle/macos/Git View.app` (8.3 MiB at this gate).
+Smoke instrumentation was excluded. `python3 scripts/release-smoke.py
+'src-tauri/target/release/bundle/macos/Git View.app/Contents/MacOS/git-view'`
+passed help/version/nonzero-invalid-path and 3-second packaged-process startup.
+This startup check is separate from the full WebView workflow checks above.
+
+M1 local core accepted before beginning M2. Windows platform acceptance continues:
+at `af24285fe7e2d2141338eec78ca990487513f267`, frontend 24/24, Rust unit 10/10,
+integrated acceptance 5/6 passed, including mixed pull and 100-member cancellation.
+One Windows-specific relative path assertion failed; correction uses canonical
+paths without Windows extended-prefix mismatch. The earlier test executable
+startup failure was fixed by embedding Common Controls v6 in test executables.
+See [Microsoft manifest guidance](https://learn.microsoft.com/en-us/windows/win32/controls/cookbook-overview).
+
+M2 ordinary merge and squash-merge implementation now assigned to original Git
+and repository owners. M3 remains behind M2 acceptance and recovery-design gates.
 Linux CI workflow added but not executed; no Linux verification claim.
 User's original README/runbook/setup-doc edits remain preserved and uncommitted.

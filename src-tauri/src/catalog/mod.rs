@@ -86,7 +86,7 @@ fn portable(mut content: ProjectContent, file: &Path) -> ProjectContent {
     for member in &mut content.repositories {
         let p = Path::new(&member.path);
         if p.is_absolute() && !foreign_path(&member.path) {
-            let canonical = p.canonicalize().unwrap_or_else(|_| p.to_path_buf());
+            let canonical = dunce::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
             if let Some(relative) = relative_path(file.parent().unwrap(), &canonical) {
                 member.path = relative.to_string_lossy().into_owned();
                 if cfg!(windows) {
@@ -160,7 +160,7 @@ impl Catalog {
         rows.into_iter().map(|(_, row)| row).collect()
     }
     pub async fn open(&self, engine: &GitEngine, path: &Path) -> AppResult<Project> {
-        let path = std::fs::canonicalize(path).map_err(|e| error(e.to_string()))?;
+        let path = dunce::canonicalize(path).map_err(|e| error(e.to_string()))?;
         let (content, revision) = read_project(&path)?;
         let display_path = path
             .to_str()
@@ -249,7 +249,7 @@ impl Catalog {
         content: ProjectContent,
     ) -> AppResult<Project> {
         validate(&content)?;
-        let parent = std::fs::canonicalize(
+        let parent = dunce::canonicalize(
             path.parent()
                 .filter(|p| !p.as_os_str().is_empty())
                 .unwrap_or(Path::new(".")),
