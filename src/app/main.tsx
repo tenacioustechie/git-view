@@ -1,3 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><main><h1>Git View</h1><p>Native shell ready.</p></main></React.StrictMode>);
+import { App } from './App';
+ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><App/></React.StrictMode>);
+if (import.meta.env.VITE_NATIVE_SMOKE === '1') {
+  void import('../features/repository/nativeSmoke').then(module => module.runNativeSmoke());
+}

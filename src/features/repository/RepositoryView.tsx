@@ -7,6 +7,7 @@ import './repository.css';
 
 const drafts = new Map<string, string>();
 const terminal = (operation: OperationResult) => !['queued', 'running'].includes(operation.state);
+const hasChange = (status: string | null) => Boolean(status?.trim() && status !== '.' && status !== '?');
 type Planned = { plan: Extract<RepositoryActionPlan, { kind: 'eligible' }>; action: RepositoryAction };
 export function RepositoryView(props: { repository: RepositoryOpen; onBack?: () => void }) {
   return <RepositoryScreen key={props.repository.repositoryId} {...props} />;
@@ -63,8 +64,14 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
   useEffect(() => { void refresh(); return () => { generation.current++; }; }, [refresh]);
   useEffect(() => {
     const onFocus = () => { void refresh(); };
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'r' && !dialog.current?.open) {
+        event.preventDefault(); void refresh();
+      }
+    };
     window.addEventListener('focus', onFocus);
-    return () => window.removeEventListener('focus', onFocus);
+    window.addEventListener('keydown', onKey);
+    return () => { window.removeEventListener('focus', onFocus); window.removeEventListener('keydown', onKey); };
   }, [refresh]);
   useEffect(() => {
     const remote = remotes.find(item => item.id === remoteId);
@@ -170,7 +177,7 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
     <header className="repository-toolbar">
       {onBack && <button onClick={onBack}>← Back</button>}
       <div className="repository-title"><strong title={repository.displayPath}>{repository.displayPath}</strong><small>{headLabel} · {status.dirty ? 'Working changes' : 'Clean'}{status.upstream ? ` · ↑${status.upstream.ahead ?? '?'} ↓${status.upstream.behind ?? '?'} ${status.upstream.ref}` : ' · No upstream'}</small></div>
-      <button disabled={loading} onClick={() => { void refresh(); }}>{loading ? 'Refreshing…' : 'Refresh'}</button>
+      <button title="Refresh (⌘R / Ctrl+R)" disabled={loading} onClick={() => { void refresh(); }}>{loading ? 'Refreshing…' : 'Refresh'}</button>
       <label>Remote <select aria-label="Remote" value={remoteId} onChange={event => setRemoteId(event.target.value)}><option value="">None</option>{remotes.map(remote => <option key={remote.id} value={remote.id}>{remote.name}</option>)}</select></label>
       <button disabled={active || !remoteId} onClick={() => { void act({ kind: 'fetch', remoteId }, true); }}>Fetch</button>
       <button disabled={active} onClick={() => { void act({ kind: 'pull', statusSnapshotId: status.snapshotId }, true); }}>Pull</button>
@@ -207,7 +214,7 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
           <h2>Working changes</h2>
           {!changes ? <p>Loading changes…</p> : <>
             {(['staged', 'unstaged', 'untracked', 'conflicted'] as const).map(section => {
-              const files = changes.files.filter(file => section === 'conflicted' ? file.conflicted : !file.conflicted && (section === 'untracked' ? file.untracked : section === 'staged' ? Boolean(file.indexStatus?.trim() && file.indexStatus !== '?') : Boolean(file.worktreeStatus?.trim() && file.worktreeStatus !== '?' && !file.untracked)));
+              const files = changes.files.filter(file => section === 'conflicted' ? file.conflicted : !file.conflicted && (section === 'untracked' ? file.untracked : section === 'staged' ? hasChange(file.indexStatus) : hasChange(file.worktreeStatus) && !file.untracked));
               return <div key={section}><h3>{section[0].toUpperCase() + section.slice(1)} ({files.length})</h3><ul className="file-list">{files.map(file => <li key={file.fileId}>
                 <button title={file.displayPath} onClick={() => setDiffRequest({ repositoryId: id, snapshotId: changes.snapshotId, fileId: file.fileId, context: section === 'staged' ? 'staged' : 'unstaged' })}>{file.oldDisplayPath ? `${file.oldDisplayPath} → ` : ''}{file.displayPath}{file.submodule ? ' (submodule)' : ''}</button>
                 <button disabled={active} onClick={() => { void act({ kind: section === 'staged' ? 'unstage' : 'stage', snapshotId: changes.snapshotId, fileIds: [file.fileId] }); }}>{section === 'staged' ? 'Unstage' : file.conflicted ? 'Stage resolution' : 'Stage'}</button>

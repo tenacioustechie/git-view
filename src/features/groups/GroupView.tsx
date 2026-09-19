@@ -7,6 +7,7 @@ import './groups.css';
 
 interface Props { project: Project; onOpenRepository: (repository: RepositoryOpen) => void; onProjectChange?: (project: Project) => void }
 const terminal = (operation: OperationResult) => !['queued', 'running'].includes(operation.state);
+const identity = (project: Project) => JSON.stringify([project.projectId, project.revision, project.stale]);
 
 export function GroupView({ project: initial, onOpenRepository, onProjectChange }: Props) {
   const [project, setProject] = useState(initial);
@@ -25,14 +26,27 @@ export function GroupView({ project: initial, onOpenRepository, onProjectChange 
   const scanInFlight = useRef(false);
   const activityInFlight = useRef(false);
   const root = useRef<HTMLElement>(null);
+  const generation = useRef(0);
+  const currentIdentity = useRef(identity(initial));
+  const editPaths = useRef(new Map<string, string>());
   const projectChange = useRef(onProjectChange);
   projectChange.current = onProjectChange;
 
   const acceptProject = useCallback((next: Project) => {
+    if (currentIdentity.current !== identity(next)) {
+      currentIdentity.current = identity(next);
+      generation.current++;
+    }
     setProject(next);
     projectChange.current?.(next);
   }, []);
-  useEffect(() => { setProject(initial); }, [initial]);
+  useEffect(() => {
+    if (currentIdentity.current !== identity(initial)) {
+      currentIdentity.current = identity(initial);
+      generation.current++;
+    }
+    setProject(initial);
+  }, [initial]);
   useEffect(() => {
     for (const row of project.members) knownMembers.current.set(row.memberId, row.label);
     setPreview(null);
@@ -42,7 +56,11 @@ export function GroupView({ project: initial, onOpenRepository, onProjectChange 
     if (scanInFlight.current) return;
     if (!manual && (document.visibilityState === 'hidden' || root.current?.closest('[hidden]'))) return;
     scanInFlight.current = true;
-    try { acceptProject(await api.refreshProject(project.projectId)); }
+    const requestedGeneration = generation.current;
+    try {
+      const next = await api.refreshProject(project.projectId);
+      if (generation.current === requestedGeneration) acceptProject(next);
+    }
     catch (cause) { setError(errorMessage(cause)); }
     finally { scanInFlight.current = false; }
   }, [acceptProject, project.projectId]);
@@ -94,7 +112,9 @@ export function GroupView({ project: initial, onOpenRepository, onProjectChange 
   }
   async function plan(action: 'fetch' | 'pull', ids: string[], scope: string, branchFilter: string | null) {
     await perform(async () => {
+      const requestedGeneration = generation.current;
       const result = await api.planBatch({ projectId: project.projectId, revision: project.revision, memberIds: ids, action, branchFilter });
+      if (requestedGeneration !== generation.current) return;
       setPreview(result); setPreviewScope(scope);
     });
   }
@@ -102,7 +122,11 @@ export function GroupView({ project: initial, onOpenRepository, onProjectChange 
     setSelected(current => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   }
   function startEdit() {
+    captureEditPaths();
     setDraft(structuredClone(project.content)); setEditRevision(project.revision); setSaveConflict(false);
+  }
+  function captureEditPaths() {
+    editPaths.current = new Map(project.content.repositories.map((entry, index) => [entry.path, project.members[index]?.displayPath ?? entry.path]));
   }
   async function pickFolders(index?: number) {
     await perform(async () => {
@@ -115,12 +139,13 @@ export function GroupView({ project: initial, onOpenRepository, onProjectChange 
         else next.repositories[index].path = paths[0];
         return next;
       });
-      if (!draft) { setEditRevision(project.revision); setSaveConflict(false); }
+      if (!draft) { captureEditPaths(); setEditRevision(project.revision); setSaveConflict(false); }
     });
   }
   async function saveDraft(saveAs: boolean) {
     if (!draft) return;
     await perform(async () => {
+      generation.current++;
       try {
         let next: Project;
         if (saveAs) {
@@ -128,8 +153,7 @@ export function GroupView({ project: initial, onOpenRepository, onProjectChange 
           if (!path) return;
           // Relative entries must continue pointing at the same repository after moving the project file.
           const content = { ...draft, repositories: draft.repositories.map(entry => {
-            const originalIndex = project.content.repositories.findIndex(original => original.path === entry.path);
-            return { ...entry, path: originalIndex >= 0 ? project.members[originalIndex]?.displayPath ?? entry.path : entry.path };
+            return { ...entry, path: editPaths.current.get(entry.path) ?? entry.path };
           }) };
           next = await api.createProject(path, content);
         } else next = await api.saveProject(project.projectId, editRevision, draft);
@@ -149,7 +173,7 @@ export function GroupView({ project: initial, onOpenRepository, onProjectChange 
     {error && <div role="alert" className="group-notice">{error}<button aria-label="Dismiss error" onClick={() => setError(null)}>Dismiss</button></div>}
     {(project.stale || saveConflict) && <div role="alert" className="group-notice">
       <p>{project.error?.message ?? 'The project may have changed or cannot be saved. Your current dashboard and edits are retained.'} New batches are blocked until the project is reloaded.</p>
-      <button disabled={busy} onClick={() => void perform(async () => { acceptProject(await api.openProject(project.displayPath)); setDraft(null); setSaveConflict(false); })}>Reload project</button>
+      <button disabled={busy} onClick={() => void perform(async () => { generation.current++; acceptProject(await api.openProject(project.displayPath)); setDraft(null); setSaveConflict(false); })}>Reload project</button>
       {draft && <button disabled={busy} onClick={() => void saveDraft(true)}>Save edits as</button>}
     </div>}
     {draft && <section className="group-editor" aria-label="Edit project">

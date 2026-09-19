@@ -1,0 +1,11 @@
+#!/bin/sh
+# Preserve the caller's cwd so relative launch paths retain their meaning.
+git_view_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+if [ -x "$git_view_root/src-tauri/target/release/git-view" ]; then
+  exec "$git_view_root/src-tauri/target/release/git-view" "$@"
+fi
+if [ -x "$git_view_root/src-tauri/target/debug/git-view" ]; then
+  exec "$git_view_root/src-tauri/target/debug/git-view" "$@"
+fi
+echo 'Build Git View first: pnpm tauri build' >&2
+exit 1

@@ -139,18 +139,20 @@ pub(crate) fn parse_status(bytes: &[u8]) -> AppResult<ParsedStatus> {
 }
 impl GitEngine {
     pub(crate) async fn observe(&self, repo: &Repository) -> AppResult<Snapshot> {
-        let bytes = runner::read(
-            &repo.root,
-            &[
-                "status",
-                "--porcelain=v2",
-                "--branch",
-                "-z",
-                "--untracked-files=all",
-                "--ignore-submodules=none",
-            ],
-        )
-        .await?;
+        let bytes = self
+            .runner
+            .read(
+                &repo.root,
+                &[
+                    "status",
+                    "--porcelain=v2",
+                    "--branch",
+                    "-z",
+                    "--untracked-files=all",
+                    "--ignore-submodules=none",
+                ],
+            )
+            .await?;
         let (head, upstream_ref, ahead, behind, files, submodule_dirty) = parse_status(&bytes)?;
         let mut evidence = bytes.clone();
         for file in &files {
@@ -181,14 +183,16 @@ impl GitEngine {
         let remote = match &head {
             Head::Branch { name, .. } => {
                 let key = format!("branch.{name}.remote");
-                let out = runner::run(
-                    &repo.root,
-                    &runner::args(&["config", "--get", &key]),
-                    None,
-                    false,
-                    runner::STRUCTURED_LIMIT,
-                )
-                .await?;
+                let out = self
+                    .runner
+                    .run(
+                        &repo.root,
+                        &runner::args(&["config", "--get", &key]),
+                        None,
+                        false,
+                        runner::STRUCTURED_LIMIT,
+                    )
+                    .await?;
                 if out.code == 0 {
                     text(&out.stdout)
                 } else {
@@ -255,17 +259,19 @@ impl GitEngine {
     }
     pub async fn list_refs(&self, repository_id: &str) -> AppResult<Vec<GitRef>> {
         let repo = self.repository(repository_id).await?;
-        let bytes = runner::read(
-            &repo.root,
-            &[
-                "for-each-ref",
-                "--format=%(refname)%00%(objectname)%00%(*objectname)",
-                "refs/heads/",
-                "refs/remotes/",
-                "refs/tags/",
-            ],
-        )
-        .await?;
+        let bytes = self
+            .runner
+            .read(
+                &repo.root,
+                &[
+                    "for-each-ref",
+                    "--format=%(refname)%00%(objectname)%00%(*objectname)",
+                    "refs/heads/",
+                    "refs/remotes/",
+                    "refs/tags/",
+                ],
+            )
+            .await?;
         let mut refs = Vec::new();
         for line in bytes.split(|b| *b == b'\n').filter(|l| !l.is_empty()) {
             let fields = line.split(|b| *b == 0).collect::<Vec<_>>();
@@ -297,14 +303,16 @@ impl GitEngine {
         Ok(refs)
     }
     pub(crate) async fn config(&self, repo: &Repository, key: &str) -> AppResult<Option<String>> {
-        let out = runner::run(
-            &repo.root,
-            &runner::args(&["config", "--get", key]),
-            None,
-            false,
-            runner::STRUCTURED_LIMIT,
-        )
-        .await?;
+        let out = self
+            .runner
+            .run(
+                &repo.root,
+                &runner::args(&["config", "--get", key]),
+                None,
+                false,
+                runner::STRUCTURED_LIMIT,
+            )
+            .await?;
         if out.code == 1 {
             Ok(None)
         } else {
@@ -314,7 +322,7 @@ impl GitEngine {
     pub async fn list_remotes(&self, repository_id: &str) -> AppResult<Vec<Remote>> {
         let repo = self.repository(repository_id).await?;
         let status = self.get_status(repository_id).await?;
-        let names = text(&runner::read(&repo.root, &["remote"]).await?)
+        let names = text(&self.runner.read(&repo.root, &["remote"]).await?)
             .lines()
             .map(str::to_owned)
             .collect::<Vec<_>>();

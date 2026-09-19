@@ -34,6 +34,17 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 describe('repository workflows (mocked IPC)', () => {
+  it('treats porcelain dot status as unchanged and keeps index/worktree lists separate', async () => {
+    vi.mocked(api.getChanges).mockResolvedValue({ snapshotId: 'changes', files: [
+      { ...file, fileId: 'staged-only', displayPath: 'staged.txt', worktreeStatus: '.' },
+      { ...file, fileId: 'unstaged-only', displayPath: 'unstaged.txt', indexStatus: '.' },
+    ] });
+    render(<RepositoryView repository={repository} />);
+    expect(await screen.findAllByRole('button', { name: 'staged.txt' })).toHaveLength(1);
+    expect(await screen.findAllByRole('button', { name: 'unstaged.txt' })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: 'Stage' })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: 'Unstage' })).toHaveLength(1);
+  });
   it('shows both halves of a partially staged file and stages only its opaque token', async () => {
     render(<RepositoryView repository={repository} />);
     await screen.findByRole('button', { name: 'Stage' });

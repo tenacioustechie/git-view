@@ -1,0 +1,189 @@
+// Imported explicitly by the coordinator's native-smoke build only. This drives
+// the actual React DOM and Tauri commands: no renderer or Git mocks are used.
+import { invoke } from '@tauri-apps/api/core';
+import { api, errorMessage } from '../../api/client';
+import type { OperationResult } from '../../api/types';
+
+interface SmokeContext { projectPath: string; cleanPath: string; dirtyPath: string; mergePath: string }
+interface SmokeResult { passed: boolean; checks: string[]; error?: string; body?: string }
+const pause = (ms: number) => new Promise<void>(resolve => window.setTimeout(resolve, ms));
+function assert(value: unknown, message: string): asserts value { if (!value) throw new Error(message); }
+function visible(element: Element) { return !element.closest('[hidden]') && element.getClientRects().length > 0; }
+async function until<T>(description: string, read: () => T | false | null | undefined | Promise<T | false | null | undefined>, timeout = 60000): Promise<T> {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    const value = await read();
+    if (value !== false && value !== null && value !== undefined) return value;
+    await pause(100);
+  }
+  throw new Error(`Timed out: ${description}. Visible alerts: ${[...document.querySelectorAll('[role="alert"]')].filter(visible).map(node => node.textContent).join(' | ')}`);
+}
+async function button(name: string | RegExp, scope: ParentNode = document) {
+  return until(`enabled button ${String(name)}`, () => [...scope.querySelectorAll<HTMLButtonElement>('button')].find(node => {
+    const text = node.textContent?.trim() ?? '';
+    return visible(node) && !node.disabled && (typeof name === 'string' ? text === name : name.test(text));
+  }));
+}
+async function click(name: string | RegExp, scope: ParentNode = document) { (await button(name, scope)).click(); }
+function type(element: HTMLTextAreaElement | HTMLInputElement, value: string) {
+  const prototype = element instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+  Object.getOwnPropertyDescriptor(prototype, 'value')!.set!.call(element, value);
+  element.dispatchEvent(new Event('input', { bubbles: true }));
+  element.dispatchEvent(new Event('change', { bubbles: true }));
+}
+async function region(label: string) {
+  return until(`visible ${label}`, () => [...document.querySelectorAll<HTMLElement>('[aria-label]')].find(node => node.getAttribute('aria-label') === label && visible(node)));
+}
+async function stageFile(path: string) {
+  const row = await until(`stageable row ${path}`, () => [...document.querySelectorAll<HTMLButtonElement>('.repository-details .file-list button[title]')]
+    .find(node => node.title === path && visible(node) && [...(node.closest('li')?.querySelectorAll('button') ?? [])].some(action => action.textContent === 'Stage'))?.closest('li'));
+  await click('Stage', row);
+}
+async function operation(action: string, repositoryId: string, trigger: () => Promise<void>) {
+  const previous = new Set((await api.getOperations()).map(item => item.operationId));
+  await trigger();
+  return until<OperationResult>(`${action} completes`, async () => (await api.getOperations()).find(item =>
+    item.repositoryId === repositoryId && item.action === action && !previous.has(item.operationId) && !['queued', 'running'].includes(item.state)), 120000);
+}
+async function refreshRepository() {
+  const repository = await region('Repository');
+  await click('Refresh', repository);
+  await until('repository refresh complete', () => {
+    const buttons = [...repository.querySelectorAll<HTMLButtonElement>('button')];
+    return buttons.some(node => node.textContent === 'Refresh' && !node.disabled);
+  });
+}
+async function assertDiffVisible() {
+  const diff = await region('File diff');
+  await until('text diff renders', () => diff.querySelector('.unified-diff'));
+  assert(diff.querySelector('.unified-diff')!.textContent?.trim(), 'Selected file must render an actual patch');
+}
+
+export async function runNativeSmoke(): Promise<void> {
+  const checks: string[] = [];
+  let result: SmokeResult;
+  try {
+    const context = await invoke<SmokeContext>('native_smoke_context');
+    const group = await region('Repository group');
+    const project = await api.openProject(context.projectPath);
+    assert(group.querySelector('h1')?.textContent === project.name, 'CLI must display the requested real project');
+    assert(group.querySelectorAll('.group-table-scroll tbody tr').length === project.members.length, 'Dashboard must display every project member');
+    const clean = await api.openRepository(context.cleanPath);
+    const dirty = await api.openRepository(context.dirtyPath);
+    const cleanBefore = JSON.stringify(clean.status.head);
+    const dirtyBefore = JSON.stringify({ head: dirty.status.head, counts: dirty.status.counts, dirty: dirty.status.dirty });
+    assert(dirty.status.dirty, 'Dirty fixture must start dirty');
+    checks.push('Cold CLI launch rendered real JSON project with all members');
+
+    const oldOperations = new Set((await api.getOperations()).map(item => item.operationId));
+    await click(/^Pull all \(/, group);
+    const preview = await region('Batch preview');
+    assert(preview.querySelectorAll('li').length === project.members.length, 'Pull all preview must include dirty/missing candidates');
+    assert(preview.textContent?.includes('Skipped'), 'Pull preview must display skipped reasons');
+    await click(/^Run \d+ eligible$/, preview);
+    const batch = await until('mixed batch finishes', async () => {
+      const rows = (await api.getOperations()).filter(item => item.batchId && !oldOperations.has(item.operationId));
+      return rows.length === project.members.length && rows.every(item => !['queued', 'running'].includes(item.state)) ? rows : null;
+    }, 120000);
+    assert(batch.some(item => item.repositoryId === clean.repositoryId && item.state === 'succeeded'), 'Clean repository pull must succeed');
+    assert(batch.some(item => item.repositoryId === dirty.repositoryId && item.state === 'skipped'), 'Dirty repository pull must be skipped');
+    assert(batch.some(item => item.state === 'failed'), 'Diverged fixture must report failure alongside success');
+    const cleanAfter = await api.getStatus(clean.repositoryId);
+    const dirtyAfter = await api.getStatus(dirty.repositoryId);
+    assert(JSON.stringify(cleanAfter.head) !== cleanBefore, 'Clean pull must advance HEAD');
+    assert(JSON.stringify({ head: dirtyAfter.head, counts: dirtyAfter.counts, dirty: dirtyAfter.dirty }) === dirtyBefore, 'Dirty repository HEAD and working state must remain unchanged');
+    const activity = await region('Batch activity');
+    await until('mixed outcomes render', () => ['succeeded', 'failed', 'skipped'].every(state => activity.textContent?.includes(state)));
+    checks.push('DOM Pull all preview and run: clean advanced, dirty skipped unchanged, divergence failed, independent outcomes rendered');
+
+    const cleanMember = project.members.find(member => member.kind === 'ready' && member.repositoryId === clean.repositoryId);
+    assert(cleanMember, 'Clean fixture must be a group member');
+    const cleanRow = [...group.querySelectorAll<HTMLTableRowElement>('.group-table-scroll tbody tr')].find(row => row.querySelector('.group-path')?.getAttribute('title') === cleanMember.displayPath);
+    assert(cleanRow, 'Clean member row must be rendered');
+    await click(cleanMember.label, cleanRow);
+    const repository = await region('Repository');
+    await until('virtualized history renders', () => repository.querySelector<HTMLButtonElement>('.history-row'));
+    repository.querySelector<HTMLButtonElement>('.history-row')!.click();
+    const commitDetails = await region('Commit details');
+    const historicalFile = await until('historical changed file', () => commitDetails.querySelector<HTMLButtonElement>('.file-list button'));
+    historicalFile.click();
+    await assertDiffVisible();
+    checks.push('Opened repository from dashboard; selected real history row and rendered commit file patch');
+
+    const mergeRepo = await api.openRepository(context.mergePath);
+    const mergeHistory = await api.getHistory(mergeRepo.repositoryId);
+    const merge = mergeHistory.commits.find(commit => commit.parents.length > 1);
+    assert(merge && merge.parents.length === 2, 'Merge fixture must contain a two-parent merge in its first page');
+    for (const parent of merge.parents) {
+      const details = await api.getCommit(mergeRepo.repositoryId, merge.oid, parent);
+      assert(details.selectedParent === parent && details.files.length > 0, 'Each merge parent must return its own changed-file context');
+      const patch = await api.getDiff({ repositoryId: mergeRepo.repositoryId, snapshotId: details.snapshotId, fileId: details.files[0].fileId, context: 'commit' });
+      assert(patch.kind === 'text' && patch.text.length > 0, 'Each merge parent must have a real text diff');
+    }
+    checks.push('Real native IPC inspected merge commit against each parent and read corresponding patches');
+
+    const prepared = await invoke<{ firstFile: string; secondFile: string }>('native_smoke_prepare_changes', { repositoryId: clean.repositoryId });
+    await click(/^Working changes/, repository);
+    await refreshRepository();
+    const workingFile = await until('working file appears', () => [...repository.querySelectorAll<HTMLButtonElement>('.file-list button[title]')].find(node => node.title === prepared.firstFile));
+    workingFile.click();
+    await assertDiffVisible();
+    const stage = await operation('stage', clean.repositoryId, () => stageFile(prepared.firstFile));
+    assert(stage.state === 'succeeded', `Stage failed: ${stage.error?.message ?? stage.reason}`);
+    await until('stage reflected in commit control', () => [...repository.querySelectorAll<HTMLButtonElement>('button')].find(node => node.textContent === 'Commit staged changes (1)'));
+    const message = `Native smoke staged-only commit ${Date.now()}`;
+    const messageInput = await until('commit message editor', () => repository.querySelector<HTMLTextAreaElement>('#commit-message'));
+    type(messageInput, message);
+    const committed = await operation('commit', clean.repositoryId, () => click('Commit staged changes (1)', repository));
+    assert(committed.state === 'succeeded', `Commit failed: ${committed.error?.message ?? committed.reason}`);
+    const committedStatus = await api.getStatus(clean.repositoryId);
+    assert(committedStatus.head.kind !== 'unborn', 'Commit must create a real HEAD');
+    const committedDetails = await api.getCommit(clean.repositoryId, committedStatus.head.oid);
+    assert(committedDetails.message.trim() === message, 'Real commit message must match the entered draft');
+    assert(committedDetails.files.length === 1 && committedDetails.files[0].displayPath === prepared.firstFile, 'Commit must contain only the one staged fixture file');
+    const remaining = await api.getChanges(clean.repositoryId);
+    assert(remaining.files.some(file => file.displayPath === prepared.secondFile), 'Second file must remain uncommitted');
+    await until('successful draft clears', () => messageInput.value === '');
+    checks.push('DOM inspected working patch, staged one of two files, committed only selected file, and cleared successful draft');
+
+    await refreshRepository();
+    const pushPanel = repository.querySelector<HTMLDetailsElement>('.push-controls');
+    assert(pushPanel, 'Push controls must be present');
+    if (!pushPanel.open) pushPanel.querySelector('summary')!.click();
+    const push = await operation('push', clean.repositoryId, async () => {
+      await click('Preview push', pushPanel);
+      const dialog = await until('push review modal', () => repository.querySelector<HTMLDialogElement>('dialog[open]'));
+      assert(dialog.textContent?.includes('Destination:'), 'Push preview must display the resolved destination');
+      await click('Run push', dialog);
+    });
+    assert(push.state === 'succeeded', `Push to local fixture remote failed: ${push.error?.message ?? push.reason}`);
+    checks.push('DOM push preview displayed destination and real push to fixture remote succeeded');
+
+    await invoke('native_smoke_fail_hook', { repositoryId: clean.repositoryId });
+    await refreshRepository();
+    const hookStage = await operation('stage', clean.repositoryId, () => stageFile(prepared.secondFile));
+    assert(hookStage.state === 'succeeded', 'Stage before failing hook must succeed');
+    await until('hook-test stage reflected', () => [...repository.querySelectorAll<HTMLButtonElement>('button')].find(node => node.textContent === 'Commit staged changes (1)'));
+    const failedMessage = 'Retain this native smoke draft after hook failure';
+    type(messageInput, failedMessage);
+    const failed = await operation('commit', clean.repositoryId, () => click('Commit staged changes (1)', repository));
+    assert(failed.state === 'failed', 'Rejecting native Git hook must fail commit');
+    await until('hook failure renders', () => [...document.querySelectorAll('[role="alert"]')].some(node => visible(node) && node.textContent?.trim()));
+    assert(messageInput.value === failedMessage, 'Draft must survive actual hook failure');
+    assert(JSON.stringify((await api.getStatus(clean.repositoryId)).head) === JSON.stringify(committedStatus.head), 'Failed commit must not advance HEAD');
+    await click('← Back', repository);
+    const returnedGroup = await region('Repository group');
+    await click('Refresh', returnedGroup);
+    await until('returned dashboard refreshed', () => [...returnedGroup.querySelectorAll<HTMLTableRowElement>('.group-table-scroll tbody tr')].some(row => row.textContent?.includes(cleanMember.label) && row.textContent.includes('1 staged')));
+    const returnedRow = [...returnedGroup.querySelectorAll<HTMLTableRowElement>('.group-table-scroll tbody tr')].find(row => row.querySelector('.group-path')?.getAttribute('title') === cleanMember.displayPath);
+    assert(returnedRow, 'Original group row must remain present');
+    await click(cleanMember.label, returnedRow);
+    const retained = await until('retained draft after navigation', () => document.querySelector<HTMLTextAreaElement>('#commit-message'));
+    assert(retained.value === failedMessage, 'Draft must survive leaving and reopening repository');
+    checks.push('Real rejecting hook failed without moving HEAD; draft survived failure and navigation; group status refreshed');
+    result = { passed: true, checks };
+  } catch (cause) {
+    result = { passed: false, checks, error: errorMessage(cause), body: document.body.innerText.slice(0, 16000) };
+  }
+  await invoke('native_smoke_report', { result });
+}

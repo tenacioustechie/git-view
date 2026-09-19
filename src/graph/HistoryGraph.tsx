@@ -10,8 +10,17 @@ export function HistoryGraph({ rows, selected, onSelect, loading, more, onMore }
 }) {
   const scroll = useRef<HTMLDivElement>(null);
   const virtual = useVirtualizer({ count: rows.length, getScrollElement: () => scroll.current, estimateSize: () => rowHeight, overscan: 12, initialRect: { width: 640, height: 600 } });
-  const width = Math.max(60, ...rows.map(row => row.width * 18 + 20));
-  return <div className="history-list" ref={scroll} aria-label="Commit history" tabIndex={0}>
+  const width = rows.reduce((max, row) => Math.max(max, row.width * 18 + 20), 60);
+  return <div className="history-list" ref={scroll} aria-label="Commit history" tabIndex={0}
+    onKeyDown={event => {
+      if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key) || !rows.length) return;
+      event.preventDefault();
+      const current = rows.findIndex(row => row.commit.oid === selected);
+      const index = event.key === 'Home' ? 0 : event.key === 'End' ? rows.length - 1
+        : event.key === 'ArrowDown' ? Math.min(rows.length - 1, current + 1) : Math.max(0, current - 1);
+      virtual.scrollToIndex(index, { align: 'auto' });
+      onSelect(rows[index].commit.oid);
+    }}>
     <div style={{ height: virtual.getTotalSize(), position: 'relative', minWidth: width + 240 }}>
       {virtual.getVirtualItems().map(item => {
         const row = rows[item.index];

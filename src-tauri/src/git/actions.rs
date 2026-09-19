@@ -1,8 +1,12 @@
 use super::*;
+use std::sync::atomic::{AtomicBool, Ordering};
 impl GitEngine {
     pub(crate) async fn config_fingerprint(&self, repo: &Repository) -> AppResult<String> {
         Ok(digest(
-            &runner::read(&repo.root, &["config", "--null", "--list"]).await?,
+            &self
+                .runner
+                .read(&repo.root, &["config", "--null", "--list"])
+                .await?,
         ))
     }
     pub async fn prepare_action(
@@ -96,11 +100,13 @@ impl GitEngine {
                     )
                 })?;
                 let merge = text(
-                    &runner::read(
-                        &repo.root,
-                        &["config", "--get-all", &format!("branch.{branch}.merge")],
-                    )
-                    .await?,
+                    &self
+                        .runner
+                        .read(
+                            &repo.root,
+                            &["config", "--get-all", &format!("branch.{branch}.merge")],
+                        )
+                        .await?,
                 );
                 if merge.lines().count() != 1 {
                     return Err(AppError::new(
@@ -118,6 +124,8 @@ impl GitEngine {
                 args = runner::args(&[
                     "-c",
                     "pull.rebase=false",
+                    "-c",
+                    &format!("branch.{branch}.mergeOptions="),
                     "-c",
                     "rebase.autoStash=false",
                     "-c",
@@ -184,6 +192,7 @@ impl GitEngine {
                                 "--literal-pathspecs",
                                 "rm",
                                 "--cached",
+                                "--force",
                                 "-r",
                                 "--ignore-unmatch",
                                 "--pathspec-from-file=-",
@@ -234,7 +243,10 @@ impl GitEngine {
                 self.require_clean(status)?;
                 if name.starts_with('-')
                     || text(
-                        &runner::read(&repo.root, &["check-ref-format", "--branch", name]).await?,
+                        &self
+                            .runner
+                            .read(&repo.root, &["check-ref-format", "--branch", name])
+                            .await?,
                     ) != *name
                 {
                     return Err(AppError::new(
@@ -288,39 +300,54 @@ impl GitEngine {
                     .iter()
                     .find(|r| r.id == *remote_id)
                     .ok_or_else(|| AppError::new("invalid_remote", "Select an existing remote."))?;
-                if self
-                    .config(&repo, &format!("remote.{}.mirror", remote.name))
-                    .await?
-                    .is_some_and(|v| v == "true" || v == "1" || v == "yes")
-                {
+                let mirror = self
+                    .runner
+                    .run(
+                        &repo.root,
+                        &runner::args(&[
+                            "config",
+                            "--type=bool",
+                            "--get",
+                            &format!("remote.{}.mirror", remote.name),
+                        ]),
+                        None,
+                        false,
+                        runner::STRUCTURED_LIMIT,
+                    )
+                    .await?;
+                if mirror.code != 1 && text(&runner::checked(mirror)?.stdout) == "true" {
                     return Err(AppError::new(
                         "unsupported_push",
                         "Mirror remotes are not supported.",
                     ));
                 }
-                let urls = runner::read(
-                    &repo.root,
-                    &["remote", "get-url", "--push", "--all", &remote.name],
-                )
-                .await?;
+                let urls = self
+                    .runner
+                    .read(
+                        &repo.root,
+                        &["remote", "get-url", "--push", "--all", &remote.name],
+                    )
+                    .await?;
                 if text(&urls).lines().count() != 1 {
                     return Err(AppError::new(
                         "unsupported_push",
                         "Multiple effective push URLs are not supported.",
                     ));
                 }
-                let push_config = runner::run(
-                    &repo.root,
-                    &runner::args(&[
-                        "config",
-                        "--get-all",
-                        &format!("remote.{}.push", remote.name),
-                    ]),
-                    None,
-                    false,
-                    runner::STRUCTURED_LIMIT,
-                )
-                .await?;
+                let push_config = self
+                    .runner
+                    .run(
+                        &repo.root,
+                        &runner::args(&[
+                            "config",
+                            "--get-all",
+                            &format!("remote.{}.push", remote.name),
+                        ]),
+                        None,
+                        false,
+                        runner::STRUCTURED_LIMIT,
+                    )
+                    .await?;
                 let configured = if push_config.code == 1 {
                     None
                 } else {
@@ -350,7 +377,9 @@ impl GitEngine {
                         "Push destination must be a full branch reference.",
                     ));
                 }
-                runner::read(&repo.root, &["check-ref-format", destination_ref]).await?;
+                self.runner
+                    .read(&repo.root, &["check-ref-format", destination_ref])
+                    .await?;
                 let mut push =
                     runner::args(&["push", "--no-follow-tags", "--recurse-submodules=no"]);
                 if *set_upstream {
@@ -374,6 +403,7 @@ impl GitEngine {
             fingerprint: snapshot_id.map(|_| observed.fingerprint),
             config_fingerprint: self.config_fingerprint(&repo).await?,
             target_ref,
+            head_guard: None,
             action,
             args,
             input,
@@ -395,7 +425,43 @@ impl GitEngine {
         Ok(())
     }
     pub async fn execute(&self, plan: &PreparedAction) -> AppResult<ActionOutcome> {
+        self.execute_cancelable(plan, Arc::new(AtomicBool::new(false)))
+            .await
+    }
+    pub async fn execute_cancelable(
+        &self,
+        plan: &PreparedAction,
+        canceled: Arc<AtomicBool>,
+    ) -> AppResult<ActionOutcome> {
+        let check_canceled = || {
+            if canceled.load(Ordering::Acquire) {
+                Err(AppError::new(
+                    "canceled",
+                    "Operation was canceled before Git started.",
+                ))
+            } else {
+                Ok(())
+            }
+        };
+        check_canceled()?;
         let _guard = plan.repository.lock.lock().await;
+        check_canceled()?;
+        if let Some(head) = &plan.head_guard {
+            if self
+                .observe(&plan.repository)
+                .await?
+                .status
+                .as_ref()
+                .unwrap()
+                .head
+                != *head
+            {
+                return Err(AppError::new(
+                    "precondition_changed",
+                    "The filtered repository branch or HEAD changed after preview.",
+                ));
+            }
+        }
         if self.config_fingerprint(&plan.repository).await? != plan.config_fingerprint {
             return Err(AppError::new(
                 "precondition_changed",
@@ -418,8 +484,9 @@ impl GitEngine {
                 ));
             }
         }
+        check_canceled()?;
         let output = runner::checked(
-            runner::run(
+            self.runner.run(
                 &plan.repository.root,
                 &plan.args,
                 plan.input.clone(),
@@ -428,7 +495,7 @@ impl GitEngine {
             )
             .await?,
         ).map_err(|mut error| {
-            if plan.repository.git_dir.join("index.lock").exists() {
+            if !matches!(plan.action,RepositoryAction::Fetch{..}|RepositoryAction::Push{..}) && plan.repository.git_dir.join("index.lock").exists() {
                 error.code="lock_conflict".into();
                 error.message="Git could not acquire the repository index lock. Another Git process may be active; no lock was removed.".into();
                 error.retryable=true;

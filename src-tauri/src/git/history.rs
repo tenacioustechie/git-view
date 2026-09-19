@@ -54,20 +54,25 @@ fn parse_commit(oid: String, body: &[u8]) -> AppResult<Commit> {
             .ok_or_else(|| AppError::new("invalid_git_output", "Commit lacks committer"))?,
     })
 }
-async fn commits(repo: &Repository, oids: &[String]) -> AppResult<Vec<Commit>> {
+async fn commits(
+    runner: &runner::Runner,
+    repo: &Repository,
+    oids: &[String],
+) -> AppResult<Vec<Commit>> {
     if oids.is_empty() {
         return Ok(Vec::new());
     }
     let input = format!("{}\n", oids.join("\n")).into_bytes();
     let bytes = runner::checked(
-        runner::run(
-            &repo.root,
-            &runner::args(&["cat-file", "--batch"]),
-            Some(input),
-            false,
-            runner::STRUCTURED_LIMIT,
-        )
-        .await?,
+        runner
+            .run(
+                &repo.root,
+                &runner::args(&["cat-file", "--batch"]),
+                Some(input),
+                false,
+                runner::STRUCTURED_LIMIT,
+            )
+            .await?,
     )?
     .stdout;
     let mut remaining = bytes.as_slice();
@@ -114,11 +119,13 @@ impl GitEngine {
     ) -> AppResult<String> {
         let expression = format!("{reference}^{{commit}}");
         Ok(text(
-            &runner::read(
-                &repo.root,
-                &["rev-parse", "--verify", "--end-of-options", &expression],
-            )
-            .await?,
+            &self
+                .runner
+                .read(
+                    &repo.root,
+                    &["rev-parse", "--verify", "--end-of-options", &expression],
+                )
+                .await?,
         ))
     }
     pub async fn get_history(
@@ -168,9 +175,10 @@ impl GitEngine {
                                 if reference.kind != "tag" {
                                     return Err(error);
                                 }
-                                let kind =
-                                    runner::read(&repo.root, &["cat-file", "-t", &reference.oid])
-                                        .await?;
+                                let kind = self
+                                    .runner
+                                    .read(&repo.root, &["cat-file", "-t", &reference.oid])
+                                    .await?;
                                 if !["blob", "tree"].contains(&text(&kind).as_str()) {
                                     return Err(error);
                                 }
@@ -222,14 +230,15 @@ impl GitEngine {
             Vec::new()
         } else {
             let bytes = runner::checked(
-                runner::run(
-                    &repo.root,
-                    &args,
-                    Some(format!("{}\n", snapshot.tips.join("\n")).into_bytes()),
-                    false,
-                    runner::STRUCTURED_LIMIT,
-                )
-                .await?,
+                self.runner
+                    .run(
+                        &repo.root,
+                        &args,
+                        Some(format!("{}\n", snapshot.tips.join("\n")).into_bytes()),
+                        false,
+                        runner::STRUCTURED_LIMIT,
+                    )
+                    .await?,
             )?
             .stdout;
             text(&bytes).lines().map(str::to_owned).collect::<Vec<_>>()
@@ -240,7 +249,7 @@ impl GitEngine {
             .take(PAGE)
             .map(|line| line.trim_start_matches('-').to_owned())
             .collect::<Vec<_>>();
-        let objects = commits(&repo, &oids).await?;
+        let objects = commits(&self.runner, &repo, &oids).await?;
         let shallow = std::fs::read_to_string(repo.common_dir.join("shallow")).unwrap_or_default();
         let commits = objects
             .into_iter()
@@ -291,7 +300,9 @@ impl GitEngine {
     ) -> AppResult<CommitDetails> {
         let repo = self.repository(repository_id).await?;
         let oid = self.resolve_commit(&repo, oid).await?;
-        let commit = commits(&repo, std::slice::from_ref(&oid)).await?.remove(0);
+        let commit = commits(&self.runner, &repo, std::slice::from_ref(&oid))
+            .await?
+            .remove(0);
         let parent = match parent_oid {
             Some(parent) => {
                 if !commit.parents.contains(&parent) {
@@ -328,7 +339,9 @@ impl GitEngine {
             ])
         };
         let bytes = runner::checked(
-            runner::run(&repo.root, &args, None, false, runner::STRUCTURED_LIMIT).await?,
+            self.runner
+                .run(&repo.root, &args, None, false, runner::STRUCTURED_LIMIT)
+                .await?,
         )?
         .stdout;
         let mut records = bytes.split(|b| *b == 0);
@@ -412,6 +425,7 @@ impl GitEngine {
             "--no-ext-diff",
             "--no-textconv",
             "--no-color",
+            "--ignore-submodules=none",
         ]);
         match request.context.as_str() {
             "commit" => {
@@ -430,6 +444,7 @@ impl GitEngine {
                         "--no-ext-diff",
                         "--no-textconv",
                         "--no-color",
+                        "--ignore-submodules=none",
                         oid,
                     ]);
                 }
@@ -492,7 +507,11 @@ impl GitEngine {
         if let Some(old) = &file.old_path {
             args.push(old.clone());
         }
-        let output = match runner::run(&repo.root, &args, None, false, DIFF_LIMIT).await {
+        let output = match self
+            .runner
+            .run(&repo.root, &args, None, false, DIFF_LIMIT)
+            .await
+        {
             Err(error) if error.code == "output_limit" => {
                 return Ok(DiffResult::Unavailable {
                     reason: "Diff exceeds the 2 MiB preview limit.".into(),

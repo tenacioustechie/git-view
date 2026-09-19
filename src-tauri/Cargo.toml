@@ -26,6 +26,9 @@ tempfile = "3"
 
 [dev-dependencies]
 
+[features]
+native-smoke = []
+
 [profile.release]
 lto = "thin"
 strip = true

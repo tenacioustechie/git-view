@@ -1,5 +1,5 @@
 // Renderer behavior tests: all native IPC and dialogs are mocked explicitly.
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from '../../api/client';
 import { fixtures } from '../../test/fixtures';
@@ -137,5 +137,42 @@ describe('GroupView renderer', () => {
     view.rerender(<GroupView project={{ ...project, revision: 'new-revision' }} onOpenRepository={vi.fn()} />);
     await waitFor(() => expect(screen.queryByRole('region', { name: 'Batch preview' })).toBeNull());
     expect(api.runBatch).not.toHaveBeenCalled();
+  });
+
+  it('does not resurrect a late batch preview after the project changes', async () => {
+    let resolvePlan!: (value: BatchPlan) => void;
+    vi.mocked(api.planBatch).mockReturnValue(new Promise(resolve => { resolvePlan = resolve; }));
+    const view = render(<GroupView project={project} onOpenRepository={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Pull all (3)' }));
+    view.rerender(<GroupView project={{ ...project, revision: 'new-revision', stale: true }} onOpenRepository={vi.fn()} />);
+    await act(async () => resolvePlan(plan));
+    expect(screen.queryByRole('region', { name: 'Batch preview' })).toBeNull();
+    expect(api.runBatch).not.toHaveBeenCalled();
+  });
+
+  it('uses draft-start paths for Save as even after externally changed membership', async () => {
+    vi.mocked(save).mockResolvedValue('/elsewhere/copied.git-view.json');
+    vi.mocked(api.createProject).mockResolvedValue({ ...project, projectId: 'copy' });
+    const view = render(<GroupView project={project} onOpenRepository={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Edit project' }));
+    view.rerender(<GroupView project={{ ...project, revision: 'new', content: { version: 1, name: 'Work', repositories: [] }, members: [] }} onOpenRepository={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Save as' }));
+    await waitFor(() => expect(api.createProject).toHaveBeenCalledWith('/elsewhere/copied.git-view.json', expect.objectContaining({ repositories: [{ path: '/workspace/api' }, { path: '/workspace/web' }, { path: '/workspace/missing' }] })));
+  });
+
+  it('does not restore the old project when a refresh finishes after Save as', async () => {
+    let resolveRefresh!: (value: Project) => void;
+    vi.mocked(api.refreshProject).mockReturnValue(new Promise(resolve => { resolveRefresh = resolve; }));
+    vi.mocked(save).mockResolvedValue('/elsewhere/copied.git-view.json');
+    vi.mocked(api.createProject).mockResolvedValue({ ...project, projectId: 'copy', name: 'Copied project' });
+    const onProjectChange = vi.fn();
+    render(<GroupView project={project} onOpenRepository={vi.fn()} onProjectChange={onProjectChange} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Edit project' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save as' }));
+    await screen.findByRole('heading', { name: 'Copied project' });
+    await act(async () => resolveRefresh(project));
+    expect(screen.getByRole('heading', { name: 'Copied project' })).toBeTruthy();
+    expect(onProjectChange).toHaveBeenCalledTimes(1);
   });
 });

@@ -52,6 +52,7 @@ pub(crate) struct State {
 #[derive(Clone, Default)]
 pub struct GitEngine {
     pub(crate) state: Arc<Mutex<State>>,
+    pub(crate) runner: runner::Runner,
 }
 #[derive(Clone)]
 pub struct PreparedAction {
@@ -64,6 +65,41 @@ pub struct PreparedAction {
     pub(crate) input: Option<Vec<u8>>,
     pub(crate) config_fingerprint: String,
     pub(crate) target_ref: Option<(String, String)>,
+    pub(crate) head_guard: Option<Head>,
+}
+impl PreparedAction {
+    /// Restrict a filtered batch fetch to the HEAD observed in its preview.
+    /// Working-tree changes alone do not invalidate this fetch guard.
+    pub fn guard_head(&mut self, head: Head) {
+        self.head_guard = Some(head);
+    }
+    /// Identical fetches across aliases/linked worktrees may share one execution.
+    /// Other actions remain separate and are serialized by the common-directory lock.
+    pub fn fetch_coalesce_key(&self) -> Option<String> {
+        if !matches!(self.action, RepositoryAction::Fetch { .. }) {
+            return None;
+        }
+        let mut bytes = os_bytes(self.repository.common_dir.as_os_str());
+        bytes.push(0);
+        bytes.extend_from_slice(self.config_fingerprint.as_bytes());
+        if let Some(head) = &self.head_guard {
+            // A guard belongs to one worktree. Coalescing across worktrees would skip
+            // revalidating another candidate even if their original HEADs were equal.
+            bytes.push(0);
+            bytes.extend_from_slice(self.repository.id.as_bytes());
+            bytes.push(0);
+            bytes.extend_from_slice(
+                serde_json::to_string(head)
+                    .expect("serializing Head")
+                    .as_bytes(),
+            );
+        }
+        for arg in &self.args {
+            bytes.push(0);
+            bytes.extend_from_slice(&os_bytes(arg));
+        }
+        Some(digest(&bytes))
+    }
 }
 pub struct ActionOutcome {
     pub exit_code: i32,
@@ -105,6 +141,18 @@ impl GitEngine {
     pub fn new() -> Self {
         Self::default()
     }
+    /// For disposable fixture repositories only: ignore system/global Git config and inherited identities.
+    /// The desktop application uses `new()` and preserves the user's normal Git configuration.
+    pub fn isolated() -> Self {
+        Self {
+            runner: runner::Runner {
+                isolated: true,
+                ..runner::Runner::default()
+            },
+            ..Self::default()
+        }
+    }
+
     pub(crate) async fn repository(&self, id: &str) -> AppResult<Repository> {
         self.state
             .lock()
@@ -116,25 +164,31 @@ impl GitEngine {
     }
     pub async fn open_repository(&self, path: &Path) -> AppResult<RepositoryOpen> {
         let root = PathBuf::from(path_bytes(
-            runner::read(
-                path,
-                &["rev-parse", "--path-format=absolute", "--show-toplevel"],
-            )
-            .await?
-            .strip_suffix(b"\n")
-            .unwrap_or_default(),
+            self.runner
+                .read(
+                    path,
+                    &["rev-parse", "--path-format=absolute", "--show-toplevel"],
+                )
+                .await?
+                .strip_suffix(b"\n")
+                .unwrap_or_default(),
         ));
         let root = std::fs::canonicalize(root)
             .map_err(|e| AppError::new("repository_unavailable", e.to_string()))?;
-        let git_bytes = runner::read(&root, &["rev-parse", "--absolute-git-dir"]).await?;
+        let git_bytes = self
+            .runner
+            .read(&root, &["rev-parse", "--absolute-git-dir"])
+            .await?;
         let git_dir = PathBuf::from(path_bytes(
             git_bytes.strip_suffix(b"\n").unwrap_or(&git_bytes),
         ));
-        let common_bytes = runner::read(
-            &root,
-            &["rev-parse", "--path-format=absolute", "--git-common-dir"],
-        )
-        .await?;
+        let common_bytes = self
+            .runner
+            .read(
+                &root,
+                &["rev-parse", "--path-format=absolute", "--git-common-dir"],
+            )
+            .await?;
         let common_dir = std::fs::canonicalize(PathBuf::from(path_bytes(
             common_bytes.strip_suffix(b"\n").unwrap_or(&common_bytes),
         )))

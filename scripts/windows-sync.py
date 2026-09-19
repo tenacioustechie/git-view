@@ -12,7 +12,15 @@ with tempfile.TemporaryDirectory(prefix="git-view-sync-") as tmp:
     subprocess.run(["scp", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes", str(bundle), "git-view-windows:C:/codeme/git-view-source.bundle"], check=True)
     script = r'''$ErrorActionPreference = 'Stop'
 Set-Location -LiteralPath 'C:\codeme\git-view'
-$changes = @(git status --porcelain --untracked-files=all | Where-Object { $_ -notmatch '^\?\? \.tools/' })
+$generatedChanges = @(git status --porcelain --untracked-files=all -- src-tauri/gen)
+if ($generatedChanges.Count -gt 0) {
+    $backup = Join-Path '.tools' ('generated-schema-backup-' + [guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path $backup | Out-Null
+    Copy-Item -Recurse 'src-tauri/gen' $backup
+    git restore --worktree -- src-tauri/gen
+    if ($LASTEXITCODE -ne 0) { throw 'Could not restore generated tracked schemas after backing them up.' }
+}
+$changes = @(git status --porcelain --untracked-files=all | Where-Object { $_ -notmatch '^\?\? (\.tools/|src-tauri/gen/)' })
 if ($changes.Count -gt 0) { $changes; throw 'Windows checkout has changes; preserve and use a separate worktree.' }
 git fetch C:/codeme/git-view-source.bundle HEAD
 if ($LASTEXITCODE -ne 0) { throw 'Bundle fetch failed' }

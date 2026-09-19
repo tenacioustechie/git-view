@@ -94,6 +94,8 @@ export interface AppError {
   message: string;
   retryable: boolean;
   details?: string; // bounded, redacted diagnostic text
+  exitCode?: number;
+  outputTruncated?: boolean;
 }
 
 export type JobState = 'queued' | 'running' | 'succeeded' | 'failed' | 'skipped' | 'canceled';
