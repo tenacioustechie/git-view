@@ -45,6 +45,19 @@ pub fn run() {
         let path = std::path::Path::new(initial.path.as_deref().unwrap());
         if initial.kind == "project" {
             catalog::read_project(path).map(|_| ())
+        } else if initial.kind == "discovery" {
+            std::fs::symlink_metadata(path)
+                .map_err(|e| contracts::AppError::new("invalid_scan_root", e.to_string()))
+                .and_then(|metadata| {
+                    if metadata.is_dir() && !metadata.file_type().is_symlink() {
+                        Ok(())
+                    } else {
+                        Err(contracts::AppError::new(
+                            "invalid_scan_root",
+                            "Choose a real directory to scan.",
+                        ))
+                    }
+                })
         } else {
             engine.open_repository(path).await.map(|_| ())
         }
@@ -82,6 +95,7 @@ pub fn run() {
                     kind: "welcome".into(),
                     path: None,
                     error: Some(error),
+                    scan_depth: None,
                 },
             };
             let app_handle = app.clone();
@@ -140,7 +154,8 @@ pub fn run() {
         commands::get_operations,
         commands::get_launch_request,
         commands::ack_launch_request,
-        commands::list_rewrites
+        commands::list_rewrites,
+        commands::discover_repositories
     ]);
     #[cfg(feature = "native-smoke")]
     let builder = builder.invoke_handler(tauri::generate_handler![
@@ -165,7 +180,9 @@ pub fn run() {
         commands::get_launch_request,
         commands::ack_launch_request,
         commands::list_rewrites,
+        commands::discover_repositories,
         native_smoke::native_smoke_context,
+        native_smoke::native_smoke_discovery_case,
         native_smoke::native_smoke_prepare_changes,
         native_smoke::native_smoke_fail_hook,
         native_smoke::native_smoke_forward_launch,

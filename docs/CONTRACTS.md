@@ -131,6 +131,7 @@ Errors such as missing Git, inaccessible repository, stale precondition, authent
 | --- | --- | --- |
 | `get_launch_request` / `ack_launch_request` | optional request ID | Queued launch target, ack result |
 | `open_repository` | native path selected by launcher/dialog | Repository ID, resolved display path, initial status |
+| `discover_repositories` | root path, depth 0–10 | Root/depth, candidates with canonical repository ID and path/label, issues, truncation flag, visited directory count |
 | `open_project` | project file path | Project ID, file revision, name, ordered members |
 | `save_project` | project ID, expected file revision, version-1 content | New revision or external-change error |
 | `create_project` | chosen file path, version-1 content | Project ID and revision |
@@ -147,6 +148,13 @@ Errors such as missing Git, inaccessible repository, stale precondition, authent
 | `run_repository_action` | plan ID | Operation ID, current state; revalidate then execute |
 
 Returned file tokens are scoped to their diff/status context. Requesting a commit diff validates that the file and chosen parent belong to that commit query. Invalid/stale snapshots return explicit errors. Commit identity is stable; status identity changes with refreshed observations.
+
+Discovery registers repository identities without reading status or changing Git
+state. Candidates are proposals; only explicit selection followed by
+`create_project` or `save_project` persists membership. CLI discovery requests
+use launch kind `discovery`, a root `path` resolved from the invoking cwd, and
+optional `scanDepth` (default 3). Launch routing defers acknowledgement while a
+DOM or native dialog is open and rechecks navigation after asynchronous loading.
 
 ## Mutations and batches
 

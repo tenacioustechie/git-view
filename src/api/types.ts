@@ -128,6 +128,9 @@ export interface BatchRequest { projectId: string; revision: string; memberIds: 
 export interface BatchCandidate { memberId: string; repositoryId: string | null; label: string; eligible: boolean; reason: string | null; destination: string | null }
 export interface BatchPlan { planId: string; expiresAt: string; candidates: BatchCandidate[]; action: 'fetch' | 'pull' }
 export interface Batch { batchId: string; operationIds: string[] }
-export interface LaunchRequest { requestId: string; kind: 'repository' | 'project' | 'welcome'; path: string | null; error: AppError | null }
+export interface LaunchRequest { requestId: string; kind: 'repository' | 'project' | 'welcome' | 'discovery'; path: string | null; error: AppError | null; scanDepth?: number | null }
+export interface DiscoveryCandidate { repositoryId: string; displayPath: string; label: string }
+export interface DiscoveryIssue { path: string; reason: string }
+export interface DiscoveryResult { rootPath: string; depth: number; candidates: DiscoveryCandidate[]; issues: DiscoveryIssue[]; truncated: boolean; visitedDirectories: number }
 export interface DiffRequest { repositoryId: string; snapshotId: string; fileId: string; context: 'staged' | 'unstaged' | 'commit' }
 export interface RewriteRecord { recoveryId: string; phase: string; branch: string; originalHead: string; replacementHead: string | null; baseOid: string; treeOid: string; backupRef: string; replacementRef: string | null; commitOids: string[]; message: string; createdAt: string; error: string | null; canRecover: boolean }

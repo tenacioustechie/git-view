@@ -1,4 +1,5 @@
 mod actions;
+mod discovery;
 mod history;
 mod merge;
 mod ref_guard;
@@ -172,7 +173,7 @@ impl GitEngine {
             .cloned()
             .ok_or_else(|| AppError::new("repository_unavailable", "Open the repository again."))
     }
-    pub async fn open_repository(&self, path: &Path) -> AppResult<RepositoryOpen> {
+    pub(crate) async fn register_repository(&self, path: &Path) -> AppResult<Repository> {
         let root = PathBuf::from(path_bytes(
             self.runner
                 .read(
@@ -223,11 +224,14 @@ impl GitEngine {
                 );
                 repository_id
             };
-        drop(state);
-        let status = self.get_status(&repository_id).await?;
+        Ok(state.repositories.get(&repository_id).unwrap().clone())
+    }
+    pub async fn open_repository(&self, path: &Path) -> AppResult<RepositoryOpen> {
+        let repository = self.register_repository(path).await?;
+        let status = self.get_status(&repository.id).await?;
         Ok(RepositoryOpen {
-            repository_id,
-            display_path: root.to_string_lossy().into_owned(),
+            repository_id: repository.id,
+            display_path: repository.root.to_string_lossy().into_owned(),
             status,
         })
     }

@@ -1,5 +1,67 @@
 # Build status
 
+## Continuation: reviewed folder discovery
+
+Implementation underway after completion of M1–M3 below. Adds bounded read-only
+repository discovery, `group --scan` with depth control, explicit selection/save,
+and reviewed additions to existing project drafts. The original three workers
+retain Git-engine, groups, and repository/native-harness ownership; coordinator
+owns contracts, CLI routing, navigation, and platform validation.
+
+Current local gate: 47 frontend tests, typecheck and lint pass. Native acceptance
+and updated release builds are pending; the artifacts below still represent the
+completed M1–M3 checkpoint until this section records their replacement.
+
+## Final result — M1, M2 and M3 complete on tested platforms
+
+Application/release source: `6a28ef976bd92f8baf844bdc04f91a19764dd3b9`.
+Completed the runbook tasks F1–F2, B1–B4, P1–P3, G1–G3, R1–R3 and Q1,
+then M2 ordinary merge/squash-merge and M3 Combine commits with durable recovery.
+One coordinator and the three original workers kept the documented ownership.
+Prerequisites are resolved: rustup is available, Windows pnpm/PATH and native
+C++ linker setup work, and both native webviews have executed real workflows.
+
+| Verification | macOS arm64 | Windows 11 x64 |
+| --- | --- | --- |
+| Frontend unit/component/graph tests | 34 passed | 34 passed |
+| Rust unit/integration/acceptance tests | 83 passed | 79 passed |
+| Native DOM/IPC workflow checks | 26 passed | 26 passed |
+| Typecheck, lint, strict Clippy | Passed | Passed |
+| Release build | `.app` passed | NSIS installer passed |
+| Packaged application check | CLI and process startup passed | Installed CLI and titled native window passed |
+
+The platform count difference is from Unix-specific checks. One performance
+test is ignored by default and was run explicitly on both platforms; timings
+and test details are recorded below. Rust formatting and final diff checks pass.
+Tests use disposable repositories/local remotes; normal release builds exclude
+the native-smoke instrumentation.
+
+Local release artifacts (not published):
+
+- [macOS arm64 archive](../artifacts/Git-View_0.1.0_macos-arm64.zip), 3,319,623 bytes.
+  Runnable app: `src-tauri/target/release/bundle/macos/Git View.app`.
+- [Windows x64 installer](../artifacts/Git-View_0.1.0_windows-x64-setup.exe), 2,609,886 bytes.
+  Original: `C:\codeme\git-view\src-tauri\target\release\bundle\nsis\Git View_0.1.0_x64-setup.exe`.
+- [SHA-256/source manifest](../artifacts/manifest.json),
+  [Mac native report](../artifacts/native-macos.json), and
+  [Windows native report](../artifacts/native-windows.json).
+
+Existing README/runbook/setup-document changes remain preserved. Application
+source is checkpointed locally; final documentation and verification-tooling
+refinements remain uncommitted. No branch was pushed and no release published.
+
+Limits: release artifacts are unsigned/not notarized. Linux CI and Intel Mac
+execution have not run. Remote-service authentication, complete screen-reader/
+Tab traversal, and long-group scroll restoration were not verified. APFS rejects
+the raw-invalid-UTF-8 filename fixture; tab/newline paths and byte parsing remain
+tested. Crash tests inject interruptions and restart engines rather than cutting
+power. Combine retains its candidate worktrees and backup/replacement refs;
+sparse and unsupported signing/config contexts are rejected explicitly.
+No known blocker remains for the implemented Mac/Windows milestone workflows.
+
+The sections below retain the checkpoint history, including failures fixed
+before the final successful gates.
+
 ## 2026-09-19: prerequisite gate
 
 Source baseline: `e69eedae94ff6d4f961dbdf048b4133f60f53e82` on Mac and Windows.
@@ -155,3 +217,94 @@ stack regression now passes; no stack limit was increased. Full platform reruns
 and final packaging remain required before the final acceptance claim.
 Linux CI workflow added but not executed; no Linux verification claim.
 User's original README/runbook/setup-doc edits remain preserved and uncommitted.
+
+## M3 local acceptance passed; final platform packaging
+
+Source revision: `f40c7248bd3b5f8b4d2de1e11b794bb81f2d5430`.
+Mac full locked Rust suite: 83 passed (17 unit, 7 coordinator acceptance,
+23 M1 Git, 16 M2 merge, 20 M3 rewrite), one performance test explicitly ignored.
+Frontend: 34 passed; typecheck/lint/format and strict Clippy pass.
+The 1 MiB constrained-stack regression reproduces the former Windows crash
+without the fix and passes with heap-backed subprocess state/buffers.
+
+`VITE_NATIVE_SMOKE=1 pnpm build`;
+`cargo build --manifest-path src-tauri/Cargo.toml --features native-smoke,tauri/custom-protocol`;
+`python3 scripts/native-smoke.py /tmp/git-view-native-m3-mac.json`: **26/26 passed**.
+This includes all M1/M2 workflows; M3 exact two-tip replacement, message/parent/tree
+and backup verification, recovery preserving later staged/unstaged/untracked
+content, rejecting hooks, and refusal after later commits. Additional native
+checks cover keyboard history navigation/graph alignment, actual light/dark
+window themes and body contrast, two window sizes, visible editor focus,
+group selection/filter retention, and a full WebView reload during a running
+commit followed by operation/navigation/status recovery.
+
+Mac arm64 debug native measurements: warm CLI subprocess through welcome render
+172.0 ms; creation of the 10,000-commit fixture plus navigation/first 200-row layout
+543.0 ms; scroll including two animation frames 20.0 ms. Virtualized DOM rows:
+24 before/22 after scrolling, with changed visible OID. Fixture creation is
+included in the 543.0 ms figure; backend-only measurements are recorded above.
+
+Windows full rerun and final normal release/installer checks are in progress.
+
+Windows `f40c724` passed all 15 applicable unit tests (including the constrained
+stack case), 6 coordinator acceptance tests, 22 M1 Git tests, and 16 M2 tests.
+One of 20 M3 tests exposed extended Windows paths being passed to an external
+SSH signing program. Revision `6a28ef976bd92f8baf844bdc04f91a19764dd3b9`
+normalizes only helper configuration paths; canonical repository/journal identity
+is preserved. Its focused Mac signing regression and strict Clippy passed.
+Both platforms are now checking this final source revision.
+
+Final Mac native rerun at `6a28ef9`: all 26 checks passed; retained report
+`artifacts/native-macos.json` (original `/tmp/git-view-native-final-mac.json`).
+Warm welcome 199.0 ms; fixture creation plus 200-row render 347.0 ms; scroll
+35.0 ms; virtual DOM 24/22 rows. These are individual debug measurements,
+not a statistical benchmark. Normal `pnpm tauri build --bundles app` passed
+with smoke instrumentation excluded, producing the 8.7 MiB arm64 `.app`.
+
+Final Windows gate at `6a28ef9` passed: 79 backend tests (15 unit,
+6 coordinator acceptance, 22 M1 Git, 16 M2 merge, 20 M3 rewrite), 34 UI tests,
+typecheck/lint, strict Clippy, and all **26 native desktop checks**.
+Command: `python3 scripts/windows-remote.py scripts/windows-verify.ps1`.
+Report: `C:\codeme\git-view\.tools\GitViewNativeSmoke-16fc72e913a647b385a771d081ecfe38.json`.
+Windows debug native timings: warm welcome 166.8 ms; creation of the 10,000-commit
+fixture plus first 200-row layout 4099.2 ms; scroll/two animation frames 3.8 ms;
+virtual DOM 25/24 rows. Release compilation ran concurrently, so these are
+observations under build load, not baseline performance guarantees.
+
+Final Mac full locked backend rerun at `6a28ef9` also passed all 83 tests and
+format checks. The final packaged Mac release again passed help/version,
+nonzero invalid-path handling, and native process startup via
+`python3 scripts/release-smoke.py 'src-tauri/target/release/bundle/macos/Git View.app/Contents/MacOS/git-view'`.
+
+## Final Windows package and artifact collection
+
+`python3 scripts/windows-remote.py scripts/windows-release.ps1` passed at
+`6a28ef9`: optimized x64 executable, normal frontend without smoke assets,
+NSIS installer, and release CLI help/version. NSIS tools were downloaded and
+hash-validated by Tauri. Installer size: 2,609,886 bytes.
+
+`python3 scripts/windows-remote.py scripts/windows-installer-smoke.ps1` passed:
+silent install to a fresh checkout-local test directory, installed CLI help/
+version, and an actual visible native window titled `Git View` in the interactive
+desktop session. Test install retained at
+`C:\codeme\git-view\.tools\installed-smoke-af56620c63614eccb1147813ebe6cbd8`.
+The temporary scheduled task and application process were stopped/removed.
+The first attempt hit Windows' encoded command-line length limit before running
+the installer. The remote helper now transfers scripts through UTF-8 stdin with
+a short fixed bootstrap; the rerun passed. Installer checking also verifies the
+window title, so a console window cannot satisfy that assertion.
+
+`python3 scripts/collect-artifacts.py C:/codeme/git-view/.tools/GitViewNativeSmoke-16fc72e913a647b385a771d081ecfe38.json`
+collected both releases, checked matching source revisions, copied the passing
+native reports, and wrote `artifacts/manifest.json` with sizes and SHA-256 hashes:
+
+| Artifact | SHA-256 |
+| --- | --- |
+| macOS arm64 ZIP | `24cd1d83760ef4d5b08282bdde02b79800b9d518ced087942fcea99e48407092` |
+| Windows x64 NSIS | `b4e091050f4dd0be5b5b853fac5ab80c87733e455e1e06abaa2dae8b04d33415` |
+
+For development: `pnpm install --frozen-lockfile`, then `pnpm tauri dev`.
+For a project group, copy `docs/examples/work.git-view.json` and replace its
+repository paths; relative paths resolve beside that JSON file. Open it from
+the application or with `scripts/git-view group /path/to/work.git-view.json`
+(`scripts\git-view.cmd` on Windows). Both launcher scripts preserve invoking cwd.

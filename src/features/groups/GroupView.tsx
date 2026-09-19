@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { api, errorMessage } from '../../api/client';
-import type { BatchPlan, OperationResult, Project, ProjectContent, RepositoryOpen } from '../../api/types';
+import { withNavigationBlock } from '../../api/navigation';
+import type { BatchPlan, DiscoveryCandidate, OperationResult, Project, ProjectContent, RepositoryOpen } from '../../api/types';
+import { DiscoveryPicker } from './DiscoveryView';
 import { branchName, matchesFilters, workingState, type GroupFilters } from './groupState';
 import './groups.css';
 
@@ -21,6 +23,8 @@ export function GroupView({ project: initial, onOpenRepository, onProjectChange 
   const [draft, setDraft] = useState<ProjectContent | null>(null);
   const [editRevision, setEditRevision] = useState('');
   const [saveConflict, setSaveConflict] = useState(false);
+  const [discovering, setDiscovering] = useState(false);
+  const discoveredIds = useRef(new Map<string, string>());
   const trackedBatches = useRef(new Set<string>());
   const knownMembers = useRef(new Map(initial.members.map(row => [row.memberId, row.label])));
   const scanInFlight = useRef(false);
@@ -128,9 +132,20 @@ export function GroupView({ project: initial, onOpenRepository, onProjectChange 
   function captureEditPaths() {
     editPaths.current = new Map(project.content.repositories.map((entry, index) => [entry.path, project.members[index]?.displayPath ?? entry.path]));
   }
+  function addDiscovered(candidates: DiscoveryCandidate[]) {
+    if (!draft) { captureEditPaths(); setEditRevision(project.revision); setSaveConflict(false); }
+    for (const candidate of candidates) discoveredIds.current.set(candidate.displayPath, candidate.repositoryId);
+    setDraft(current => {
+      const next = structuredClone(current ?? project.content);
+      const paths = new Set(next.repositories.map(entry => editPaths.current.get(entry.path) ?? entry.path));
+      for (const candidate of candidates) if (!paths.has(candidate.displayPath)) { next.repositories.push({ path: candidate.displayPath, label: candidate.label }); paths.add(candidate.displayPath); }
+      return next;
+    });
+    setDiscovering(false);
+  }
   async function pickFolders(index?: number) {
     await perform(async () => {
-      const result = await open({ directory: true, multiple: index === undefined, title: index === undefined ? 'Add repositories' : 'Locate repository' });
+      const result = await withNavigationBlock(() => open({ directory: true, multiple: index === undefined, title: index === undefined ? 'Add repositories' : 'Locate repository' }));
       if (!result) return;
       const paths = Array.isArray(result) ? result : [result];
       setDraft(current => {
@@ -149,7 +164,7 @@ export function GroupView({ project: initial, onOpenRepository, onProjectChange 
       try {
         let next: Project;
         if (saveAs) {
-          const path = await save({ title: 'Save project as', defaultPath: `${draft.name || 'project'}.git-view.json`, filters: [{ name: 'Git View project', extensions: ['json'] }] });
+          const path = await withNavigationBlock(() => save({ title: 'Save project as', defaultPath: `${draft.name || 'project'}.git-view.json`, filters: [{ name: 'Git View project', extensions: ['json'] }] }));
           if (!path) return;
           // Relative entries must continue pointing at the same repository after moving the project file.
           const content = { ...draft, repositories: draft.repositories.map(entry => {
@@ -168,8 +183,12 @@ export function GroupView({ project: initial, onOpenRepository, onProjectChange 
   return <section className="group-view" ref={root} aria-label="Repository group">
     <header className="group-heading"><div><h1>{project.name}</h1><p className="group-path" title={project.displayPath}>{project.displayPath}</p></div>
       <button onClick={startEdit} disabled={busy}>Edit project</button><button onClick={() => void pickFolders()} disabled={busy}>Add repositories</button>
+      <button onClick={() => setDiscovering(true)} disabled={busy}>Discover repositories</button>
       <button onClick={() => void refresh(true)} disabled={busy}>Refresh</button>
     </header>
+    {discovering && <DiscoveryPicker onConfirm={addDiscovered} onCancel={() => setDiscovering(false)} confirmLabel="Add selected to draft" disabled={busy}
+      excludedRepositoryIds={new Set([...project.members.flatMap(row => row.kind === 'ready' ? [row.repositoryId] : []), ...(draft?.repositories.flatMap(entry => discoveredIds.current.has(entry.path) ? [discoveredIds.current.get(entry.path)!] : []) ?? [])])}
+      excludedPaths={new Set((draft ?? project.content).repositories.map(entry => editPaths.current.get(entry.path) ?? entry.path))} />}
     {error && <div role="alert" className="group-notice">{error}<button aria-label="Dismiss error" onClick={() => setError(null)}>Dismiss</button></div>}
     {(project.stale || saveConflict) && <div role="alert" className="group-notice">
       <p>{project.error?.message ?? 'The project may have changed or cannot be saved. Your current dashboard and edits are retained.'} New batches are blocked until the project is reloaded.</p>

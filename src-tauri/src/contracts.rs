@@ -437,6 +437,32 @@ pub struct LaunchRequest {
     pub kind: String,
     pub path: Option<String>,
     pub error: Option<AppError>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scan_depth: Option<u8>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscoveryCandidate {
+    pub repository_id: String,
+    pub display_path: String,
+    pub label: String,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscoveryIssue {
+    pub path: String,
+    pub reason: String,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscoveryResult {
+    pub root_path: String,
+    pub depth: u8,
+    pub candidates: Vec<DiscoveryCandidate>,
+    pub issues: Vec<DiscoveryIssue>,
+    pub truncated: bool,
+    pub visited_directories: usize,
 }
 
 #[cfg(test)]

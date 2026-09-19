@@ -27,4 +27,7 @@
 .group-view .group-link { border: 0; background: transparent; color: var(--accent); padding: 0; text-align: left; font-weight: 650; }
 .group-edit-row .group-path { flex: 1; min-width: 10rem; }
 .group-activity { overflow-x: auto; }
+.group-discovery { border: 1px solid var(--border); border-radius: 6px; padding: 1rem; margin: 1rem 0; }
+.group-discovery input[type=number] { width: 4rem; }
+.group-discovery .discovery-path { overflow-wrap: anywhere; white-space: pre-wrap; }
 @media (max-width: 700px) { .group-view { padding: .75rem; } .group-table .group-path { max-width: 12rem; } .group-filters label { flex: 1; } }

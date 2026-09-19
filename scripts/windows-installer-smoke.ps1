@@ -24,7 +24,7 @@ git init -b main `$fixture | Out-Null
 try {
   Start-Sleep -Seconds 4
   `$process.Refresh()
-  if (`$process.HasExited -or `$process.MainWindowHandle -eq 0) { throw 'Installed application did not expose a native window' }
+  if (`$process.HasExited -or `$process.MainWindowHandle -eq 0 -or `$process.MainWindowTitle -ne 'Git View') { throw 'Installed application did not expose its Git View native window' }
   @{ passed = `$true; windowTitle = `$process.MainWindowTitle; executable = '$binary' } | ConvertTo-Json | Set-Content '$report'
 } catch {
   @{ passed = `$false; error = `$_.Exception.Message } | ConvertTo-Json | Set-Content '$report'

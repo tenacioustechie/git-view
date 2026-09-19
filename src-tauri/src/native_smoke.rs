@@ -54,6 +54,7 @@ pub struct Context {
     pub m2: bool,
     pub m3: bool,
     pub performance: bool,
+    pub discovery: bool,
 }
 pub struct Fixture {
     pub context: Context,
@@ -157,6 +158,7 @@ pub fn setup(report: PathBuf) -> Fixture {
             m2: true,
             m3: true,
             performance: true,
+            discovery: true,
         },
         report,
         _root: root,
@@ -213,6 +215,7 @@ pub async fn native_smoke_slow_commit(state: State<'_, AppState>) -> AppResult<s
     }
     let response = cached.as_ref().unwrap().clone();
     state.launches.push(LaunchRequest {
+        scan_depth: None,
         request_id: uuid::Uuid::new_v4().to_string(),
         kind: "repository".into(),
         path: Some(response["path"].as_str().unwrap().into()),
@@ -275,6 +278,7 @@ pub async fn native_smoke_m2_case(
         .unwrap()
         .insert(opened.repository_id.clone(), path);
     state.launches.push(LaunchRequest {
+        scan_depth: None,
         request_id: uuid::Uuid::new_v4().to_string(),
         kind: "repository".into(),
         path: Some(opened.display_path.clone()),
@@ -461,6 +465,7 @@ pub async fn native_smoke_m3_case(
         .insert(opened.repository_id.clone(), path);
     f.rewrites.lock().unwrap().insert(opened.repository_id.clone(),serde_json::json!({"originalHead":original,"baseOid":base,"treeOid":tree,"scenario":scenario}));
     state.launches.push(LaunchRequest {
+        scan_depth: None,
         request_id: uuid::Uuid::new_v4().to_string(),
         kind: "repository".into(),
         path: Some(opened.display_path.clone()),
@@ -614,10 +619,112 @@ pub async fn native_smoke_performance(state: State<'_, AppState>) -> AppResult<s
     }
     let opened = state.engine.open_repository(&path).await?;
     state.launches.push(LaunchRequest {
+        scan_depth: None,
         request_id: uuid::Uuid::new_v4().to_string(),
         kind: "repository".into(),
         path: Some(opened.display_path.clone()),
         error: None,
     });
     Ok(serde_json::json!({"repositoryId":opened.repository_id,"path":opened.display_path}))
+}
+
+#[tauri::command]
+pub async fn native_smoke_discovery_case(
+    state: State<'_, AppState>,
+    action: String,
+) -> AppResult<serde_json::Value> {
+    let f = fixture(&state)?;
+    let base = dunce::canonicalize(f._root.path())
+        .map_err(|error| AppError::new("fixture", error.to_string()))?;
+    let root = base.join("discovery-root");
+    let project = base.join("discovery.git-view.json");
+    let create = |name: &str| -> AppResult<()> {
+        let path = root.join(name);
+        if path.join(".git").exists() {
+            return Ok(());
+        }
+        std::fs::create_dir_all(&path)
+            .map_err(|error| AppError::new("fixture", error.to_string()))?;
+        git(&path, &["init", "--template=", "-b", "main"]);
+        configure(&path);
+        std::fs::write(
+            path.join("discovery.txt"),
+            format!("Discovery fixture {name}\n"),
+        )
+        .map_err(|error| AppError::new("fixture", error.to_string()))?;
+        commit(&path, "Discovery fixture commit");
+        Ok(())
+    };
+    match action.as_str() {
+        "setup" => {
+            create("Alpha")?;
+            create("nested/βeta")?;
+        }
+        "add" => {
+            if !root.is_dir() {
+                return Err(AppError::new(
+                    "fixture",
+                    "Set up discovery before adding its fixture.",
+                ));
+            }
+            create("Gamma")?;
+        }
+        "launch" | "openProject" => {
+            if !root.is_dir() {
+                return Err(AppError::new(
+                    "fixture",
+                    "Set up discovery before launching its fixture.",
+                ));
+            }
+            let executable = std::env::current_exe()
+                .map_err(|error| AppError::new("test_launch", error.to_string()))?;
+            let mut command = tokio::process::Command::new(executable);
+            command
+                .current_dir(&root)
+                .env_remove("GIT_VIEW_NATIVE_SMOKE_REPORT")
+                .kill_on_drop(true);
+            if action == "launch" {
+                command.args(["group", "--scan", ".", "--depth", "2"]);
+            } else {
+                command.arg("group").arg(&project);
+            }
+            let output = tokio::time::timeout(std::time::Duration::from_secs(15), command.output())
+                .await
+                .map_err(|_| AppError::new("test_launch", "Discovery fixture launch timed out."))?
+                .map_err(|error| AppError::new("test_launch", error.to_string()))?;
+            if !output.status.success() {
+                return Err(AppError::new(
+                    "test_launch",
+                    format!(
+                        "Discovery fixture child failed with {:?}: {}",
+                        output.status.code(),
+                        String::from_utf8_lossy(&output.stderr)
+                    ),
+                ));
+            }
+        }
+        "inspect" => {}
+        _ => {
+            return Err(AppError::new(
+                "fixture",
+                "Unknown discovery fixture action.",
+            ))
+        }
+    }
+    let mut candidates = Vec::new();
+    for name in ["Alpha", "nested/βeta", "Gamma"] {
+        let path = root.join(name);
+        if path.join(".git").exists() {
+            candidates.push(
+                dunce::canonicalize(path)
+                    .map_err(|error| AppError::new("fixture", error.to_string()))?
+                    .to_string_lossy()
+                    .into_owned(),
+            );
+        }
+    }
+    candidates.sort();
+    Ok(
+        serde_json::json!({"rootPath":root.to_string_lossy(),"projectPath":project.to_string_lossy(),"candidatePaths":candidates,"exists":project.is_file()}),
+    )
 }

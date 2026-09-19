@@ -4,6 +4,7 @@ import hashlib
 import json
 import pathlib
 import subprocess
+import sys
 
 root = pathlib.Path(__file__).resolve().parent.parent
 revision = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=root, text=True).strip()
@@ -23,5 +24,15 @@ subprocess.run(['scp', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes',
 manifest = {'sourceRevision': revision, 'windowsSourceRevision': windows_revision, 'unsigned': True, 'artifacts': []}
 for path in [archive, installer]:
     manifest['artifacts'].append({'file': path.name, 'bytes': path.stat().st_size, 'sha256': hashlib.sha256(path.read_bytes()).hexdigest()})
+if len(sys.argv) > 1:
+    report = out / 'native-windows.json'
+    subprocess.run(['scp', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes',
+                    'git-view-windows:' + sys.argv[1], str(report)], check=True)
+    manifest['acceptanceReports'] = []
+    for name in ['native-macos.json', 'native-windows.json']:
+        result = json.loads((out / name).read_text())
+        if result.get('passed') is not True:
+            raise SystemExit(f'Acceptance report did not pass: {name}')
+        manifest['acceptanceReports'].append({'file': name, 'checks': len(result['checks'])})
 (out / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
 print(json.dumps(manifest, indent=2))

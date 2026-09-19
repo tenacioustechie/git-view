@@ -13,6 +13,17 @@ pub struct AppState {
     pub smoke: Option<crate::native_smoke::Fixture>,
 }
 #[tauri::command]
+pub async fn discover_repositories(
+    state: State<'_, AppState>,
+    root: String,
+    depth: u8,
+) -> AppResult<DiscoveryResult> {
+    state
+        .engine
+        .discover_repositories(Path::new(&root), depth)
+        .await
+}
+#[tauri::command]
 pub async fn open_repository(
     state: State<'_, AppState>,
     path: String,

@@ -4,7 +4,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { api, errorMessage } from '../../api/client';
 import type { OperationResult } from '../../api/types';
 
-interface SmokeContext { projectPath: string; cleanPath: string; dirtyPath: string; mergePath: string; m2?: boolean; m3?: boolean; performance?: boolean }
+interface SmokeContext { projectPath: string; cleanPath: string; dirtyPath: string; mergePath: string; m2?: boolean; m3?: boolean; performance?: boolean; discovery?: boolean }
 interface SmokeResult { passed: boolean; checks: string[]; error?: string; body?: string }
 interface ReloadMarker { version: 1; repositoryId: string; operationId: string; path: string; checks: string[] }
 const reloadKey = 'git-view.native-smoke.reload.v1';
@@ -384,6 +384,95 @@ async function runPerformanceSmoke(checks: string[]) {
   checks.push(`Native WebView 10,000-commit fixture: fixture creation plus navigation to first 200-row layout ${firstRenderMs.toFixed(1)} ms; scroll including two animation frames ${scrollMs.toFixed(1)} ms; rendered rows ${rowsBefore} before/${rowsAfter} after, visible OID changed`);
 }
 
+interface DiscoveryFixture { rootPath: string; projectPath: string; candidatePaths: string[]; exists: boolean }
+async function runDiscoverySmoke(checks: string[]) {
+  const fixtureAction = (action: 'setup' | 'launch' | 'inspect' | 'add' | 'openProject') => invoke<DiscoveryFixture>('native_smoke_discovery_case', { action });
+  const fixture = await fixtureAction('setup');
+  assert(fixture.candidatePaths.length === 2 && !fixture.exists, 'Discovery fixture must start with two repositories and no project file');
+  await fixtureAction('launch');
+  const review = await region('Create project from discovery');
+  const labelInput = (scope: ParentNode, label: string) => [...scope.querySelectorAll<HTMLLabelElement>('label')].find(node => node.textContent?.trim() === label)?.querySelector<HTMLInputElement>('input');
+  const root = labelInput(review, 'Root folder');
+  const depth = labelInput(review, 'Search depth');
+  assert(root?.value === fixture.rootPath && depth?.value === '2', 'CLI scan must preserve invoking root and explicit depth');
+  assert(review.querySelectorAll('tbody tr').length === 0, 'CLI discovery must open unsaved review before explicit scan');
+  await click('Scan repositories', review);
+  await until('two discovered candidates displayed', () => review.querySelectorAll('tbody tr').length === 2);
+  const candidates = [...review.querySelectorAll<HTMLTableRowElement>('tbody tr')];
+  assert(candidates.every(row => !row.querySelector<HTMLInputElement>('input[type="checkbox"]')?.checked), 'Newly discovered repositories must start unchecked');
+  assert(fixture.candidatePaths.every(path => candidates.some(row => row.querySelector('.discovery-path')?.textContent === path)), 'Native scan must find actual ordinary and Unicode nested fixture repositories');
+  const chosenRow = candidates.find(row => row.querySelector('.discovery-path')?.textContent === fixture.candidatePaths[0]);
+  assert(chosenRow, 'Subset candidate must be visible');
+  chosenRow.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click();
+  await button('Save selected as project (1)', review);
+  assert(!(await fixtureAction('inspect')).exists, 'Scanning and selecting must not create or modify a project file');
+  checks.push('Discovery warm CLI resolved root/depth; explicit DOM scan found two real repositories including Unicode nested path, initially unchecked; subset review created no project file');
+
+  // Native OS save-picker interaction is deliberately outside this automation.
+  // Use the selected DOM candidate with the real create_project IPC command and
+  // a test-owned destination, then reopen through the real CLI.
+  const selected = candidates.filter(row => row.querySelector<HTMLInputElement>('input[type="checkbox"]')?.checked).map(row => ({
+    path: row.querySelector('.discovery-path')!.textContent!, label: row.cells[1].textContent!,
+  }));
+  assert(selected.length === 1, 'Only the checked discovery candidate may be saved');
+  const created = await api.createProject(fixture.projectPath, { version: 1, name: 'Native discovered subset', repositories: selected });
+  assert((await fixtureAction('inspect')).exists, 'Explicit real create_project IPC must write the selected project');
+  await fixtureAction('openProject');
+  const group = await until('saved discovered project opens through CLI', () => {
+    const node = [...document.querySelectorAll<HTMLElement>('[aria-label="Repository group"]')].find(visible);
+    return node?.querySelector('h1')?.textContent === created.name ? node : null;
+  });
+  assert(group.querySelectorAll('.group-table-scroll tbody tr').length === 1, 'Reopened project must contain only selected candidate');
+  const saved = await api.openProject(fixture.projectPath);
+  assert(saved.members.length === 1 && saved.members[0].displayPath === selected[0].path, 'Saved subset must resolve to exactly the checked repository');
+  checks.push('Discovery DOM-selected subset saved through real create_project IPC and reopened through CLI with exactly one member; native OS save picker was not automated');
+
+  const expanded = await fixtureAction('add');
+  const addedPath = expanded.candidatePaths.find(path => !fixture.candidatePaths.includes(path));
+  assert(addedPath && expanded.candidatePaths.length === 3, 'Rescan fixture must add exactly one repository');
+  const scanFromGroup = async () => {
+    await click('Discover repositories', group);
+    const picker = await region('Repository discovery');
+    const input = labelInput(picker, 'Root folder');
+    assert(input, 'Existing-group discovery must have a root input');
+    type(input, fixture.rootPath);
+    await click('Scan repositories', picker);
+    await until('rescan candidates displayed', () => picker.querySelectorAll('tbody tr').length === 3);
+    const existing = [...picker.querySelectorAll<HTMLTableRowElement>('tbody tr')].find(row => row.querySelector('.discovery-path')?.textContent === selected[0].path);
+    assert(existing?.querySelector<HTMLInputElement>('input[type="checkbox"]')?.disabled, 'Already saved member must be excluded from duplicate addition');
+    const addition = [...picker.querySelectorAll<HTMLTableRowElement>('tbody tr')].find(row => row.querySelector('.discovery-path')?.textContent === addedPath);
+    const checkbox = addition?.querySelector<HTMLInputElement>('input[type="checkbox"]');
+    assert(checkbox && !checkbox.checked && !checkbox.disabled, 'New repository must be offered as an unchecked addition');
+    return { picker, checkbox };
+  };
+  let scan = await scanFromGroup();
+  await click('Rescan', scan.picker);
+  await until('rescan completes', () => !scan.picker.textContent?.includes('Scanning repositories…'));
+  const untouched = await api.openProject(fixture.projectPath);
+  assert(untouched.revision === saved.revision && untouched.members.length === 1, 'Rescan must not silently change saved membership');
+  await click('Cancel discovery', scan.picker);
+  assert((await api.openProject(fixture.projectPath)).revision === saved.revision, 'Canceling discovery must leave project unchanged');
+
+  scan = await scanFromGroup();
+  scan.checkbox.click();
+  await click('Add selected to draft (1)', scan.picker);
+  const draft = await region('Edit project');
+  assert(draft.querySelectorAll('.group-edit-row').length === 2, 'Applying discovery must append only chosen new candidate to the draft');
+  assert((await api.openProject(fixture.projectPath)).revision === saved.revision, 'Applying discovered additions to draft must not save automatically');
+  await click('Cancel editing', draft);
+  assert((await api.openProject(fixture.projectPath)).members.length === 1, 'Canceling addition draft must preserve saved membership');
+
+  scan = await scanFromGroup();
+  scan.checkbox.click();
+  await click('Add selected to draft (1)', scan.picker);
+  await click('Save project', await region('Edit project'));
+  await until('explicitly saved discovery addition displayed', () => group.querySelectorAll('.group-table-scroll tbody tr').length === 2);
+  const updated = await api.openProject(fixture.projectPath);
+  assert(updated.members.length === 2 && updated.members.some(member => member.displayPath === selected[0].path) && updated.members.some(member => member.displayPath === addedPath), 'Explicit DOM save must preserve original member and append only selected addition');
+  assert(updated.revision !== saved.revision, 'Explicit discovery-addition save must produce a new project revision');
+  checks.push('Existing group discovery excluded duplicates and proposed unchecked addition; rescans/cancel/draft cancel preserved saved membership, explicit DOM Save project appended only chosen repository');
+}
+
 async function startRunningOperationReload(checks: string[]) {
   const fixture = await invoke<{ repositoryId: string; operationId: string; path: string }>('native_smoke_slow_commit');
   await until('slow commit actually running before full reload', async () => {
@@ -602,6 +691,7 @@ export async function runNativeSmoke(): Promise<void> {
     if (context.m2) await runMergeSmoke(checks);
     if (context.m3) await runCombineSmoke(checks);
     if (context.performance) await runPerformanceSmoke(checks);
+    if (context.discovery) await runDiscoverySmoke(checks);
     await startRunningOperationReload(checks);
     return; // The reloaded renderer resumes above and submits the final report.
   } catch (cause) {

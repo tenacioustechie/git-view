@@ -6,6 +6,7 @@ export function errorMessage(error: unknown): string {
   return String(error);
 }
 export const api = {
+  discoverRepositories: (root: string, depth = 3) => invoke<T.DiscoveryResult>('discover_repositories', { root, depth }),
   openRepository: (path: string) => invoke<T.RepositoryOpen>('open_repository', { path }),
   openProject: (path: string) => invoke<T.Project>('open_project', { path }),
   refreshProject: (projectId: string) => invoke<T.Project>('refresh_project', { projectId }),

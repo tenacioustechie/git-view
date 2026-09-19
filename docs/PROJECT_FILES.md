@@ -18,7 +18,7 @@ The user wants a project file that lists repositories. Use ordinary JSON, with a
 
 If this file is at `/work/work.git-view.json`, the paths resolve to `/work/api`, `/work/web`, and `/shared-library`. On Windows, the same relative paths resolve under the directory containing the project file. Relative paths use forward slashes for portability; the backend handles native path conversion.
 
-The [JSON Schema](schema/project.schema.json) and [example](examples/work.git-view.json) are documentation artifacts available now. The loader/editor is planned implementation.
+Use the [JSON Schema](schema/project.schema.json) and [example](examples/work.git-view.json) to create a group file, replacing example paths with your checkouts. The native loader and project editor are implemented; see [Build status](BUILD_STATUS.md) for verification evidence.
 
 | Field | Meaning |
 | --- | --- |
@@ -49,4 +49,20 @@ Writes use a temporary sibling file and platform-correct atomic replacement. Rev
 
 Read-only project files can be opened and used; membership editing offers Save as. Invalid JSON, unknown fields, or unsupported versions never trigger a “repair” that discards content. Version 1 is intentionally strict so misspelled fields are visible. Future format changes require migration rules.
 
-M1 may document hand-editing JSON as a fallback if project creation/editing UI is unfinished, but must still open, validate, resolve, and display a real project file. That fallback must be identified in the morning report rather than claiming full project editing support.
+## Folder discovery
+
+Choose **Discover repositories** or launch `git-view group --scan <folder> [--depth <0..10>]`.
+The selected folder is depth 0; the default maximum depth is 3. Start the scan,
+review the returned paths, and check the repositories to include. Results start
+unchecked. Save selected repositories as a named project, or use discovery from
+an existing project's editor to add them to its draft before explicitly saving.
+Rescanning retains checked repositories still present and proposes new ones
+unchecked. Existing members and unsaved edits remain intact.
+
+Discovery recognizes ordinary repositories and linked worktrees, stops below
+recognized repositories, skips symlinks/reparse points and common dependency/build
+directories, and reports inaccessible or unsupported paths. It reads identity
+without status cleanup or index refresh. Scans are bounded to 10,000 directories,
+100,000 entries per directory, 1,000 candidates, 200 issues, and 30 seconds, with at most four
+concurrent Git validations. A reached bound produces an explicit partial-results
+notice. Only selected, losslessly representable paths can become JSON membership.
