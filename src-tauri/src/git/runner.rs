@@ -19,7 +19,8 @@ pub(crate) async fn drain(
 ) -> std::io::Result<(Vec<u8>, bool)> {
     let mut bytes = Vec::new();
     let mut truncated = false;
-    let mut chunk = [0; 8192];
+    // Keep IO buffers off nested async poll frames (Windows threads default to 1 MiB).
+    let mut chunk = vec![0; 8192];
     loop {
         let count = pipe.read(&mut chunk).await?;
         if count == 0 {
@@ -132,7 +133,19 @@ impl Runner {
         command.creation_flags(0x08000000);
         command
     }
-    pub async fn run(
+    pub fn run<'a>(
+        &'a self,
+        cwd: &'a Path,
+        args: &'a [OsString],
+        input: Option<Vec<u8>>,
+        mutation: bool,
+        limit: usize,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = AppResult<Output>> + Send + 'a>> {
+        // Every engine operation awaits the runner. Store its subprocess/IO state
+        // once on the heap instead of embedding it into each caller's future.
+        Box::pin(self.run_inner(cwd, args, input, mutation, limit))
+    }
+    async fn run_inner(
         &self,
         cwd: &Path,
         args: &[OsString],

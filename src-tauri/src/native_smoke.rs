@@ -38,6 +38,9 @@ pub async fn native_smoke_appearance(
     window
         .set_size(tauri::LogicalSize::new(width, height))
         .map_err(|e| AppError::new("fixture", e.to_string()))?;
+    window
+        .set_focus()
+        .map_err(|e| AppError::new("fixture", e.to_string()))?;
     Ok(())
 }
 

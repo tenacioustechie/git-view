@@ -20,6 +20,9 @@ with tempfile.TemporaryDirectory(prefix='git-view-invoking-cwd-') as cwd:
     except subprocess.TimeoutExpired:
         process.terminate()
         process.wait(timeout=15)
+        progress = report.with_suffix('.progress.json')
+        if progress.exists() and progress.stat().st_mtime >= started:
+            print(progress.read_text())
         raise SystemExit('Native smoke timed out; no success claimed.')
 if not report.exists() or report.stat().st_mtime < started:
     raise SystemExit(f'Native smoke exited {code} without a report.')

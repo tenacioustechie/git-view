@@ -75,6 +75,28 @@ async function assertDiffVisible() {
   assert(diff.querySelector('.unified-diff')!.textContent?.trim(), 'Selected file must render an actual patch');
 }
 
+async function focusCommitEditor(repository: HTMLElement) {
+  let diagnostics = '';
+  let stableFrames = 0;
+  let previous: HTMLTextAreaElement | null = null;
+  try {
+    return await until('stable commit editor focus and visible outline', async () => {
+      const input = repository.querySelector<HTMLTextAreaElement>('#commit-message');
+      if (!input?.isConnected) { diagnostics = 'Commit textarea is absent or detached'; return null; }
+      if (document.activeElement !== input) input.focus();
+      await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+      const style = getComputedStyle(input);
+      diagnostics = JSON.stringify({ connected: input.isConnected, documentFocused: document.hasFocus(), active: document.activeElement?.tagName, focused: input.matches(':focus'), focusVisible: input.matches(':focus-visible'), outlineStyle: style.outlineStyle, outlineWidth: style.outlineWidth });
+      const ready = input.isConnected && document.activeElement === input && style.outlineStyle !== 'none' && Number.parseFloat(style.outlineWidth) >= 2;
+      stableFrames = ready ? (previous === input ? stableFrames + 1 : 1) : 0;
+      previous = input;
+      return stableFrames >= 2 ? input : null;
+    }, 8000);
+  } catch (cause) {
+    throw new Error(`${errorMessage(cause)} Focus diagnostics: ${diagnostics}`);
+  }
+}
+
 async function checkHistoryKeyboardAndAlignment(repository: HTMLElement, checks: string[]) {
   const scroll = repository.querySelector<HTMLElement>('.history-list');
   assert(scroll, 'History scroll viewport must exist');
@@ -490,10 +512,7 @@ export async function runNativeSmoke(): Promise<void> {
     assert(stage.state === 'succeeded', `Stage failed: ${stage.error?.message ?? stage.reason}`);
     await until('stage reflected in commit control', () => [...repository.querySelectorAll<HTMLButtonElement>('button')].find(node => node.textContent === 'Commit staged changes (1)'));
     const message = `Native smoke staged-only commit ${Date.now()}`;
-    const messageInput = await until('commit message editor', () => repository.querySelector<HTMLTextAreaElement>('#commit-message'));
-    messageInput.focus();
-    const focusStyle = getComputedStyle(messageInput);
-    assert(document.activeElement === messageInput && focusStyle.outlineStyle !== 'none' && Number.parseFloat(focusStyle.outlineWidth) >= 2, 'Keyboard-editable commit field must display a visible focus outline');
+    const messageInput = await focusCommitEditor(repository);
     checks.push('Native commit editor accepts focus with a visible outline');
     type(messageInput, message);
     const committed = await operation('commit', clean.repositoryId, () => click('Commit staged changes (1)', repository));

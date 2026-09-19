@@ -139,5 +139,19 @@ Final native acceptance is in progress. The first extended Mac run timed out
 without a final report; it is not counted as a pass. The current harness adds
 per-check progress files and an actual WebView reload during a running operation
 to diagnose and verify the complete sequence. No M3 native acceptance claim yet.
+
+M3 checkpoint `595cbcc0a722c62604046fe19db7b54876617930`: Mac full Rust suite
+82 passed (one performance test explicitly ignored), frontend 34 passed,
+typecheck/lint/format and strict native-smoke Clippy passed. Native testing found
+the failed-combine journal panel did not refresh when Git status was unchanged;
+the UI now refreshes records on each explicit/completed-operation refresh, with
+a regression test. A subsequent intermittent focus assertion now waits for the
+connected focused editor across rendered frames and reports focus diagnostics.
+
+Windows at that checkpoint passed 34 frontend tests, then exposed a rewrite
+test stack overflow. Reproduced locally with a 1 MiB stack: moved subprocess IO
+buffers and the shared subprocess future onto the heap. The same constrained
+stack regression now passes; no stack limit was increased. Full platform reruns
+and final packaging remain required before the final acceptance claim.
 Linux CI workflow added but not executed; no Linux verification claim.
 User's original README/runbook/setup-doc edits remain preserved and uncommitted.

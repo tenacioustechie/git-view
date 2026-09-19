@@ -256,3 +256,13 @@ async fn backup_collision_never_reuses_an_existing_reference() {
         "manualReview"
     );
 }
+
+#[test]
+fn rewrite_pipeline_works_with_windows_sized_thread_stack() {
+    std::thread::Builder::new()
+        .stack_size(1024 * 1024)
+        .spawn(recovery_interruptions_reconcile_actual_refs_and_keep_dirty_bytes)
+        .unwrap()
+        .join()
+        .unwrap();
+}

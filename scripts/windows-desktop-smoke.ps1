@@ -35,6 +35,8 @@ try {
     } while ((Get-Date) -lt $deadline)
     Get-ScheduledTaskInfo -TaskName $taskName | Format-List
     if (Test-Path $log) { Get-Content $log }
+    $progressReport = [System.IO.Path]::ChangeExtension($report, 'progress.json')
+    if (Test-Path $progressReport) { Get-Content $progressReport }
     throw 'Native desktop smoke timed out'
 } finally {
     Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
