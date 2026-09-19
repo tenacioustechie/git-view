@@ -658,6 +658,9 @@ async fn missing_snapshot_objects_return_error_instead_of_empty_results() {
     #[cfg(windows)]
     {
         let mut permissions = std::fs::metadata(&object).unwrap().permissions();
+        // Clear only Windows' read-only attribute on this disposable Git object;
+        // this branch never changes Unix permission bits.
+        #[allow(clippy::permissions_set_readonly_false)]
         permissions.set_readonly(false);
         std::fs::set_permissions(&object, permissions).unwrap();
     }

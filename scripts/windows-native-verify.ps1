@@ -13,6 +13,8 @@ if ($LASTEXITCODE -ne 0) { throw 'UI tests failed' }
 $env:VITE_NATIVE_SMOKE = '1'
 pnpm.cmd build
 if ($LASTEXITCODE -ne 0) { throw 'Smoke frontend build/typecheck failed' }
+cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --features native-smoke -- -D warnings
+if ($LASTEXITCODE -ne 0) { throw 'Native/test Clippy failed' }
 cargo build --manifest-path src-tauri/Cargo.toml --locked --features native-smoke,tauri/custom-protocol
 if ($LASTEXITCODE -ne 0) { throw 'Native smoke build failed' }
 & 'C:\codeme\git-view\scripts\windows-desktop-smoke.ps1'
