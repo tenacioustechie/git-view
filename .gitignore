@@ -1,0 +1,8 @@
+node_modules/
+dist/
+target/
+.tools/
+*.bundle
+.DS_Store
+test-results/
+playwright-report/

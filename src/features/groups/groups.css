@@ -1,0 +1,30 @@
+.group-view { padding: 1.25rem; overflow: auto; min-width: 0; }
+.group-heading, .group-toolbar, .group-filters, .group-edit-row { display: flex; align-items: center; flex-wrap: wrap; gap: .65rem; margin-bottom: 1rem; }
+.group-heading > div { flex: 1; min-width: 180px; }
+.group-heading h1 { margin: 0 0 .35rem; }
+.group-view h2 { font-size: 1.15rem; }
+.group-view h3 { font-size: 1rem; }
+.group-path { display: block; color: var(--muted); max-width: 38rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .85rem; }
+.group-view button, .group-view input, .group-view select { font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--border); border-radius: 5px; padding: .4rem .6rem; }
+.group-view button { cursor: pointer; }
+.group-view button:disabled { cursor: default; opacity: .5; }
+.group-view :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.group-view .group-primary { border-color: var(--accent); font-weight: 650; }
+.group-filters label, .group-editor label { display: flex; align-items: center; gap: .5rem; }
+.group-hint, .group-view small { color: var(--muted); font-size: .8rem; }
+.group-view td small { display: block; margin-top: .25rem; }
+.group-notice, .group-preview, .group-editor, .group-activity { border: 1px solid var(--border); background: var(--panel); border-radius: 6px; padding: 1rem; margin: 1rem 0; }
+.group-notice { border-color: var(--danger); }
+.group-notice button, .group-preview button { margin-right: .5rem; }
+.group-preview li { margin-bottom: .5rem; overflow-wrap: anywhere; }
+.group-table-scroll { overflow-x: auto; }
+.group-table { width: 100%; border-collapse: collapse; text-align: left; font-size: .9rem; }
+.group-table caption { text-align: left; color: var(--muted); padding: .6rem 0; }
+.group-table th, .group-table td { padding: .65rem; border-bottom: 1px solid var(--border); vertical-align: top; overflow-wrap: anywhere; }
+.group-table th { color: var(--muted); font-weight: 550; }
+.group-table td:first-child { width: 2rem; }
+.group-table input[type=checkbox] { accent-color: var(--accent); width: 1rem; height: 1rem; }
+.group-view .group-link { border: 0; background: transparent; color: var(--accent); padding: 0; text-align: left; font-weight: 650; }
+.group-edit-row .group-path { flex: 1; min-width: 10rem; }
+.group-activity { overflow-x: auto; }
+@media (max-width: 700px) { .group-view { padding: .75rem; } .group-table .group-path { max-width: 12rem; } .group-filters label { flex: 1; } }

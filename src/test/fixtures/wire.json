@@ -1,0 +1,284 @@
+{
+  "clean": {
+    "repositoryId": "repo-clean",
+    "snapshotId": "status-clean",
+    "observedAt": "2026-09-19T00:00:00Z",
+    "head": {
+      "kind": "branch",
+      "name": "main",
+      "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "gitState": "idle",
+    "dirty": false,
+    "counts": {
+      "staged": 0,
+      "unstaged": 0,
+      "untracked": 0,
+      "conflicted": 0
+    },
+    "submoduleDirty": false,
+    "upstream": {
+      "ref": "origin/main",
+      "remote": "origin",
+      "ahead": 0,
+      "behind": 2
+    },
+    "lastSuccessfulFetchAt": null,
+    "activeOperationId": null
+  },
+  "mixed": {
+    "repositoryId": "repo-mixed",
+    "snapshotId": "status-mixed",
+    "observedAt": "2026-09-19T00:00:00Z",
+    "head": {
+      "kind": "branch",
+      "name": "main",
+      "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "gitState": "idle",
+    "dirty": true,
+    "counts": {
+      "staged": 1,
+      "unstaged": 1,
+      "untracked": 1,
+      "conflicted": 0
+    },
+    "submoduleDirty": false,
+    "upstream": {
+      "ref": "origin/main",
+      "remote": "origin",
+      "ahead": 0,
+      "behind": 2
+    },
+    "lastSuccessfulFetchAt": null,
+    "activeOperationId": null
+  },
+  "detached": {
+    "repositoryId": "repo-detached",
+    "snapshotId": "status-detached",
+    "observedAt": "2026-09-19T00:00:00Z",
+    "head": {
+      "kind": "detached",
+      "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "gitState": "idle",
+    "dirty": false,
+    "counts": {
+      "staged": 0,
+      "unstaged": 0,
+      "untracked": 0,
+      "conflicted": 0
+    },
+    "submoduleDirty": false,
+    "upstream": null,
+    "lastSuccessfulFetchAt": null,
+    "activeOperationId": null
+  },
+  "unborn": {
+    "repositoryId": "repo-unborn",
+    "snapshotId": "status-unborn",
+    "observedAt": "2026-09-19T00:00:00Z",
+    "head": {
+      "kind": "unborn",
+      "name": "main"
+    },
+    "gitState": "idle",
+    "dirty": false,
+    "counts": {
+      "staged": 0,
+      "unstaged": 0,
+      "untracked": 0,
+      "conflicted": 0
+    },
+    "submoduleDirty": false,
+    "upstream": null,
+    "lastSuccessfulFetchAt": null,
+    "activeOperationId": null
+  },
+  "conflict": {
+    "repositoryId": "repo-conflict",
+    "snapshotId": "status-conflict",
+    "observedAt": "2026-09-19T00:00:00Z",
+    "head": {
+      "kind": "branch",
+      "name": "main",
+      "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "gitState": "merge",
+    "dirty": true,
+    "counts": {
+      "staged": 0,
+      "unstaged": 0,
+      "untracked": 0,
+      "conflicted": 1
+    },
+    "submoduleDirty": false,
+    "upstream": {
+      "ref": "origin/main",
+      "remote": "origin",
+      "ahead": 0,
+      "behind": 2
+    },
+    "lastSuccessfulFetchAt": null,
+    "activeOperationId": null
+  },
+  "missingUpstream": {
+    "repositoryId": "repo-missingUpstream",
+    "snapshotId": "status-missingUpstream",
+    "observedAt": "2026-09-19T00:00:00Z",
+    "head": {
+      "kind": "branch",
+      "name": "main",
+      "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "gitState": "idle",
+    "dirty": false,
+    "counts": {
+      "staged": 0,
+      "unstaged": 0,
+      "untracked": 0,
+      "conflicted": 0
+    },
+    "submoduleDirty": false,
+    "upstream": null,
+    "lastSuccessfulFetchAt": null,
+    "activeOperationId": null
+  },
+  "unknownCounts": {
+    "repositoryId": "repo-unknownCounts",
+    "snapshotId": "status-unknownCounts",
+    "observedAt": "2026-09-19T00:00:00Z",
+    "head": {
+      "kind": "branch",
+      "name": "main",
+      "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "gitState": "idle",
+    "dirty": false,
+    "counts": {
+      "staged": 0,
+      "unstaged": 0,
+      "untracked": 0,
+      "conflicted": 0
+    },
+    "submoduleDirty": false,
+    "upstream": {
+      "ref": "origin/main",
+      "remote": "origin",
+      "ahead": null,
+      "behind": null
+    },
+    "lastSuccessfulFetchAt": null,
+    "activeOperationId": null
+  },
+  "missingMember": {
+    "kind": "unavailable",
+    "memberId": "missing",
+    "label": "Missing",
+    "displayPath": "/fixtures/missing",
+    "error": {
+      "code": "repository_unavailable",
+      "message": "Path does not exist",
+      "retryable": false
+    }
+  },
+  "binaryDiff": {
+    "kind": "binary",
+    "description": "Binary file"
+  },
+  "failedAction": {
+    "operationId": "failed",
+    "batchId": null,
+    "memberId": null,
+    "repositoryId": "repo-clean",
+    "action": "commit",
+    "state": "failed",
+    "startedAt": "2026-09-19T00:00:00Z",
+    "finishedAt": "2026-09-19T00:00:01Z",
+    "exitCode": 1,
+    "reason": "Hook rejected commit",
+    "error": {
+      "code": "git_failed",
+      "message": "Hook rejected commit",
+      "retryable": false
+    },
+    "outputTruncated": false,
+    "outcomeUncertain": false
+  },
+  "history": {
+    "snapshotId": "history",
+    "commits": [
+      {
+        "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "parents": [
+          "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "cccccccccccccccccccccccccccccccccccccccc"
+        ],
+        "subject": "Merge feature",
+        "authorName": "Fixture",
+        "authoredAt": "2026-09-19T00:00:00Z",
+        "refs": [],
+        "boundary": false
+      },
+      {
+        "oid": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "parents": [
+          "dddddddddddddddddddddddddddddddddddddddd"
+        ],
+        "subject": "Main change",
+        "authorName": "Fixture",
+        "authoredAt": "2026-09-19T00:00:00Z",
+        "refs": [],
+        "boundary": false
+      }
+    ],
+    "nextCursor": "page-2"
+  },
+  "historyNext": {
+    "snapshotId": "history",
+    "commits": [
+      {
+        "oid": "cccccccccccccccccccccccccccccccccccccccc",
+        "parents": [
+          "dddddddddddddddddddddddddddddddddddddddd"
+        ],
+        "subject": "Feature change",
+        "authorName": "Fixture",
+        "authoredAt": "2026-09-19T00:00:00Z",
+        "refs": [],
+        "boundary": false
+      },
+      {
+        "oid": "dddddddddddddddddddddddddddddddddddddddd",
+        "parents": [],
+        "subject": "Root",
+        "authorName": "Fixture",
+        "authoredAt": "2026-09-19T00:00:00Z",
+        "refs": [],
+        "boundary": false
+      }
+    ],
+    "nextCursor": null
+  },
+  "mergeCommit": {
+    "snapshotId": "commit-a",
+    "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "parents": [
+      "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "cccccccccccccccccccccccccccccccccccccccc"
+    ],
+    "selectedParent": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "message": "Merge feature",
+    "author": {
+      "name": "Fixture",
+      "email": "fixture@example.invalid",
+      "at": "2026-09-19T00:00:00Z"
+    },
+    "committer": {
+      "name": "Fixture",
+      "email": "fixture@example.invalid",
+      "at": "2026-09-19T00:00:00Z"
+    },
+    "files": []
+  }
+}
