@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, errorMessage } from '../../api/client';
-import type { Changes, CommitDetails, DiffRequest, DiffResult, GitRef, HistoryPage, OperationResult, Remote, RepositoryAction, RepositoryActionPlan, RepositoryOpen } from '../../api/types';
+import type { Changes, CommitDetails, DiffRequest, DiffResult, GitRef, HistoryPage, HistorySearch, OperationResult, Remote, RepositoryAction, RepositoryActionPlan, RepositoryOpen } from '../../api/types';
 import { HistoryGraph } from '../../graph/HistoryGraph';
 import { layoutPage } from '../../graph/layout';
 import { CombineCommits } from './CombineCommits';
@@ -22,6 +22,10 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
   const [remotes, setRemotes] = useState<Remote[]>([]);
   const [scope, setScope] = useState<string | null>(null);
   const [history, setHistory] = useState<HistoryPage | null>(null);
+  const [searchField, setSearchField] = useState<HistorySearch['field']>('message');
+  const [searchText, setSearchText] = useState('');
+  const [search, setSearch] = useState<HistorySearch | null>(null);
+  const searchInput = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
@@ -42,12 +46,29 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
   const [showCombine, setShowCombine] = useState(false);
   const [refreshVersion, setRefreshVersion] = useState(0);
   const generation = useRef(0);
+  const loadingPage = useRef<number | null>(null);
   const detailGeneration = useRef(0);
   const submittedDrafts = useRef(new Map<string, string>());
   const seenOperations = useRef(new Map<string, string>());
   const dialog = useRef<HTMLDialogElement>(null);
   const active = busy || operations.some(operation => !terminal(operation));
-  const graph = useMemo(() => layoutPage(history?.commits ?? []).rows, [history]);
+  const graph = useMemo(() => search
+    ? (history?.commits ?? []).map(commit => ({ commit, lane: 0, width: 0, segments: [], pending: [] }))
+    : layoutPage(history?.commits ?? []).rows, [history, search]);
+  const clearSearch = useCallback(() => {
+    if (!search) { setSearchText(''); return; }
+    generation.current++; setSearch(null); setSearchText(''); setHistory(null); setLoading(true); setError(null);
+  }, [search]);
+  const changeScope = (next: string | null) => {
+    if (next === scope) return;
+    generation.current++; setHistory(null); setLoading(true); setScope(next);
+  };
+  const submitSearch = () => {
+    if (!searchText.trim()) { setError('Enter a history search query.'); return; }
+    if (/[\r\n]/.test(searchText)) { setError('History search must be a single line.'); return; }
+    if (searchField === 'oid' && !/^[a-f0-9]{4,64}$/i.test(searchText)) { setError('Enter a commit OID or at least four hexadecimal characters.'); return; }
+    generation.current++; setHistory(null); setLoading(true); setError(null); setSearch({ field: searchField, text: searchText });
+  };
 
   const refresh = useCallback(async () => {
     const epoch = ++generation.current;
@@ -56,7 +77,7 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
     setDiffRequest(null);
     try {
       const [nextStatus, nextChanges, nextRefs, nextRemotes, nextHistory] = await Promise.all([
-        api.getStatus(id), api.getChanges(id), api.listRefs(id), api.listRemotes(id), api.getHistory(id, scope),
+        api.getStatus(id), api.getChanges(id), api.listRefs(id), api.listRemotes(id), search ? api.searchHistory(id, search, scope) : api.getHistory(id, scope),
       ]);
       if (epoch !== generation.current) return;
       setStatus(nextStatus); setChanges(nextChanges); setRefs(nextRefs); setRemotes(nextRemotes); setHistory(nextHistory);
@@ -64,20 +85,25 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
       setRemoteId(previous => nextRemotes.some(remote => remote.id === previous) ? previous : (nextRemotes.find(remote => remote.defaultFetch)?.id ?? nextRemotes[0]?.id ?? ''));
     } catch (cause) { if (epoch === generation.current) setError(errorMessage(cause)); }
     finally { if (epoch === generation.current) setLoading(false); }
-  }, [id, scope]);
+  }, [id, scope, search]);
 
   useEffect(() => { void refresh(); return () => { generation.current++; }; }, [refresh]);
   useEffect(() => {
     const onFocus = () => { void refresh(); };
     const onKey = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'r' && !dialog.current?.open) {
+      if (document.querySelector('dialog[open]')) return;
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'f') {
+        event.preventDefault(); searchInput.current?.focus(); searchInput.current?.select();
+      } else if (event.key === 'Escape' && (search || searchText) && (event.target === searchInput.current || (event.target instanceof HTMLElement && event.target.closest('.history-list')))) {
+        event.preventDefault(); clearSearch();
+      } else if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'r') {
         event.preventDefault(); void refresh();
       }
     };
     window.addEventListener('focus', onFocus);
     window.addEventListener('keydown', onKey);
     return () => { window.removeEventListener('focus', onFocus); window.removeEventListener('keydown', onKey); };
-  }, [refresh]);
+  }, [refresh, search, searchText, clearSearch]);
   useEffect(() => {
     const remote = remotes.find(item => item.id === remoteId);
     setDestination(remote?.destinationRef ?? (status.head.kind === 'branch' ? `refs/heads/${status.head.name}` : ''));
@@ -168,16 +194,17 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
     finally { setBusy(false); }
   };
   const loadMore = async () => {
-    if (!history?.nextCursor || loading) return;
+    if (!history?.nextCursor || loading || loadingPage.current === generation.current) return;
     const epoch = generation.current;
+    loadingPage.current = epoch;
     setLoading(true);
     try {
-      const next = await api.getHistory(id, scope, history.snapshotId, history.nextCursor);
+      const next = search ? await api.searchHistory(id, search, scope, history.snapshotId, history.nextCursor) : await api.getHistory(id, scope, history.snapshotId, history.nextCursor);
       if (epoch !== generation.current) return;
       if (next.snapshotId !== history.snapshotId) throw new Error('History changed. Refresh to start a new history snapshot.');
       setHistory({ ...next, commits: [...history.commits, ...next.commits] });
     } catch (cause) { if (epoch === generation.current) setError(errorMessage(cause)); }
-    finally { if (epoch === generation.current) setLoading(false); }
+    finally { if (loadingPage.current === epoch) loadingPage.current = null; if (epoch === generation.current) setLoading(false); }
   };
   const working = () => { detailGeneration.current++; setSelected(null); setDetails(null); setDiffRequest(null); setShowCombine(false); };
   const headLabel = status.head.kind === 'detached' ? `Detached at ${status.head.oid.slice(0, 8)}` : `${status.head.name}${status.head.kind === 'unborn' ? ' (no commits)' : ''}`;
@@ -209,8 +236,8 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
     {status.submoduleDirty && <div className="repository-notice">A submodule has working changes. Open the submodule separately to review it.</div>}
     <div className="repository-panels">
       <aside className="repository-refs">
-        <h2>History scope</h2><button className={scope === null ? 'selected' : ''} onClick={() => setScope(null)}>All branches and tags</button>
-        {(['local', 'remote', 'tag'] as const).map(kind => <div key={kind}><h3>{kind === 'local' ? 'Local branches' : kind === 'remote' ? 'Remote branches' : 'Tags'}</h3>{refs.filter(ref => ref.kind === kind).map(ref => <button title={ref.fullName} key={ref.fullName} className={scope === ref.fullName ? 'selected' : ''} onClick={() => setScope(ref.fullName)}>{ref.label}</button>)}</div>)}
+        <h2>History scope</h2><button className={scope === null ? 'selected' : ''} onClick={() => changeScope(null)}>All branches and tags</button>
+        {(['local', 'remote', 'tag'] as const).map(kind => <div key={kind}><h3>{kind === 'local' ? 'Local branches' : kind === 'remote' ? 'Remote branches' : 'Tags'}</h3>{refs.filter(ref => ref.kind === kind).map(ref => <button title={ref.fullName} key={ref.fullName} className={scope === ref.fullName ? 'selected' : ''} onClick={() => changeScope(ref.fullName)}>{ref.label}</button>)}</div>)}
         <details><summary>Switch branch</summary><label>Local branch<select value={branchTarget} onChange={event => setBranchTarget(event.target.value)}><option value="">Choose branch</option>{refs.filter(ref => ref.kind === 'local').map(ref => <option key={ref.fullName} value={ref.fullName}>{ref.label}</option>)}</select></label><button disabled={active || !branchTarget} onClick={() => { void act({ kind: 'switchBranch', statusSnapshotId: status.snapshotId, localRef: branchTarget }, true); }}>Preview switch</button></details>
         <details><summary>Create branch</summary><label>Name<input value={branchName} onChange={event => setBranchName(event.target.value)} /></label><label><input type="checkbox" checked={switchNew} onChange={event => setSwitchNew(event.target.checked)} /> Switch after creating</label><button disabled={active || !branchName || status.head.kind === 'unborn'} onClick={() => { if (status.head.kind !== 'unborn') void act({ kind: 'createBranch', statusSnapshotId: status.snapshotId, name: branchName, startOid: selected ?? status.head.oid, switchAfterCreate: switchNew }, true); }}>Preview create</button><small>Starts at {selected ? selected.slice(0, 8) : 'HEAD'}.</small></details>
         <details className="merge-controls"><summary>Merge branches</summary>
@@ -222,8 +249,14 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
         </details>
       </aside>
       <section className="repository-history" aria-label="History">
+        <form className="history-search" aria-label="Search history" onSubmit={event => { event.preventDefault(); submitSearch(); }}>
+          <label>Search by<select aria-label="History search field" value={searchField} onChange={event => setSearchField(event.target.value as HistorySearch['field'])}><option value="message">Message</option><option value="author">Author</option><option value="oid">Commit OID</option></select></label>
+          <input ref={searchInput} aria-label="History search query" type="search" maxLength={512} value={searchText} onChange={event => setSearchText(event.target.value)} placeholder={searchField === 'oid' ? 'At least four hex characters' : 'Literal text, case-insensitive'} title="Search history (⌘F / Ctrl+F); Escape clears search" />
+          <div><button type="submit" disabled={!searchText.trim()}>Search history</button>{search && <button type="button" onClick={clearSearch}>Clear search</button>}</div>
+          {search && <small role="status">{loading ? 'Searching…' : history ? `${history.commits.length} matches loaded` : 'Search unavailable. Retry or clear the search.'} · {search.field}: {search.text} · {scope ?? 'All branches and tags'}. Results omit graph edges.</small>}
+        </form>
         <button className={`working-entry ${selected === null ? 'selected' : ''}`} onClick={working}>Working changes <small>{status.counts.staged} staged · {status.counts.unstaged} unstaged · {status.counts.untracked} untracked · {status.counts.conflicted} conflicts</small></button>
-        <HistoryGraph rows={graph} selected={selected} onSelect={oid => { void inspect(oid); }} loading={loading} more={Boolean(history?.nextCursor)} onMore={() => { void loadMore(); }} />
+        <HistoryGraph key={`${scope ?? ''}:${search ? `${search.field}:${search.text}` : 'history'}`} rows={graph} selected={selected} onSelect={oid => { void inspect(oid); }} loading={loading} failed={!history} searchResults={search !== null} more={Boolean(history?.nextCursor)} onMore={() => { void loadMore(); }} />
       </section>
       <section className="repository-details" aria-label={showCombine ? 'History rewrite' : selected ? 'Commit details' : 'Working changes'}>
         {showCombine ? <CombineCommits repositoryId={id} status={status} active={active} refreshVersion={refreshVersion} onPlan={action => { void act(action, true); }} onClose={working} /> : selected ? <>

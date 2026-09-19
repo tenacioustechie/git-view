@@ -67,7 +67,7 @@ async fn commits(
         runner
             .run(
                 &repo.root,
-                &runner::args(&["cat-file", "--batch"]),
+                &runner::args(&["--no-replace-objects", "cat-file", "--batch"]),
                 Some(input),
                 false,
                 runner::STRUCTURED_LIMIT,
@@ -135,7 +135,61 @@ impl GitEngine {
         snapshot_id: Option<String>,
         cursor: Option<String>,
     ) -> AppResult<HistoryPage> {
+        self.history_page(repository_id, None, scope, snapshot_id, cursor)
+            .await
+    }
+    pub async fn search_history(
+        &self,
+        repository_id: &str,
+        query: HistorySearch,
+        scope: Option<String>,
+        snapshot_id: Option<String>,
+        cursor: Option<String>,
+    ) -> AppResult<HistoryPage> {
+        if query.text.trim().is_empty()
+            || query.text.len() > 512
+            || query.text.chars().any(|c| matches!(c, '\0' | '\r' | '\n'))
+        {
+            return Err(AppError::new(
+                "invalid_query",
+                "Enter a nonblank search of at most 512 bytes without NUL or line breaks.",
+            ));
+        }
+        if query.field == HistorySearchField::Oid
+            && (query.text.len() < 4
+                || query.text.len() > 64
+                || !query.text.bytes().all(|c| c.is_ascii_hexdigit()))
+        {
+            return Err(AppError::new(
+                "invalid_query",
+                "Enter a full commit OID or a hexadecimal prefix of 4–64 characters.",
+            ));
+        }
+        tokio::time::timeout(std::time::Duration::from_secs(30), self.history_page(repository_id,Some(query),scope,snapshot_id,cursor)).await.map_err(|_|AppError::new("search_timeout", "History search exceeded 30 seconds; narrow its scope or query. No partial page was returned."))?
+    }
+    async fn history_page(
+        &self,
+        repository_id: &str,
+        query: Option<HistorySearch>,
+        scope: Option<String>,
+        snapshot_id: Option<String>,
+        cursor: Option<String>,
+    ) -> AppResult<HistoryPage> {
         let repo = self.repository(repository_id).await?;
+        let scope = match scope.as_deref().unwrap_or("all") {
+            "HEAD" => "head",
+            value => value,
+        }
+        .to_owned();
+        if repo.common_dir.join("info/grafts").exists() {
+            return Err(AppError::new("unsupported_history", "Legacy grafts change raw ancestry; remove or migrate them before viewing immutable history."));
+        }
+        let shallow_bytes = merge::read_metadata(
+            &repo.common_dir.join("shallow"),
+            runner::STRUCTURED_LIMIT as u64,
+        )?
+        .unwrap_or_default();
+        let shallow_fingerprint = digest(&shallow_bytes);
         let (key, mut snapshot, offset) = if let Some(key) = snapshot_id {
             let state = self.state.lock().await;
             let snapshot = state
@@ -146,6 +200,18 @@ impl GitEngine {
                 .ok_or_else(|| {
                     AppError::new("stale_snapshot", "History expired; refresh history.")
                 })?;
+            if snapshot.scope != scope || snapshot.query != query {
+                return Err(AppError::new(
+                    "incompatible_snapshot",
+                    "This history snapshot belongs to a different search or scope.",
+                ));
+            }
+            if snapshot.shallow_fingerprint != shallow_fingerprint {
+                return Err(AppError::new(
+                    "stale_snapshot",
+                    "Shallow history changed; refresh the history snapshot.",
+                ));
+            }
             let offset = match cursor {
                 Some(cursor) => *snapshot.cursors.get(&cursor).ok_or_else(|| {
                     AppError::new(
@@ -164,20 +230,58 @@ impl GitEngine {
                 ));
             }
             let refs = self.list_refs(repository_id).await?;
-            let status = self.get_status(repository_id).await?;
+            // Resolve HEAD read-only. Unlike get_status, this never reconciles app
+            // journals or refreshes the user's index. Missing unborn HEAD is valid.
+            let head = self
+                .runner
+                .run(
+                    &repo.root,
+                    &runner::args(&[
+                        "--no-replace-objects",
+                        "rev-parse",
+                        "--verify",
+                        "--quiet",
+                        "--end-of-options",
+                        "HEAD",
+                    ]),
+                    None,
+                    false,
+                    runner::STRUCTURED_LIMIT,
+                )
+                .await?;
+            let head = if head.code == 1 {
+                // Only a valid symbolic HEAD with a missing target is unborn.
+                let symbolic = self
+                    .runner
+                    .read(&repo.root, &["symbolic-ref", "--quiet", "HEAD"])
+                    .await?;
+                let reference = text(&symbolic);
+                if !reference.starts_with("refs/heads/") {
+                    return Err(AppError::new(
+                        "invalid_head",
+                        "HEAD is unavailable and is not an unborn branch.",
+                    ));
+                }
+                None
+            } else {
+                Some(text(&runner::checked(head)?.stdout))
+            };
             let mut tips = Vec::new();
-            match scope.as_deref().unwrap_or("all") {
+            match scope.as_str() {
                 "all" => {
                     for reference in &refs {
-                        match self.resolve_commit(&repo, &reference.oid).await {
-                            Ok(tip) => tips.push(tip),
+                        match self.history_commit_oid(&repo, &reference.oid).await {
+                            Ok(oid) => tips.push(oid),
                             Err(error) => {
                                 if reference.kind != "tag" {
                                     return Err(error);
                                 }
                                 let kind = self
                                     .runner
-                                    .read(&repo.root, &["cat-file", "-t", &reference.oid])
+                                    .read(
+                                        &repo.root,
+                                        &["--no-replace-objects", "cat-file", "-t", &reference.oid],
+                                    )
                                     .await?;
                                 if !["blob", "tree"].contains(&text(&kind).as_str()) {
                                     return Err(error);
@@ -185,13 +289,13 @@ impl GitEngine {
                             }
                         }
                     }
-                    if let Head::Branch { oid, .. } | Head::Detached { oid } = &status.head {
-                        tips.push(oid.clone());
+                    if let Some(head) = head {
+                        tips.push(self.history_commit_oid(&repo, &head).await?);
                     }
                 }
-                "head" | "HEAD" => {
-                    if let Head::Branch { oid, .. } | Head::Detached { oid } = &status.head {
-                        tips.push(oid.clone());
+                "head" => {
+                    if let Some(head) = head {
+                        tips.push(self.history_commit_oid(&repo, &head).await?);
                     }
                 }
                 reference => {
@@ -201,7 +305,7 @@ impl GitEngine {
                             .ok_or_else(|| {
                                 AppError::new("invalid_ref", "Select an available full reference.")
                             })?;
-                    tips.push(self.resolve_commit(&repo, &selected.oid).await?);
+                    tips.push(self.history_commit_oid(&repo, &selected.oid).await?);
                 }
             }
             tips.sort();
@@ -210,28 +314,74 @@ impl GitEngine {
                 id(),
                 HistorySnapshot {
                     repository_id: repository_id.into(),
+                    scope,
+                    query,
                     tips,
                     refs,
                     cursors: HashMap::new(),
+                    shallow: text(&shallow_bytes).lines().map(str::to_owned).collect(),
+                    shallow_fingerprint,
+                    oid_matches: None,
                 },
                 0,
             )
         };
-        let args = runner::args(&[
-            "rev-list",
-            "--stdin",
-            "--topo-order",
-            "--boundary",
-            &format!("--max-count={}", PAGE + 1),
-            &format!("--skip={offset}"),
-        ]);
-
-        let lines = if snapshot.tips.is_empty() {
-            Vec::new()
-        } else {
-            let bytes = runner::checked(
-                self.runner
-                    .run(
+        if snapshot
+            .query
+            .as_ref()
+            .is_some_and(|q| q.field == HistorySearchField::Oid)
+            && snapshot.oid_matches.is_none()
+        {
+            snapshot.oid_matches = Some(self.history_oid_matches(&repo, &snapshot).await?);
+        }
+        let mut run = self.runner.clone();
+        // Git's literal ignore-case matcher uses LC_CTYPE. Fix its UTF-8 locale
+        // instead of changing results with the desktop process's inherited locale.
+        if snapshot.query.is_some() {
+            run.locale = Some("C.UTF-8".into());
+        }
+        let mut selected = Vec::new();
+        let mut next_offset = offset;
+        let mut scanned = offset;
+        let mut has_more = false;
+        loop {
+            let lines = if let Some(matches) = &snapshot.oid_matches {
+                matches
+                    .iter()
+                    .skip(scanned)
+                    .take(PAGE + 1)
+                    .cloned()
+                    .collect::<Vec<_>>()
+            } else if snapshot.tips.is_empty() {
+                Vec::new()
+            } else {
+                let mut args = runner::args(&[
+                    "--no-replace-objects",
+                    "rev-list",
+                    "--stdin",
+                    "--topo-order",
+                    &format!("--max-count={}", PAGE + 1),
+                    &format!("--skip={scanned}"),
+                ]);
+                if let Some(query) = &snapshot.query {
+                    args.extend(runner::args(&["--fixed-strings", "--regexp-ignore-case"]));
+                    args.push(
+                        format!(
+                            "{}={}",
+                            if query.field == HistorySearchField::Author {
+                                "--author"
+                            } else {
+                                "--grep"
+                            },
+                            query.text
+                        )
+                        .into(),
+                    );
+                } else {
+                    args.push("--boundary".into());
+                }
+                let output = runner::checked(
+                    run.run(
                         &repo.root,
                         &args,
                         Some(format!("{}\n", snapshot.tips.join("\n")).into_bytes()),
@@ -239,48 +389,85 @@ impl GitEngine {
                         runner::STRUCTURED_LIMIT,
                     )
                     .await?,
-            )?
-            .stdout;
-            text(&bytes).lines().map(str::to_owned).collect::<Vec<_>>()
-        };
-        let has_more = lines.len() > PAGE;
-        let oids = lines
-            .iter()
-            .take(PAGE)
-            .map(|line| line.trim_start_matches('-').to_owned())
-            .collect::<Vec<_>>();
-        let objects = commits(&self.runner, &repo, &oids).await?;
-        let shallow = std::fs::read_to_string(repo.common_dir.join("shallow")).unwrap_or_default();
-        let commits = objects
-            .into_iter()
-            .map(|commit| CommitSummary {
-                refs: snapshot
-                    .refs
-                    .iter()
-                    .filter(|r| r.oid == commit.oid)
-                    .map(|r| RefDecoration {
-                        full_name: r.full_name.clone(),
-                        label: r.label.clone(),
-                        kind: r.kind.clone(),
-                    })
-                    .collect(),
-                boundary: shallow.lines().any(|oid| oid == commit.oid)
-                    || lines.iter().any(|line| line == &format!("-{}", commit.oid)),
-                oid: commit.oid,
-                parents: commit.parents,
-                subject: commit.message.lines().next().unwrap_or_default().to_owned(),
-                author_name: commit.author.name,
-                authored_at: commit.author.at,
-            })
-            .collect();
+                )?;
+                text(&output.stdout)
+                    .lines()
+                    .map(str::to_owned)
+                    .collect::<Vec<_>>()
+            };
+            if lines.is_empty() {
+                break;
+            }
+            let oids = lines
+                .iter()
+                .map(|line| line.trim_start_matches('-').to_owned())
+                .collect::<Vec<_>>();
+            let objects = commits(&run, &repo, &oids).await?;
+            for (line, commit) in lines.iter().zip(objects) {
+                scanned += 1;
+                if let Some(query) = &snapshot.query {
+                    if query.field == HistorySearchField::Author
+                        && !format!("{} <{}>", commit.author.name, commit.author.email)
+                            .to_lowercase()
+                            .contains(&query.text.to_lowercase())
+                    {
+                        continue;
+                    }
+                }
+                if selected.len() == PAGE {
+                    has_more = true;
+                    break;
+                }
+                let boundary =
+                    snapshot.shallow.iter().any(|oid| oid == &commit.oid) || line.starts_with('-');
+                selected.push(CommitSummary {
+                    refs: snapshot
+                        .refs
+                        .iter()
+                        .filter(|r| r.oid == commit.oid)
+                        .map(|r| RefDecoration {
+                            full_name: r.full_name.clone(),
+                            label: r.label.clone(),
+                            kind: r.kind.clone(),
+                        })
+                        .collect(),
+                    boundary,
+                    oid: commit.oid,
+                    parents: commit.parents,
+                    subject: commit.message.lines().next().unwrap_or_default().into(),
+                    author_name: commit.author.name,
+                    authored_at: commit.author.at,
+                });
+                next_offset = scanned;
+            }
+            if has_more || lines.len() < PAGE + 1 {
+                break;
+            }
+        }
         let next_cursor = if has_more {
             let cursor = id();
-            snapshot.cursors.insert(cursor.clone(), offset + PAGE);
+            snapshot.cursors.insert(cursor.clone(), next_offset);
             Some(cursor)
         } else {
             None
         };
+        let final_shallow = merge::read_metadata(
+            &repo.common_dir.join("shallow"),
+            runner::STRUCTURED_LIMIT as u64,
+        )?
+        .unwrap_or_default();
+        if digest(&final_shallow) != snapshot.shallow_fingerprint
+            || repo.common_dir.join("info/grafts").exists()
+        {
+            return Err(AppError::new(
+                "stale_snapshot",
+                "History traversal context changed during the query; refresh history.",
+            ));
+        }
         let mut state = self.state.lock().await;
+        if let Some(existing) = state.history.get(&key) {
+            snapshot.cursors.extend(existing.cursors.clone());
+        }
         if state.history.len() >= 32 && !state.history.contains_key(&key) {
             let old = state.history.keys().next().cloned().unwrap();
             state.history.remove(&old);
@@ -288,9 +475,105 @@ impl GitEngine {
         state.history.insert(key.clone(), snapshot);
         Ok(HistoryPage {
             snapshot_id: key,
-            commits,
+            commits: selected,
             next_cursor,
         })
+    }
+    async fn history_commit_oid(&self, repo: &Repository, reference: &str) -> AppResult<String> {
+        Ok(text(
+            &self
+                .runner
+                .read(
+                    &repo.root,
+                    &[
+                        "--no-replace-objects",
+                        "rev-parse",
+                        "--verify",
+                        "--end-of-options",
+                        &format!("{reference}^{{commit}}"),
+                    ],
+                )
+                .await?,
+        ))
+    }
+    async fn history_oid_matches(
+        &self,
+        repo: &Repository,
+        snapshot: &HistorySnapshot,
+    ) -> AppResult<Vec<String>> {
+        if snapshot.tips.is_empty() {
+            return Ok(Vec::new());
+        }
+        let prefix = snapshot.query.as_ref().unwrap().text.to_ascii_lowercase();
+        let format = text(
+            &self
+                .runner
+                .read(&repo.root, &["rev-parse", "--show-object-format"])
+                .await?,
+        );
+        if prefix.len() > if format == "sha256" { 64 } else { 40 } {
+            return Ok(Vec::new());
+        }
+        let bytes = self
+            .runner
+            .read(
+                &repo.root,
+                &[
+                    "--no-replace-objects",
+                    "rev-parse",
+                    &format!("--disambiguate={prefix}"),
+                ],
+            )
+            .await?;
+        let candidates = text(&bytes).lines().map(str::to_owned).collect::<Vec<_>>();
+        if candidates.len() > 256 {
+            return Err(AppError::new(
+                "search_limit",
+                "OID prefix matches too many objects; enter a longer prefix.",
+            ));
+        }
+        let mut found = Vec::new();
+        for candidate in candidates {
+            let kind = self
+                .runner
+                .read(
+                    &repo.root,
+                    &["--no-replace-objects", "cat-file", "-t", &candidate],
+                )
+                .await?;
+            if text(&kind) != "commit" {
+                continue;
+            }
+            for tip in &snapshot.tips {
+                let reachable = self
+                    .runner
+                    .run(
+                        &repo.root,
+                        &runner::args(&[
+                            "--no-replace-objects",
+                            "merge-base",
+                            "--is-ancestor",
+                            &candidate,
+                            tip,
+                        ]),
+                        None,
+                        false,
+                        runner::STRUCTURED_LIMIT,
+                    )
+                    .await?;
+                if reachable.code == 0 {
+                    found.push(candidate.clone());
+                    break;
+                }
+                if reachable.code != 1 {
+                    runner::checked(reachable)?;
+                }
+            }
+            if found.len() > 1 {
+                return Err(AppError::new("ambiguous_oid","OID prefix matches multiple commits in this snapshot's scope; enter a longer prefix."));
+            }
+        }
+        Ok(found)
     }
     pub async fn get_commit(
         &self,
@@ -299,7 +582,7 @@ impl GitEngine {
         parent_oid: Option<String>,
     ) -> AppResult<CommitDetails> {
         let repo = self.repository(repository_id).await?;
-        let oid = self.resolve_commit(&repo, oid).await?;
+        let oid = self.history_commit_oid(&repo, oid).await?;
         let commit = commits(&self.runner, &repo, std::slice::from_ref(&oid))
             .await?
             .remove(0);
@@ -317,6 +600,7 @@ impl GitEngine {
         };
         let args = if let Some(parent) = &parent {
             runner::args(&[
+                "--no-replace-objects",
                 "diff",
                 "--name-status",
                 "-z",
@@ -327,6 +611,7 @@ impl GitEngine {
             ])
         } else {
             runner::args(&[
+                "--no-replace-objects",
                 "diff-tree",
                 "--root",
                 "--no-commit-id",
@@ -429,6 +714,7 @@ impl GitEngine {
         ]);
         match request.context.as_str() {
             "commit" => {
+                args.insert(0, "--no-replace-objects".into());
                 let (oid, parent) = snapshot.commit.as_ref().ok_or_else(|| {
                     AppError::new("invalid_context", "Select a historical file first.")
                 })?;
@@ -437,6 +723,7 @@ impl GitEngine {
                     args.push(oid.into());
                 } else {
                     args = runner::args(&[
+                        "--no-replace-objects",
                         "--literal-pathspecs",
                         "show",
                         "--format=",

@@ -49,6 +49,7 @@ pub fn redact(input: &str) -> String {
 pub(crate) struct Runner {
     pub isolated: bool,
     pub executable: OsString,
+    pub locale: Option<OsString>,
     pub read_timeout: Duration,
     pub mutation_timeout: Duration,
 }
@@ -57,6 +58,7 @@ impl Default for Runner {
         Self {
             isolated: false,
             executable: "git".into(),
+            locale: None,
             read_timeout: Duration::from_secs(30),
             mutation_timeout: Duration::from_secs(120),
         }
@@ -94,6 +96,9 @@ impl Runner {
             "GIT_CONFIG_PARAMETERS",
         ] {
             command.env_remove(key);
+        }
+        if let Some(locale) = &self.locale {
+            command.env("LC_ALL", locale);
         }
         if self.isolated {
             let null = if cfg!(windows) { "NUL" } else { "/dev/null" };

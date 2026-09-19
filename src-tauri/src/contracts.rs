@@ -187,6 +187,19 @@ pub struct HistoryPage {
     pub commits: Vec<CommitSummary>,
     pub next_cursor: Option<String>,
 }
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HistorySearch {
+    pub field: HistorySearchField,
+    pub text: String,
+}
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum HistorySearchField {
+    Message,
+    Author,
+    Oid,
+}
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Identity {

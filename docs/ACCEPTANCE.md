@@ -45,6 +45,15 @@ M2 adds ordinary merge success/conflict/continue/abort and squash-merge staged r
 
 Both squash workflows are required for full product acceptance. For Combine commits, verify that at least two selected consecutive tip commits become one commit with the chosen message, the final tree remains unchanged, the replacement has the correct parent, and the backup retains the original tip. Reject unsupported selections without mutation. Verify recovery restores the original branch history without discarding later user changes; stale recovery preconditions must require manual review.
 
+History search checks literal message text (including body), author name/email,
+case handling, regex metacharacters, Unicode, and full/abbreviated commit IDs.
+Search respects selected branch roots and excludes application backup/stash refs
+from default scope. Page beyond 200 matches while refs change, reject mismatched
+queries and foreign cursors, and preserve original parents across omitted commits.
+Invalid/ambiguous IDs, missing objects, shallow boundaries, unborn repositories,
+and invalid or oversized queries must produce honest results or explicit errors.
+Verify search leaves index and application rewrite journals unchanged.
+
 ## Project and CLI tests
 
 - Valid schema/example, empty project, duplicate names, missing members, unknown keys, unsupported version, corrupt JSON, nonblank strings, and file-size/member-count limits.
@@ -55,6 +64,21 @@ Both squash workflows are required for full product acceptance. For Combine comm
 - Cold launch, second launch while open, nested repository directory, invalid explicit path, and no-argument welcome behavior.
 - `--help` and `--version` do not start the GUI. Initial launch is not lost before event listeners attach.
 
+Folder discovery additionally checks exact root/depth boundaries, linked-worktree
+markers, skipped dependency/build directories, malformed markers, inaccessible
+paths, symlink/junction escape and cycles, and explicit partial results at limits.
+Discovery must preserve index and completed squash-journal bytes. Unsupported
+non-UTF-8 paths must never become lossy JSON membership paths. CLI discovery
+preserves the invoking cwd and rejects missing roots or invalid depth arguments.
+
+Review starts with candidates unchecked. Only selected candidates enter a newly
+saved group. Existing-group discovery excludes current members, preserves draft
+edits, offers new rescan candidates unchecked, and leaves saved membership/revision
+unchanged until explicit save. Test canceled review/draft/save dialogs, exact
+whitespace in folder paths, stale async responses, and queued launches while
+native pickers or project creation are pending. Native save IPC coverage must be
+distinguished from automating the operating-system save picker itself.
+
 ## UI tests and native smoke
 
 Use unit tests for graph lane/parent invariants and reducers; component tests for selection, action states, and retained drafts. Assert observable behavior rather than mirroring component internals. Mock IPC only where the test explicitly concerns renderer behavior.
@@ -62,6 +86,13 @@ Use unit tests for graph lane/parent invariants and reducers; component tests fo
 Native smoke sequence: launch from CLI; open project; run mixed-result batch pull; enter repository; inspect a merge commit against each parent; inspect a working file; stage only one of two changes; commit; inspect resulting history; push to a local remote; switch back to group and observe refreshed status. Repeat commit with a failing test hook and confirm the draft survives.
 
 Check dark/light mode, readable focus states, keyboard navigation, no color-only status, long branch/path truncation with full details available, window resizing, and history row/edge alignment. Reload the UI during an operation and verify querying operation state repairs missed events.
+
+History-search UI checks submit/clear, scope changes, match paging, retained commit
+drafts, stale response rejection, no graph edges between filtered rows, keyboard
+focus without stealing modal shortcuts, and selected-match details/diff loading.
+The native fixture searches a main branch with two matches separated by an omitted
+commit and a matching side-branch commit; check literal/body/author/ID queries,
+scope exclusion, empty results, and restoring the normal DAG after clearing.
 
 Measure warm shell startup, first 200 history rows on a 10,000-commit fixture, 25-repository status sweep, and scrolling responsiveness. Record machine, build mode, dataset, and numbers. Exercise 100 repositories for bounded scheduling and partial results without declaring that all 100 must finish in the 25-repository budget. Do not load every repository's entire history just to show its status.
 

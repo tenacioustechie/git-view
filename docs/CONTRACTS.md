@@ -141,6 +141,7 @@ Errors such as missing Git, inaccessible repository, stale precondition, authent
 | `list_remotes` | repository ID | Display-safe remote IDs/names and resolved defaults |
 | `list_rewrites` | repository ID | Durable Combine commits records with reconciled recovery eligibility |
 | `get_history` | repository ID, scope; or snapshot ID + cursor | `HistoryPage` |
+| `search_history` | repository ID, `{ field: 'message' \| 'author' \| 'oid', text }`, scope, optional snapshot ID/cursor | `HistoryPage` of matches, with original ordered parents |
 | `get_commit` | repository ID, OID, optional parent OID | `CommitDetails`, including file/diff context snapshot |
 | `get_diff` | repository ID, snapshot/file ID, staged/unstaged/commit context | `DiffResult` |
 | `get_operations` | optional batch ID, cursor | Current snapshots and bounded output |
@@ -155,6 +156,18 @@ state. Candidates are proposals; only explicit selection followed by
 use launch kind `discovery`, a root `path` resolved from the invoking cwd, and
 optional `scanDepth` (default 3). Launch routing defers acknowledgement while a
 DOM or native dialog is open and rechecks navigation after asynchronous loading.
+
+History search uses case-insensitive literal message/author matching and full or
+at-least-four-digit hexadecimal commit-ID prefixes. Queries must be nonblank,
+single-line, and at most 512 UTF-8 bytes. The backend binds query and scope to
+immutable roots; paging cannot change the query or consume a foreign cursor.
+OID matches must be commits reachable within those roots. Search returns original
+parent IDs; the UI presents a virtualized results list without DAG connectors,
+since intervening commits may be omitted. Clear search restores normal history.
+Search has a 30-second deadline; overly broad OID prefixes return a refine-query
+error rather than a partial result. Historical reads use original stored commit
+objects consistently, ignoring replacement refs. Shallow-boundary changes expire
+snapshots; legacy grafts require removal or migration before viewing history.
 
 ## Mutations and batches
 

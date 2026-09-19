@@ -17,6 +17,7 @@ export const api = {
   listRefs: (repositoryId: string) => invoke<T.GitRef[]>('list_refs', { repositoryId }),
   listRemotes: (repositoryId: string) => invoke<T.Remote[]>('list_remotes', { repositoryId }),
   getHistory: (repositoryId: string, scope: string | null = null, snapshotId: string | null = null, cursor: string | null = null) => invoke<T.HistoryPage>('get_history', { repositoryId, scope, snapshotId, cursor }),
+  searchHistory: (repositoryId: string, query: T.HistorySearch, scope: string | null = null, snapshotId: string | null = null, cursor: string | null = null) => invoke<T.HistoryPage>('search_history', { repositoryId, query, scope, snapshotId, cursor }),
   getCommit: (repositoryId: string, oid: string, parentOid: string | null = null) => invoke<T.CommitDetails>('get_commit', { repositoryId, oid, parentOid }),
   getDiff: (request: T.DiffRequest) => invoke<T.DiffResult>('get_diff', { request }),
   planAction: (repositoryId: string, action: T.RepositoryAction) => invoke<T.RepositoryActionPlan>('plan_repository_action', { repositoryId, action }),

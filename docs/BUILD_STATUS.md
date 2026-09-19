@@ -1,18 +1,134 @@
 # Build status
 
-## Continuation: reviewed folder discovery
+## History search: Mac integration passed; Windows verification pending
 
-Implementation underway after completion of M1–M3 below. Adds bounded read-only
+Implemented next roadmap slice: search commit messages, author names/emails, or
+commit-ID prefixes within the chosen history scope. Results retain immutable
+snapshot paging and real parent metadata, and display without graph edges across
+omitted commits. Search remains read-only. UI supports explicit submit/clear,
+Cmd/Ctrl+F, scoped Escape, retained drafts, and stale-response rejection.
+
+Mac verification passes 57 frontend tests, 107 Rust tests, strict native-smoke
+Clippy, and all 31 native workflow checks. The 11 new Git fixtures cover literal
+case/Unicode/body/email searches, scoped ambiguous OID prefixes, immutable paging
+beyond 200 results, concurrent cursor preservation, actual parent relationships,
+shallow drift, missing objects, replacements, and unchanged index/journal bytes.
+The eight renderer regressions cover query/scope/paging/keyboard/error races.
+Native checks search real commits, inspect a matching file diff, and restore the
+normal graph after clearing. Mac normal release build succeeds.
+
+Review fixes: cursors retain concurrent issued continuations; search and normal
+history resolve HEAD without status cleanup; historical metadata/file lists/diffs
+all ignore replacement refs consistently; shallow/graft changes expire a page.
+Queries are limited to 512 UTF-8 bytes and 30 seconds; overly broad OID prefixes
+request refinement. Unsubmitted Clear and dismissed-error states no longer leave
+loading stuck or falsely claim zero matches. Two new fixture setup mistakes were
+corrected before the full successful backend rerun.
+
+The release artifacts and completed checks below still describe the discovery
+checkpoint until the search integration gate records their replacement.
+
+## 2026-09-20: folder discovery and easier group creation complete
+
+Implemented after completion of M1–M3 below. Adds bounded read-only
 repository discovery, `group --scan` with depth control, explicit selection/save,
 and reviewed additions to existing project drafts. The original three workers
 retain Git-engine, groups, and repository/native-harness ownership; coordinator
 owns contracts, CLI routing, navigation, and platform validation.
 
-Current local gate: 47 frontend tests, typecheck and lint pass. Native acceptance
-and updated release builds are pending; the artifacts below still represent the
-completed M1–M3 checkpoint until this section records their replacement.
+Final source checkpoint: `1593da8967cc239a9872f2003387019563cfad00` (Mac and Windows).
+User confirmed folder discovery/easier group creation as the next priority.
 
-## Final result — M1, M2 and M3 complete on tested platforms
+- CLI: `git-view group --scan <folder> [--depth <0..10>]`; default 3, root 0.
+- GUI: choose a root, scan, review unchecked candidates, select a subset, then
+  save a named project. Existing-group discovery adds selected candidates to a
+  draft; rescanning/canceling never silently changes saved membership.
+- Scanner recognizes linked worktrees, skips dependency/build directories and
+  symlinks/reparse points, reports bounded partial results, and never refreshes
+  the index or cleans up squash journals. Unsupported non-UTF-8 paths are omitted
+  with an explicit issue instead of becoming lossy JSON action paths.
+- Navigation waits for native dialogs and pending project creation, rechecks
+  asynchronous launch results, and preserves whitespace in selected folder paths.
+
+Mac: 49 frontend tests, 96 Rust tests, typecheck/lint/formatting, and strict
+native-smoke Clippy pass. Native DOM/IPC acceptance passes all **29 checks**,
+including the previous merge/squash/combine/reload checks and three discovery
+workflows. Report: `/tmp/git-view-native-discovery-mac.json`, retained in
+`artifacts/native-macos.json`. Updated normal `.app` build succeeds.
+Windows backend gate passed 90 tests and strict Clippy at `8e373b5`; subsequent
+changes affect only native-harness assertions and a focused verification script.
+Windows junction escape/cycle coverage passes. Final frontend gate passes 49
+tests, typecheck and lint; native acceptance passes all **29 checks**. Report:
+`C:\codeme\git-view\.tools\GitViewNativeSmoke-e79cad9c3671451db66a036900393311.json`,
+retained as `artifacts/native-windows.json`. Normal Windows NSIS build and silent
+installation pass; installed CLI help/version and the actual titled Git View
+window pass at `.tools\installed-smoke-ecfe8b2c9286427ca98a9a4fbc446ce8`.
+
+Mac release checks pass help/version, invalid root/depth rejection, and separate
+repository/discovery process startup; discovery writes no project automatically.
+One sandboxed launch aborted in macOS `_RegisterApplication`; rerunning the same
+packaged binary with approved desktop access passed both startup checks.
+
+| Final verification | macOS arm64 | Windows 11 x64 |
+| --- | --- | --- |
+| Frontend tests | 49 passed | 49 passed |
+| Rust unit/integration/acceptance tests | 96 passed | 90 passed |
+| Native DOM/IPC checks | 29 passed | 29 passed |
+| Release build and packaged startup | Passed | Passed, including installation |
+
+Unsigned local artifacts at the final source checkpoint:
+
+- [macOS archive](../artifacts/Git-View_0.1.0_macos-arm64.zip), 3,360,067 bytes;
+  SHA-256 `9c6db18ebe5881519e4cc629de247ef25dc5e9a03925e3307ab00c0244159b0b`.
+- [Windows installer](../artifacts/Git-View_0.1.0_windows-x64-setup.exe), 2,655,357 bytes;
+  SHA-256 `e07a55f7404479b61d3aff34ae5c96e15822b08a40e08883f00a16c655ccbef3`.
+- [Source/hash manifest](../artifacts/manifest.json),
+  [Mac native report](../artifacts/native-macos.json),
+  [Windows native report](../artifacts/native-windows.json).
+
+Existing README/runbook/setup-document edits remain preserved. Final status and
+acceptance documentation edits remain uncommitted; implementation is checkpointed
+locally. Nothing pushed or published. Linux/Intel Mac execution and signing remain
+outside the verified platform matrix. This discovery slice has no known blocker.
+
+Commands: `pnpm typecheck`, `pnpm lint`, `pnpm test`,
+`cargo test --manifest-path src-tauri/Cargo.toml --locked`,
+`cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --features native-smoke -- -D warnings`,
+`VITE_NATIVE_SMOKE=1 pnpm build`,
+`cargo build --manifest-path src-tauri/Cargo.toml --features native-smoke,tauri/custom-protocol`,
+`python3 scripts/native-smoke.py /tmp/git-view-native-discovery-mac.json`,
+and `pnpm tauri build --bundles app`.
+Windows commands use `python3 scripts/windows-remote.py` with
+`scripts/windows-verify.ps1`, then `scripts/windows-native-verify.ps1` after
+harness corrections, `scripts/windows-release.ps1`, and
+`scripts/windows-installer-smoke.ps1`. `scripts/collect-artifacts.py` checks
+matching source revisions and collects both passed reports and release packages.
+
+Final debug native timings (disposable 10,000-commit fixture): Mac first-page
+fixture/navigation 444.0 ms, scroll plus two frames 21.0 ms; Windows 1,137.4 ms
+and 2.7 ms. Warm welcome forwarding/render was 588.0 ms on Mac and 372.5 ms
+on Windows. These are individual acceptance samples, not production benchmarks.
+
+Review fixes and failed checks resolved: discovery originally reused status
+loading, which could remove a completed squash journal; it now shares only
+read-only identity registration, with byte-preservation regression coverage.
+Native CLI assertions now accept the equivalent trailing `/.` path spelling.
+A permission dialog stole native window focus during one run; the test harness
+now restores actual native focus before retaining the same visible-outline
+assertion. Folder whitespace and navigation during project saves have regressions.
+Windows' saved display paths may mix slash styles; native save/reopen assertions
+now compare canonical repository IDs and exact member counts instead of display
+spelling. `scripts/windows-native-verify.ps1` reruns frontend checks and native
+acceptance after harness-only changes without repeating the unchanged Rust suite.
+
+Native automation selects real DOM candidates and uses real project-save IPC
+with a fixture destination, then reopens via CLI and tests actual DOM draft/save
+controls. The operating-system save picker itself is not automated; its call
+and selection behavior are covered by explicitly mocked component tests.
+The Mac filesystem rejects creation of raw-invalid-UTF-8 names, so that fixture
+reports the platform limitation rather than claiming an on-disk raw-name check.
+
+## Prior checkpoint — M1, M2 and M3 complete on tested platforms
 
 Application/release source: `6a28ef976bd92f8baf844bdc04f91a19764dd3b9`.
 Completed the runbook tasks F1–F2, B1–B4, P1–P3, G1–G3, R1–R3 and Q1,
@@ -36,7 +152,7 @@ and test details are recorded below. Rust formatting and final diff checks pass.
 Tests use disposable repositories/local remotes; normal release builds exclude
 the native-smoke instrumentation.
 
-Local release artifacts (not published):
+Prior artifact measurements (the same paths now contain the newer builds above):
 
 - [macOS arm64 archive](../artifacts/Git-View_0.1.0_macos-arm64.zip), 3,319,623 bytes.
   Runnable app: `src-tauri/target/release/bundle/macos/Git View.app`.

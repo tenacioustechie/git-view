@@ -21,6 +21,11 @@
 .working-entry { margin:10px; text-align:left; }
 .working-entry small { display:block; margin-top:5px; }
 .history-list { overflow:auto; flex:1; min-height:160px; }
+.history-search { display:flex; flex-direction:column; gap:7px; padding:10px; border-bottom:1px solid var(--border); }
+.history-search>input { width:100%; min-width:0; }
+.history-search>div { display:flex; gap:6px; }
+.history-search small { overflow-wrap:anywhere; }
+.repository-screen .search-results .history-row { padding-left:12px; }
 .repository-screen .history-row { width:100%; display:flex; align-items:center; border:0; border-radius:0; text-align:left; padding:0 10px 0 0; background:transparent; }
 .history-description { min-width:0; display:flex; flex-direction:column; gap:4px; }
 .history-description>span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }

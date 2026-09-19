@@ -58,6 +58,7 @@ export interface HistoryPage {
   commits: CommitSummary[];
   nextCursor: string | null;
 }
+export interface HistorySearch { field: 'message' | 'author' | 'oid'; text: string }
 
 export interface CommitDetails {
   snapshotId: SnapshotId; // context for the returned file IDs and selected parent

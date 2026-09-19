@@ -100,6 +100,20 @@ pub async fn get_history(
         .await
 }
 #[tauri::command]
+pub async fn search_history(
+    state: State<'_, AppState>,
+    repository_id: String,
+    query: HistorySearch,
+    scope: Option<String>,
+    snapshot_id: Option<String>,
+    cursor: Option<String>,
+) -> AppResult<HistoryPage> {
+    state
+        .engine
+        .search_history(&repository_id, query, scope, snapshot_id, cursor)
+        .await
+}
+#[tauri::command]
 pub async fn get_commit(
     state: State<'_, AppState>,
     repository_id: String,

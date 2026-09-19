@@ -4,7 +4,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { api, errorMessage } from '../../api/client';
 import type { OperationResult } from '../../api/types';
 
-interface SmokeContext { projectPath: string; cleanPath: string; dirtyPath: string; mergePath: string; m2?: boolean; m3?: boolean; performance?: boolean; discovery?: boolean }
+interface SmokeContext { projectPath: string; cleanPath: string; dirtyPath: string; mergePath: string; m2?: boolean; m3?: boolean; performance?: boolean; discovery?: boolean; historySearch?: boolean }
 interface SmokeResult { passed: boolean; checks: string[]; error?: string; body?: string }
 interface ReloadMarker { version: 1; repositoryId: string; operationId: string; path: string; checks: string[] }
 const reloadKey = 'git-view.native-smoke.reload.v1';
@@ -492,6 +492,54 @@ async function runDiscoverySmoke(checks: string[]) {
   checks.push('Existing group discovery excluded duplicates and proposed unchecked addition; rescans/cancel/draft cancel preserved saved membership, explicit DOM Save project appended only chosen repository');
 }
 
+async function runHistorySearchSmoke(checks: string[]) {
+  const fixture = await invoke<{ repositoryId: string; path: string; message: string; author: string; body: string; matchOids: string[]; bodyOid: string; otherOid: string; scopeRef: string }>('native_smoke_history_search_case');
+  const repository = await until('history search fixture selected', () => {
+    const screen = document.querySelector<HTMLElement>('.repository-screen');
+    return screen?.querySelector('.repository-title strong')?.getAttribute('title') === fixture.path ? screen : null;
+  });
+  const scope = await until('main branch scope available', () => [...repository.querySelectorAll<HTMLButtonElement>('.repository-refs button')].find(node => node.title === fixture.scopeRef));
+  scope.click();
+  await until('main branch scope selected', () => scope.classList.contains('selected'));
+  const query = repository.querySelector<HTMLInputElement>('[aria-label="History search query"]');
+  const field = repository.querySelector<HTMLSelectElement>('[aria-label="History search field"]');
+  assert(query && field, 'Repository must expose labeled history search controls');
+  const search = async (kind: 'message' | 'author' | 'oid', text: string, expected: string[]) => {
+    field.value = kind;
+    field.dispatchEvent(new Event('change', { bubbles: true }));
+    type(query, text);
+    await click('Search history', repository);
+    const results = await until(`completed ${kind} search for ${text}`, () => {
+      const status = repository.querySelector('.history-search [role="status"]')?.textContent ?? '';
+      const list = repository.querySelector<HTMLElement>('[aria-label="Search results"]');
+      if (!list || !status.includes(text) || status.includes('Searching')) return null;
+      const oids = [...list.querySelectorAll<HTMLButtonElement>('.history-row')].map(row => row.title.split('\n')[0]);
+      return JSON.stringify(oids) === JSON.stringify(expected) ? list : null;
+    });
+    assert(!results.querySelector('svg'), 'Filtered history must omit graph edges and nodes');
+    return results;
+  };
+  const results = await search('message', fixture.message, fixture.matchOids);
+  assert(![...results.querySelectorAll<HTMLButtonElement>('.history-row')].some(row => row.title.startsWith(fixture.otherOid)), 'Scoped literal search must exclude matching side-branch commit');
+  results.querySelector<HTMLButtonElement>('.history-row')!.click();
+  const detail = await region('Commit details');
+  await until('selected search result actual commit details', () => detail.textContent?.includes(fixture.matchOids[0]));
+  const file = await until('selected search commit file', () => detail.querySelector<HTMLButtonElement>('.file-list button'));
+  file.click();
+  await assertDiffVisible();
+  checks.push('Native scoped literal message search returned exact nonadjacent commit OIDs, excluded matching side branch, omitted DAG SVG, and opened actual commit details and file patch');
+
+  await search('author', fixture.author, fixture.matchOids);
+  await search('message', fixture.body, [fixture.bodyOid]);
+  await search('oid', fixture.matchOids[0].slice(0, 8), [fixture.matchOids[0]]);
+  const empty = await search('message', 'native-no-matching-history-query', []);
+  assert(empty.textContent?.includes('No commits match this search.'), 'Successful empty search must be explicit');
+  await click('Clear search', repository);
+  await until('clear search restores ordinary DAG', () => repository.querySelector('[aria-label="Commit history"] .history-row svg'));
+  assert(query.value === '' && !repository.querySelector('[aria-label="Search results"]'), 'Clear must reset query and filtered history');
+  checks.push('Native author, full-message body and abbreviated OID searches returned exact commits; no-match state was explicit and Clear restored ordinary history DAG');
+}
+
 async function startRunningOperationReload(checks: string[]) {
   const fixture = await invoke<{ repositoryId: string; operationId: string; path: string }>('native_smoke_slow_commit');
   await until('slow commit actually running before full reload', async () => {
@@ -711,6 +759,7 @@ export async function runNativeSmoke(): Promise<void> {
     if (context.m3) await runCombineSmoke(checks);
     if (context.performance) await runPerformanceSmoke(checks);
     if (context.discovery) await runDiscoverySmoke(checks);
+    if (context.historySearch) await runHistorySearchSmoke(checks);
     await startRunningOperationReload(checks);
     return; // The reloaded renderer resumes above and submits the final report.
   } catch (cause) {

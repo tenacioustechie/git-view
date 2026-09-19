@@ -62,6 +62,7 @@ pub struct Context {
     pub m3: bool,
     pub performance: bool,
     pub discovery: bool,
+    pub history_search: bool,
 }
 pub struct Fixture {
     pub context: Context,
@@ -166,6 +167,7 @@ pub fn setup(report: PathBuf) -> Fixture {
             m3: true,
             performance: true,
             discovery: true,
+            history_search: true,
         },
         report,
         _root: root,
@@ -734,4 +736,51 @@ pub async fn native_smoke_discovery_case(
     Ok(
         serde_json::json!({"rootPath":root.to_string_lossy(),"projectPath":project.to_string_lossy(),"candidatePaths":candidates,"exists":project.is_file()}),
     )
+}
+
+#[tauri::command]
+pub async fn native_smoke_history_search_case(
+    state: State<'_, AppState>,
+) -> AppResult<serde_json::Value> {
+    let f = fixture(&state)?;
+    let path = f._root.path().join("history-search");
+    std::fs::create_dir(&path).map_err(|error| AppError::new("fixture", error.to_string()))?;
+    git(&path, &["init", "--template=", "-b", "main"]);
+    configure(&path);
+    std::fs::write(path.join("search.txt"), "baseline\n").unwrap();
+    commit(&path, "Search baseline");
+    let base = git(&path, &["rev-parse", "HEAD"]);
+    git(&path, &["config", "user.name", "Search Author"]);
+    git(&path, &["config", "user.email", "search@example.invalid"]);
+    std::fs::write(path.join("search.txt"), "older match\n").unwrap();
+    commit(&path, "Literal [a.b] search older\n\nBodyOnlyNeedle");
+    let older = git(&path, &["rev-parse", "HEAD"]);
+    configure(&path);
+    std::fs::write(path.join("search.txt"), "unmatched middle\n").unwrap();
+    commit(&path, "Unmatched middle");
+    git(&path, &["config", "user.name", "Search Author"]);
+    git(&path, &["config", "user.email", "search@example.invalid"]);
+    std::fs::write(path.join("search.txt"), "newer match\n").unwrap();
+    commit(&path, "Literal [a.b] search newer");
+    let newer = git(&path, &["rev-parse", "HEAD"]);
+    git(&path, &["switch", "-c", "side", &base]);
+    configure(&path);
+    std::fs::write(path.join("search.txt"), "outside scope\n").unwrap();
+    commit(&path, "Literal [a.b] search outside scope");
+    let other = git(&path, &["rev-parse", "HEAD"]);
+    git(&path, &["switch", "main"]);
+    let opened = state.engine.open_repository(&path).await?;
+    state.launches.push(LaunchRequest {
+        scan_depth: None,
+        request_id: uuid::Uuid::new_v4().to_string(),
+        kind: "repository".into(),
+        path: Some(opened.display_path.clone()),
+        error: None,
+    });
+    Ok(serde_json::json!({
+        "repositoryId": opened.repository_id, "path": opened.display_path,
+        "message": "Literal [a.b] search", "author": "Search Author", "body": "BodyOnlyNeedle",
+        "matchOids": [newer, older], "bodyOid": older, "otherOid": other,
+        "scopeRef": "refs/heads/main"
+    }))
 }

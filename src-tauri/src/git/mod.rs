@@ -44,6 +44,11 @@ pub(crate) struct Snapshot {
 pub(crate) struct HistorySnapshot {
     pub repository_id: String,
     pub tips: Vec<String>,
+    pub scope: String,
+    pub query: Option<HistorySearch>,
+    pub shallow: Vec<String>,
+    pub shallow_fingerprint: String,
+    pub oid_matches: Option<Vec<String>>,
     pub refs: Vec<GitRef>,
     pub cursors: HashMap<String, usize>,
 }
