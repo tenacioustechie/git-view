@@ -1,5 +1,29 @@
 use super::*;
 use std::collections::BTreeMap;
+// Configuration paths can be consumed by Git's shell helpers, which do not
+// understand Win32 verbatim prefixes. Keep registry identities canonical, while
+// passing ordinary slash-separated paths to hooks/signers on Windows.
+fn helper_path(path: &Path) -> OsString {
+    let path = dunce::simplified(path);
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::{OsStrExt, OsStringExt};
+        let units: Vec<u16> = path
+            .as_os_str()
+            .encode_wide()
+            .map(|unit| {
+                if unit == b'\\' as u16 {
+                    b'/' as u16
+                } else {
+                    unit
+                }
+            })
+            .collect();
+        OsString::from_wide(&units)
+    }
+    #[cfg(not(windows))]
+    path.as_os_str().to_os_string()
+}
 #[derive(Clone)]
 pub(crate) struct FrozenConfig {
     pub values: BTreeMap<String, Vec<OsString>>,
@@ -104,7 +128,7 @@ impl GitEngine {
                         && Path::new(&value).components().count() > 1
                         && !Path::new(&value).is_absolute()
                     {
-                        value = repo.root.join(value).into_os_string();
+                        value = helper_path(&repo.root.join(value));
                     }
                     if matches!(
                         key.as_str(),
@@ -117,9 +141,9 @@ impl GitEngine {
                         let expanded =
                             path_bytes(expanded.strip_suffix(b"\n").unwrap_or(&expanded));
                         value = if Path::new(&expanded).is_absolute() {
-                            expanded
+                            helper_path(Path::new(&expanded))
                         } else {
-                            repo.root.join(expanded).into_os_string()
+                            helper_path(&repo.root.join(expanded))
                         };
                     }
                     if key == "user.signingkey"
@@ -137,9 +161,9 @@ impl GitEngine {
                         let expanded =
                             path_bytes(expanded.strip_suffix(b"\n").unwrap_or(&expanded));
                         value = if Path::new(&expanded).is_absolute() {
-                            expanded
+                            helper_path(Path::new(&expanded))
                         } else {
-                            repo.root.join(expanded).into_os_string()
+                            helper_path(&repo.root.join(expanded))
                         };
                     }
                     let mut pair = OsString::from(format!("{key}="));
@@ -160,7 +184,7 @@ impl GitEngine {
             }
         }
         let mut hooks = OsString::from("core.hooksPath=");
-        hooks.push(&frozen.hooks);
+        hooks.push(helper_path(Path::new(&frozen.hooks)));
         args.push("-c".into());
         args.push(hooks);
         if args.iter().map(|v| os_bytes(v).len() + 1).sum::<usize>() > 16 * 1024 {

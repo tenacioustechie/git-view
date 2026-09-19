@@ -542,16 +542,29 @@ async fn relative_ssh_signing_key_and_program_keep_original_context() {
     hook(&path.join(".git/fake-signer"),"#!/bin/sh\noriginal=$(git config --get test.gitViewOriginalRoot) || exit 1\nprintf '%s\\n' \"$@\" > \"$original/.git/signer-arguments\"\nexit 1\n");
     let engine = GitEngine::isolated();
     let id = engine.open_repository(path).await.unwrap().repository_id;
-    assert!(combine(&engine, &id, suffix(path)).await.is_err());
+    let error = combine(&engine, &id, suffix(path))
+        .await
+        .err()
+        .expect("Fixture signer must reject the commit");
+    assert_eq!(
+        error.code, "git_failed",
+        "Unexpected failure before fixture signing: {error:?}"
+    );
     assert_eq!(git(path, &["rev-parse", "HEAD"]), old);
-    let arguments = std::fs::read_to_string(path.join(".git/signer-arguments")).unwrap();
+    let arguments =
+        std::fs::read_to_string(path.join(".git/signer-arguments")).unwrap_or_else(|read_error| {
+            panic!(
+                "Fixture signer did not record arguments: {read_error}; combine failure: {error:?}"
+            )
+        });
     let expected = std::fs::canonicalize(path)
         .unwrap()
         .join(".git/signing.key");
     assert!(
         arguments
             .lines()
-            .any(|line| std::path::Path::new(line) == expected),
+            .filter_map(|line| std::fs::canonicalize(line).ok())
+            .any(|actual| actual == expected),
         "{arguments}"
     );
 }
