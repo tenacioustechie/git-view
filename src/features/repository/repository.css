@@ -49,6 +49,21 @@
 .merge-notice p { margin:5px 0; font-size:13px; }
 .merge-notice-actions { display:flex; gap:8px; flex-shrink:0; }
 .merge-controls small { display:block; margin:8px 0; }
+.combine-heading { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+.combine-panel p { font-size:13px; }
+.combine-panel code { overflow-wrap:anywhere; font-size:12px; }
+.combine-panel input[type=number] { width:80px; }
+.combine-selection { padding-left:22px; max-height:280px; overflow:auto; }
+.combine-selection li { margin:10px 0; }
+.combine-selection code,.combine-selection small { display:block; }
+.combine-panel .combine-message { display:flex; flex-direction:column; align-items:stretch; margin:16px 0 10px; }
+.combine-message textarea { resize:vertical; }
+.combine-blocked { color:var(--danger); }
+.rewrite-record { border:1px solid var(--border); border-radius:6px; padding:12px; margin:12px 0; }
+.rewrite-record h4 { margin:0 0 4px; }
+.rewrite-record dl { font-size:12px; }
+.rewrite-record dt { color:var(--muted); }
+.rewrite-record dd { margin:2px 0 10px; }
 .repository-activity { border-top:1px solid var(--border); padding:10px 16px; max-height:180px; overflow:auto; }
 .repository-screen summary { cursor:pointer; }
 .repository-activity li { padding:5px 0; font-size:13px; }

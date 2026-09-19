@@ -13,7 +13,10 @@ pub struct Output {
     pub code: i32,
     pub truncated: bool,
 }
-async fn drain(mut pipe: impl AsyncRead + Unpin, limit: usize) -> std::io::Result<(Vec<u8>, bool)> {
+pub(crate) async fn drain(
+    mut pipe: impl AsyncRead + Unpin,
+    limit: usize,
+) -> std::io::Result<(Vec<u8>, bool)> {
     let mut bytes = Vec::new();
     let mut truncated = false;
     let mut chunk = [0; 8192];
@@ -59,26 +62,7 @@ impl Default for Runner {
     }
 }
 impl Runner {
-    pub async fn run(
-        &self,
-        cwd: &Path,
-        args: &[OsString],
-        input: Option<Vec<u8>>,
-        mutation: bool,
-        limit: usize,
-    ) -> AppResult<Output> {
-        let directory = std::fs::metadata(cwd).map_err(|error| {
-            AppError::new(
-                "repository_unavailable",
-                format!("Cannot access repository directory: {error}"),
-            )
-        })?;
-        if !directory.is_dir() {
-            return Err(AppError::new(
-                "repository_unavailable",
-                "Repository path is not a directory.",
-            ));
-        }
+    pub(crate) fn command(&self, cwd: &Path, args: &[OsString], mutation: bool) -> Command {
         let mut command = Command::new(&self.executable);
         command
             .current_dir(cwd)
@@ -146,6 +130,29 @@ impl Runner {
         }
         #[cfg(windows)]
         command.creation_flags(0x08000000);
+        command
+    }
+    pub async fn run(
+        &self,
+        cwd: &Path,
+        args: &[OsString],
+        input: Option<Vec<u8>>,
+        mutation: bool,
+        limit: usize,
+    ) -> AppResult<Output> {
+        let directory = std::fs::metadata(cwd).map_err(|error| {
+            AppError::new(
+                "repository_unavailable",
+                format!("Cannot access repository directory: {error}"),
+            )
+        })?;
+        if !directory.is_dir() {
+            return Err(AppError::new(
+                "repository_unavailable",
+                "Repository path is not a directory.",
+            ));
+        }
+        let mut command = self.command(cwd, args, mutation);
         let mut child = command.spawn().map_err(|e| {
             AppError::new(
                 if e.kind() == std::io::ErrorKind::NotFound {

@@ -139,7 +139,8 @@ pub fn run() {
         commands::cancel_batch,
         commands::get_operations,
         commands::get_launch_request,
-        commands::ack_launch_request
+        commands::ack_launch_request,
+        commands::list_rewrites
     ]);
     #[cfg(feature = "native-smoke")]
     let builder = builder.invoke_handler(tauri::generate_handler![
@@ -163,12 +164,20 @@ pub fn run() {
         commands::get_operations,
         commands::get_launch_request,
         commands::ack_launch_request,
+        commands::list_rewrites,
         native_smoke::native_smoke_context,
         native_smoke::native_smoke_prepare_changes,
         native_smoke::native_smoke_fail_hook,
         native_smoke::native_smoke_forward_launch,
         native_smoke::native_smoke_m2_case,
         native_smoke::native_smoke_resolve_conflicts,
+        native_smoke::native_smoke_m3_case,
+        native_smoke::native_smoke_m3_edit,
+        native_smoke::native_smoke_m3_verify,
+        native_smoke::native_smoke_performance,
+        native_smoke::native_smoke_appearance,
+        native_smoke::native_smoke_slow_commit,
+        native_smoke::native_smoke_progress,
         native_smoke::native_smoke_report
     ]);
     builder

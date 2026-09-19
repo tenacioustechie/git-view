@@ -1,6 +1,6 @@
 # Acceptance and verification plan
 
-No application checks have run yet; these are build acceptance criteria. Documentation/schema validation is separate from app validation. Mark each item with evidence rather than inferring success from code presence.
+These are build acceptance criteria. Current results and platform evidence are recorded in [Build status](BUILD_STATUS.md). Documentation/schema validation is separate from app validation; code presence alone does not establish acceptance.
 
 ## First integration gate: the user's group workflow
 
@@ -78,7 +78,7 @@ A committed workflow is not a passed job. A compiled binary is not an installer 
 
 ## Commands to establish in the scaffold
 
-Provide and document equivalent scripts for frontend typecheck, lint, unit/component tests, frontend production build, Rust format check, Rust Clippy, Rust integration tests, native development launch, and native bundle build. Proposed names: `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm build`, `pnpm tauri dev`, and `pnpm tauri build`; Rust commands use the actual `src-tauri/Cargo.toml` path. These scripts do not exist yet.
+The scaffold provides `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm build`, `pnpm tauri dev`, and `pnpm tauri build`. Rust checks use `cargo fmt --manifest-path src-tauri/Cargo.toml -- --check`, `cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings`, and `cargo test --manifest-path src-tauri/Cargo.toml --locked`. Native and platform scripts are under `scripts/`; exact executed commands are recorded in Build status.
 
 Run the checks appropriate to each slice, then the full required gate once integrated. Repeat only for new changes, failures, or unresolved risks. Do not claim all checks passed when a command was unavailable, skipped, or only run against mocks.
 

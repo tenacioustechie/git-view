@@ -7,6 +7,40 @@ use std::{
 };
 use tauri::State;
 
+#[tauri::command]
+pub async fn native_smoke_progress(
+    state: State<'_, AppState>,
+    checks: Vec<String>,
+) -> AppResult<()> {
+    let f = fixture(&state)?;
+    std::fs::write(
+        f.report.with_extension("progress.json"),
+        serde_json::to_vec_pretty(&checks).unwrap(),
+    )
+    .map_err(|e| AppError::new("report_failed", e.to_string()))
+}
+
+#[tauri::command]
+pub async fn native_smoke_appearance(
+    window: tauri::WebviewWindow,
+    theme: String,
+    width: f64,
+    height: f64,
+) -> AppResult<()> {
+    let theme = match theme.as_str() {
+        "light" => tauri::Theme::Light,
+        "dark" => tauri::Theme::Dark,
+        _ => return Err(AppError::new("fixture", "Unsupported theme")),
+    };
+    window
+        .set_theme(Some(theme))
+        .map_err(|e| AppError::new("fixture", e.to_string()))?;
+    window
+        .set_size(tauri::LogicalSize::new(width, height))
+        .map_err(|e| AppError::new("fixture", e.to_string()))?;
+    Ok(())
+}
+
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Context {
@@ -15,12 +49,16 @@ pub struct Context {
     pub dirty_path: String,
     pub merge_path: String,
     pub m2: bool,
+    pub m3: bool,
+    pub performance: bool,
 }
 pub struct Fixture {
     pub context: Context,
     pub report: PathBuf,
     pub _root: tempfile::TempDir,
     pub cases: std::sync::Mutex<std::collections::HashMap<String, PathBuf>>,
+    pub rewrites: std::sync::Mutex<std::collections::HashMap<String, serde_json::Value>>,
+    pub slow_commit: tokio::sync::Mutex<Option<serde_json::Value>>,
 }
 fn git(path: &Path, args: &[&str]) -> String {
     let output = Command::new("git")
@@ -114,11 +152,70 @@ pub fn setup(report: PathBuf) -> Fixture {
             dirty_path: root.path().join("Dirty").to_str().unwrap().into(),
             merge_path: merge.to_str().unwrap().into(),
             m2: true,
+            m3: true,
+            performance: true,
         },
         report,
         _root: root,
         cases: Default::default(),
+        rewrites: Default::default(),
+        slow_commit: Default::default(),
     }
+}
+
+#[tauri::command]
+pub async fn native_smoke_slow_commit(state: State<'_, AppState>) -> AppResult<serde_json::Value> {
+    let f = fixture(&state)?;
+    let mut cached = f.slow_commit.lock().await;
+    if cached.is_none() {
+        let path = f._root.path().join("reload-operation");
+        std::fs::create_dir(&path).unwrap();
+        git(&path, &["init", "-b", "main"]);
+        configure(&path);
+        std::fs::write(path.join("reload.txt"), "before\n").unwrap();
+        commit(&path, "Before reload");
+        std::fs::write(path.join("reload.txt"), "after\n").unwrap();
+        git(&path, &["add", "reload.txt"]);
+        let hooks = path.join(".git/reload-hooks");
+        std::fs::create_dir(&hooks).unwrap();
+        let hook = hooks.join("pre-commit");
+        std::fs::write(&hook, "#!/bin/sh\nsleep 8\nexit 0\n").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        git(
+            &path,
+            &["config", "core.hooksPath", hooks.to_str().unwrap()],
+        );
+        let opened = state.engine.open_repository(&path).await?;
+        let status = state.engine.get_status(&opened.repository_id).await?;
+        let plan = state
+            .operations
+            .plan_action(
+                &opened.repository_id,
+                RepositoryAction::Commit {
+                    status_snapshot_id: status.snapshot_id,
+                    message: "Commit surviving WebView reload".into(),
+                },
+            )
+            .await;
+        let RepositoryActionPlan::Eligible { plan_id, .. } = plan else {
+            return Err(AppError::new("fixture", "Slow commit plan was blocked"));
+        };
+        let operation = state.operations.run_action(&plan_id).await?;
+        *cached = Some(serde_json::json!({ "repositoryId": opened.repository_id,
+            "operationId": operation.operation_id, "path": opened.display_path }));
+    }
+    let response = cached.as_ref().unwrap().clone();
+    state.launches.push(LaunchRequest {
+        request_id: uuid::Uuid::new_v4().to_string(),
+        kind: "repository".into(),
+        path: Some(response["path"].as_str().unwrap().into()),
+        error: None,
+    });
+    Ok(response)
 }
 fn fixture(state: &AppState) -> AppResult<&Fixture> {
     state
@@ -299,4 +396,225 @@ pub fn native_smoke_report(
         app.exit(exit);
     });
     Ok(())
+}
+
+#[tauri::command]
+pub async fn native_smoke_m3_case(
+    state: State<'_, AppState>,
+    scenario: String,
+) -> AppResult<serde_json::Value> {
+    if !["combine", "hookFailure", "staleRecovery"].contains(&scenario.as_str()) {
+        return Err(AppError::new("fixture", "Unknown rewrite case"));
+    }
+    let f = fixture(&state)?;
+    let path = f
+        ._root
+        .path()
+        .join(format!("rewrite-{scenario}-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir(&path).unwrap();
+    git(&path, &["init", "-b", "main"]);
+    configure(&path);
+    std::fs::write(path.join("first.txt"), "root\n").unwrap();
+    std::fs::write(path.join("second.txt"), "root second\n").unwrap();
+    commit(&path, "Root");
+    for (message, body) in [
+        ("First linear change", "first\n"),
+        ("Second linear change", "second\n"),
+        ("Third linear change", "third\n"),
+    ] {
+        std::fs::write(path.join("first.txt"), body).unwrap();
+        commit(&path, message);
+    }
+    if scenario == "hookFailure" {
+        let hooks = path.join(".git/native-rewrite-hooks");
+        std::fs::create_dir(&hooks).unwrap();
+        let hook = hooks.join("pre-commit");
+        std::fs::write(
+            &hook,
+            "#!/bin/sh\necho 'Rewrite fixture hook rejected commit' >&2\nexit 1\n",
+        )
+        .unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        git(
+            &path,
+            &["config", "core.hooksPath", hooks.to_str().unwrap()],
+        );
+    }
+    let opened = state.engine.open_repository(&path).await?;
+    let oids = git(&path, &["rev-list", "--max-count=2", "HEAD"])
+        .lines()
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
+    let base = git(&path, &["rev-parse", "HEAD~2"]);
+    let tree = git(&path, &["rev-parse", "HEAD^{tree}"]);
+    let original = git(&path, &["rev-parse", "HEAD"]);
+    f.cases
+        .lock()
+        .unwrap()
+        .insert(opened.repository_id.clone(), path);
+    f.rewrites.lock().unwrap().insert(opened.repository_id.clone(),serde_json::json!({"originalHead":original,"baseOid":base,"treeOid":tree,"scenario":scenario}));
+    state.launches.push(LaunchRequest {
+        request_id: uuid::Uuid::new_v4().to_string(),
+        kind: "repository".into(),
+        path: Some(opened.display_path.clone()),
+        error: None,
+    });
+    Ok(
+        serde_json::json!({"repositoryId":opened.repository_id,"path":opened.display_path,"commitOids":oids,"baseOid":base,"treeOid":tree}),
+    )
+}
+
+#[tauri::command]
+pub async fn native_smoke_m3_edit(
+    state: State<'_, AppState>,
+    repository_id: String,
+    commit: bool,
+) -> AppResult<()> {
+    let f = fixture(&state)?;
+    let path = f
+        .cases
+        .lock()
+        .unwrap()
+        .get(&repository_id)
+        .cloned()
+        .ok_or_else(|| AppError::new("fixture", "Unknown rewrite fixture"))?;
+    std::fs::write(path.join("first.txt"), "later staged content\n").unwrap();
+    git(&path, &["add", "first.txt"]);
+    std::fs::write(path.join("first.txt"), "later unstaged content\n").unwrap();
+    std::fs::write(path.join("untracked.txt"), "later untracked content\n").unwrap();
+    if commit {
+        git(&path, &["add", "--all"]);
+        git(&path, &["commit", "-m", "Later user commit"]);
+    }
+    let mut records = f.rewrites.lock().unwrap();
+    let record = records
+        .get_mut(&repository_id)
+        .ok_or_else(|| AppError::new("fixture", "Missing fixture expectation"))?;
+    record["laterHead"] = git(&path, &["rev-parse", "HEAD"]).into();
+    record["indexTree"] = git(&path, &["write-tree"]).into();
+    record["firstBytes"] = std::fs::read_to_string(path.join("first.txt"))
+        .unwrap()
+        .into();
+    record["untrackedBytes"] = std::fs::read_to_string(path.join("untracked.txt"))
+        .unwrap()
+        .into();
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn native_smoke_m3_verify(
+    state: State<'_, AppState>,
+    repository_id: String,
+    recovery_id: String,
+    expected: String,
+) -> AppResult<serde_json::Value> {
+    let f = fixture(&state)?;
+    let path = f
+        .cases
+        .lock()
+        .unwrap()
+        .get(&repository_id)
+        .cloned()
+        .ok_or_else(|| AppError::new("fixture", "Unknown fixture"))?;
+    let expected_state = f
+        .rewrites
+        .lock()
+        .unwrap()
+        .get(&repository_id)
+        .cloned()
+        .ok_or_else(|| AppError::new("fixture", "Missing expected state"))?;
+    let records = state.engine.list_rewrites(&repository_id).await?;
+    let record = records
+        .iter()
+        .find(|r| r.recovery_id == recovery_id)
+        .ok_or_else(|| AppError::new("fixture", "Recovery journal absent"))?;
+    let fail = |message: &str| AppError::new("native_assertion", message);
+    let original = expected_state["originalHead"].as_str().unwrap();
+    let head = git(&path, &["rev-parse", "HEAD"]);
+    if git(&path, &["rev-parse", &record.backup_ref]) != original {
+        return Err(fail("Backup must preserve original tip"));
+    }
+    match expected.as_str() {
+        "combined" => {
+            if Some(head.as_str()) != record.replacement_head.as_deref() || head == original {
+                return Err(fail("Replacement HEAD is incorrect"));
+            }
+            if git(&path, &["rev-parse", "HEAD^{tree}"])
+                != expected_state["treeOid"].as_str().unwrap()
+            {
+                return Err(fail("Replacement tree changed"));
+            }
+            if git(&path, &["rev-parse", "HEAD^"]) != expected_state["baseOid"].as_str().unwrap() {
+                return Err(fail("Replacement parent incorrect"));
+            }
+            if git(&path, &["rev-list", "--count", "HEAD"]) != "3" {
+                return Err(fail("Two selected commits were not combined into one"));
+            }
+        }
+        "recovered" | "hookFailure" => {
+            if head != original {
+                return Err(fail("Original history was not preserved/restored"));
+            }
+        }
+        "stale" => {
+            if head != expected_state["laterHead"].as_str().unwrap() {
+                return Err(fail("Later user commit changed"));
+            }
+        }
+        _ => return Err(fail("Unknown verification mode")),
+    }
+    if expected_state.get("indexTree").is_some()
+        && (git(&path, &["write-tree"]) != expected_state["indexTree"].as_str().unwrap()
+            || std::fs::read_to_string(path.join("first.txt")).unwrap()
+                != expected_state["firstBytes"].as_str().unwrap()
+            || std::fs::read_to_string(path.join("untracked.txt")).unwrap()
+                != expected_state["untrackedBytes"].as_str().unwrap())
+    {
+        return Err(fail("Recovery altered later index or working files"));
+    }
+    Ok(serde_json::json!({"verified":true}))
+}
+
+#[tauri::command]
+pub async fn native_smoke_performance(state: State<'_, AppState>) -> AppResult<serde_json::Value> {
+    use std::io::Write;
+    let f = fixture(&state)?;
+    let path = f._root.path().join("history-10000");
+    std::fs::create_dir(&path).unwrap();
+    git(&path, &["init", "-b", "main"]);
+    configure(&path);
+    let mut child = Command::new("git")
+        .current_dir(&path)
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env(
+            "GIT_CONFIG_GLOBAL",
+            if cfg!(windows) { "NUL" } else { "/dev/null" },
+        )
+        .arg("fast-import")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut input = child.stdin.take().unwrap();
+    for n in 0..10000 {
+        let message = format!("History fixture {n}\n");
+        write!(input,"commit refs/heads/main\ncommitter Fixture <fixture@example.invalid> {} +0000\ndata {}\n{}\n",1700000000+n,message.len(),message).unwrap();
+    }
+    drop(input);
+    if !child.wait_with_output().unwrap().status.success() {
+        return Err(AppError::new("fixture", "fast-import failed"));
+    }
+    let opened = state.engine.open_repository(&path).await?;
+    state.launches.push(LaunchRequest {
+        request_id: uuid::Uuid::new_v4().to_string(),
+        kind: "repository".into(),
+        path: Some(opened.display_path.clone()),
+        error: None,
+    });
+    Ok(serde_json::json!({"repositoryId":opened.repository_id,"path":opened.display_path}))
 }

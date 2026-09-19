@@ -146,3 +146,11 @@ pub fn get_launch_request(state: State<'_, AppState>) -> Option<LaunchRequest> {
 pub fn ack_launch_request(state: State<'_, AppState>, request_id: String) {
     state.launches.ack(&request_id)
 }
+
+#[tauri::command]
+pub async fn list_rewrites(
+    state: State<'_, AppState>,
+    repository_id: String,
+) -> AppResult<Vec<RewriteRecord>> {
+    state.engine.list_rewrites(&repository_id).await
+}

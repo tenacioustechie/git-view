@@ -7,7 +7,7 @@ import type { ChangedFile, RepositoryOpen } from '../../api/types';
 
 vi.mock('../../api/client', () => ({
   errorMessage: (error: unknown) => error instanceof Error ? error.message : String(error),
-  api: Object.fromEntries(['getStatus', 'getChanges', 'listRefs', 'listRemotes', 'getHistory', 'getCommit', 'getDiff', 'getOperations', 'planAction', 'runAction'].map(name => [name, vi.fn()])),
+  api: Object.fromEntries(['getStatus', 'getChanges', 'listRefs', 'listRemotes', 'getHistory', 'getCommit', 'getDiff', 'getOperations', 'planAction', 'runAction', 'listRewrites'].map(name => [name, vi.fn()])),
 }));
 const file: ChangedFile = { fileId: 'opaque-file', displayPath: 'file with spaces.txt', oldDisplayPath: null, changeKind: 'modified', indexStatus: 'M', worktreeStatus: 'M', untracked: false, conflicted: false, submodule: false };
 let repository: RepositoryOpen;
@@ -26,6 +26,7 @@ beforeEach(() => {
   vi.mocked(api.getCommit).mockResolvedValue(fixtures.mergeCommit);
   vi.mocked(api.getDiff).mockResolvedValue({ kind: 'text', text: '+change', truncated: false });
   vi.mocked(api.getOperations).mockResolvedValue([]);
+  vi.mocked(api.listRewrites).mockResolvedValue([]);
   vi.mocked(api.planAction).mockResolvedValue({ kind: 'eligible', planId: 'plan', expiresAt: '2030-01-01T00:00:00Z', summary: 'Fetch origin', destination: 'origin' });
   vi.mocked(api.runAction).mockResolvedValue({ ...fixtures.failedAction, repositoryId: id });
   HTMLDialogElement.prototype.showModal = function () { this.open = true; };
@@ -149,5 +150,35 @@ describe('repository workflows (mocked IPC)', () => {
     fireEvent.change(await screen.findByLabelText('Commit message'), { target: { value: 'Reviewed squash result' } });
     fireEvent.click(screen.getByRole('button', { name: 'Commit staged changes (1)' }));
     await waitFor(() => expect(api.planAction).toHaveBeenCalledWith(repository.repositoryId, { kind: 'commit', statusSnapshotId: repository.status.snapshotId, message: 'Reviewed squash result' }));
+  });
+  it('keeps combine message when backend rejects a stale preview and never executes it', async () => {
+    repository.status = { ...repository.status, dirty: false };
+    vi.mocked(api.getStatus).mockResolvedValue(repository.status);
+    vi.mocked(api.getHistory).mockResolvedValue({ ...fixtures.history, commits: fixtures.history.commits.map(commit => ({ ...commit, parents: [commit.parents[0]] })) });
+    vi.mocked(api.planAction).mockResolvedValue({ kind: 'blocked', reason: 'Branch changed after selection', error: null });
+    render(<RepositoryView repository={repository} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Combine commits…' }));
+    fireEvent.change(await screen.findByLabelText('Combined commit message'), { target: { value: 'Retain rejected combine message' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Preview combine commits' }));
+    expect(await screen.findByRole('alert')).toHaveProperty('textContent', expect.stringContaining('Branch changed'));
+    expect(api.runAction).not.toHaveBeenCalled();
+    expect((screen.getByLabelText('Combined commit message') as HTMLTextAreaElement).value).toBe('Retain rejected combine message');
+  });
+  it('retains combined message after execution failure and reopening the panel', async () => {
+    repository.status = { ...repository.status, dirty: false };
+    vi.mocked(api.getStatus).mockResolvedValue(repository.status);
+    vi.mocked(api.getHistory).mockResolvedValue({ ...fixtures.history, commits: fixtures.history.commits.map(commit => ({ ...commit, parents: [commit.parents[0]] })) });
+    vi.mocked(api.runAction).mockResolvedValue({ ...fixtures.failedAction, repositoryId: repository.repositoryId, action: 'combineCommits' });
+    render(<RepositoryView repository={repository} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Combine commits…' }));
+    fireEvent.change(await screen.findByLabelText('Combined commit message'), { target: { value: 'Retain failed combine message' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Preview combine commits' }));
+    const preview = await screen.findByRole('dialog');
+    expect(preview.textContent).toContain('may already be published');
+    fireEvent.click(within(preview).getByRole('button', { name: 'Run combineCommits' }));
+    await screen.findAllByText(/Hook rejected commit/);
+    fireEvent.click(screen.getByRole('button', { name: 'Close combine' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Combine commits…' }));
+    expect(((await screen.findByLabelText('Combined commit message')) as HTMLTextAreaElement).value).toBe('Retain failed combine message');
   });
 });

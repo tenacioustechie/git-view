@@ -138,6 +138,7 @@ Errors such as missing Git, inaccessible repository, stale precondition, authent
 | `get_changes` | repository ID | Snapshot ID and `ChangedFile[]` |
 | `list_refs` | repository ID | Validated local/remote/tag references and HEAD |
 | `list_remotes` | repository ID | Display-safe remote IDs/names and resolved defaults |
+| `list_rewrites` | repository ID | Durable Combine commits records with reconciled recovery eligibility |
 | `get_history` | repository ID, scope; or snapshot ID + cursor | `HistoryPage` |
 | `get_commit` | repository ID, OID, optional parent OID | `CommitDetails`, including file/diff context snapshot |
 | `get_diff` | repository ID, snapshot/file ID, staged/unstaged/commit context | `DiffResult` |
@@ -156,6 +157,23 @@ Use backend-held preflight tokens for branch/remote operations. Index and worktr
 `plan_batch` accepts project ID/revision, candidate member IDs, action (`fetch` or `pull`), and optional exact branch filter. The backend owns eligibility and returns a plan ID plus all candidate rows with eligible/skipped reason and displayed destination. The plan retains resolved repository identities and preconditions for five minutes; execution still revalidates. Replan after expiry or project edits. Do not make the renderer the sole source of eligibility.
 
 `run_batch(planId)` returns batch and job IDs promptly. Make starting the same plan idempotent so a double click returns the existing batch. Every planned member receives a terminal result, including skips and fetch aliases. `cancel_batch(batchId)` stops queued jobs and requests cancellation of running jobs according to runner support. `retry` creates a new plan, not a replay of stale argv.
+
+## Implemented milestone additions
+
+Implemented M2/M3 additions are defined in `src/api/types.ts` and
+`src-tauri/src/contracts.rs`: merge, continue/abort, squash-merge,
+`combineCommits { statusSnapshotId, commitOids, message }`, and
+`recoverCombine { statusSnapshotId, recoveryId }`. Combine selections are ordered
+newest first and validated as a linear suffix ending at the current branch tip.
+`RewriteRecord` exposes the phase, original/replacement/backup refs and OIDs,
+selected commits, message, error, and `canRecover`. Recovery eligibility is
+rechecked from actual Git state when planning and executing; a displayed record
+does not authorize a stale restoration. See [recovery design](REWRITE_RECOVERY.md).
+
+Squash-merge exposes `gitState: 'squashMerge'` and optional `squashMerge`
+metadata until an explicit reviewed commit completes it. It does not pretend Git
+created `MERGE_HEAD` or offer ordinary merge abort. `AppError.exitCode` and
+`outputTruncated` preserve bounded process diagnostics across the command boundary.
 
 ## Events and fixtures
 

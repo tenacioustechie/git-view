@@ -3,6 +3,7 @@ import { api, errorMessage } from '../../api/client';
 import type { Changes, CommitDetails, DiffRequest, DiffResult, GitRef, HistoryPage, OperationResult, Remote, RepositoryAction, RepositoryActionPlan, RepositoryOpen } from '../../api/types';
 import { HistoryGraph } from '../../graph/HistoryGraph';
 import { layoutPage } from '../../graph/layout';
+import { CombineCommits } from './CombineCommits';
 import './repository.css';
 
 const drafts = new Map<string, string>();
@@ -38,6 +39,8 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
   const [switchNew, setSwitchNew] = useState(true);
   const [branchTarget, setBranchTarget] = useState('');
   const [mergeSource, setMergeSource] = useState('');
+  const [showCombine, setShowCombine] = useState(false);
+  const [refreshVersion, setRefreshVersion] = useState(0);
   const generation = useRef(0);
   const detailGeneration = useRef(0);
   const submittedDrafts = useRef(new Map<string, string>());
@@ -57,6 +60,7 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
       ]);
       if (epoch !== generation.current) return;
       setStatus(nextStatus); setChanges(nextChanges); setRefs(nextRefs); setRemotes(nextRemotes); setHistory(nextHistory);
+      setRefreshVersion(version => version + 1);
       setRemoteId(previous => nextRemotes.some(remote => remote.id === previous) ? previous : (nextRemotes.find(remote => remote.defaultFetch)?.id ?? nextRemotes[0]?.id ?? ''));
     } catch (cause) { if (epoch === generation.current) setError(errorMessage(cause)); }
     finally { if (epoch === generation.current) setLoading(false); }
@@ -122,6 +126,7 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
   }, [planned]);
 
   const inspect = async (oid: string, parent: string | null = null) => {
+    setShowCombine(false);
     const epoch = ++detailGeneration.current;
     setSelected(oid); setDetails(null); setDiffRequest(null); setError(null);
     try { const result = await api.getCommit(id, oid, parent); if (epoch === detailGeneration.current) setDetails(result); }
@@ -174,7 +179,7 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
     } catch (cause) { if (epoch === generation.current) setError(errorMessage(cause)); }
     finally { if (epoch === generation.current) setLoading(false); }
   };
-  const working = () => { detailGeneration.current++; setSelected(null); setDetails(null); setDiffRequest(null); };
+  const working = () => { detailGeneration.current++; setSelected(null); setDetails(null); setDiffRequest(null); setShowCombine(false); };
   const headLabel = status.head.kind === 'detached' ? `Detached at ${status.head.oid.slice(0, 8)}` : `${status.head.name}${status.head.kind === 'unborn' ? ' (no commits)' : ''}`;
 
   return <section className="repository-screen" aria-label="Repository">
@@ -185,6 +190,7 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
       <label>Remote <select aria-label="Remote" value={remoteId} onChange={event => setRemoteId(event.target.value)}><option value="">None</option>{remotes.map(remote => <option key={remote.id} value={remote.id}>{remote.name}</option>)}</select></label>
       <button disabled={active || !remoteId} onClick={() => { void act({ kind: 'fetch', remoteId }, true); }}>Fetch</button>
       <button disabled={active} onClick={() => { void act({ kind: 'pull', statusSnapshotId: status.snapshotId }, true); }}>Pull</button>
+      <button onClick={() => { setShowCombine(true); setDiffRequest(null); }}>Combine commits…</button>
       <details className="push-controls"><summary>Push…</summary><div>
         <label>Destination ref<input value={destination} onChange={event => setDestination(event.target.value)} placeholder="refs/heads/main" /></label>
         <label><input type="checkbox" checked={setUpstream} onChange={event => setSetUpstream(event.target.checked)} /> Set upstream</label>
@@ -219,8 +225,8 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
         <button className={`working-entry ${selected === null ? 'selected' : ''}`} onClick={working}>Working changes <small>{status.counts.staged} staged · {status.counts.unstaged} unstaged · {status.counts.untracked} untracked · {status.counts.conflicted} conflicts</small></button>
         <HistoryGraph rows={graph} selected={selected} onSelect={oid => { void inspect(oid); }} loading={loading} more={Boolean(history?.nextCursor)} onMore={() => { void loadMore(); }} />
       </section>
-      <section className="repository-details" aria-label={selected ? 'Commit details' : 'Working changes'}>
-        {selected ? <>
+      <section className="repository-details" aria-label={showCombine ? 'History rewrite' : selected ? 'Commit details' : 'Working changes'}>
+        {showCombine ? <CombineCommits repositoryId={id} status={status} active={active} refreshVersion={refreshVersion} onPlan={action => { void act(action, true); }} onClose={working} /> : selected ? <>
           <h2>Commit {selected.slice(0, 8)}</h2>
           {!details ? <p>Loading commit…</p> : <>
             <pre className="commit-message">{details.message}</pre>
@@ -252,7 +258,7 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
     </div>
     <details className="repository-activity"><summary>Activity · {operations.length ? `${operations[operations.length - 1].action}: ${operations[operations.length - 1].state}` : 'No operations this session'}</summary><ol>{operations.slice(-30).reverse().map(operation => <li key={operation.operationId}><strong>{operation.action}: {operation.state}</strong>{operation.reason && ` · ${operation.reason}`}{operation.error && <span role="alert"> · {operation.error.message}</span>}{operation.outcomeUncertain && ' · Outcome uncertain. Refresh and inspect the repository before retrying.'}{operation.outputTruncated && ' · Operation output truncated.'}</li>)}</ol></details>
     <dialog ref={dialog} onCancel={() => setPlanned(null)} aria-labelledby="action-preview-title">
-      {planned && <><h2 id="action-preview-title">Review {planned.action.kind === 'squashMerge' ? 'squash merge' : planned.action.kind}</h2><p>{planned.plan.summary}</p>{(planned.action.kind === 'merge' || planned.action.kind === 'squashMerge') && <p><strong>Source:</strong> {planned.action.sourceRef}<br /><strong>Current target:</strong> {headLabel}</p>}{planned.plan.destination && <p><strong>Destination:</strong> {planned.plan.destination}</p>}{planned.action.kind === 'squashMerge' && <p>The result stays staged for review. You must explicitly create the normal commit afterward. Squash conflicts have no ordinary merge abort.</p>}{planned.action.kind === 'abortMerge' && <p>Abort the current ordinary merge. Git will attempt to restore the state before the merge; inspect any changes you made during conflict resolution before proceeding.</p>}<p>Preconditions are checked again before execution.</p><div className="dialog-actions"><button onClick={() => setPlanned(null)}>Cancel</button><button disabled={busy} onClick={() => { void execute(planned); }}>Run {planned.action.kind}</button></div></>}
+      {planned && <><h2 id="action-preview-title">Review {planned.action.kind === 'squashMerge' ? 'squash merge' : planned.action.kind}</h2><p>{planned.plan.summary}</p>{(planned.action.kind === 'merge' || planned.action.kind === 'squashMerge') && <p><strong>Source:</strong> {planned.action.sourceRef}<br /><strong>Current target:</strong> {headLabel}</p>}{planned.plan.destination && <p><strong>Destination:</strong> {planned.plan.destination}</p>}{planned.action.kind === 'squashMerge' && <p>The result stays staged for review. You must explicitly create the normal commit afterward. Squash conflicts have no ordinary merge abort.</p>}{planned.action.kind === 'abortMerge' && <p>Abort the current ordinary merge. Git will attempt to restore the state before the merge; inspect any changes you made during conflict resolution before proceeding.</p>}{planned.action.kind === 'combineCommits' && <><p>This rewrites history and creates a backup. The selected commits may already be published.</p><ol>{planned.action.commitOids.map(oid => <li key={oid}><code>{oid}</code></li>)}</ol><pre className="commit-message">{planned.action.message}</pre></>}{planned.action.kind === 'recoverCombine' && <p>Recovery rechecks the original branch and backup, and preserves working-file edits. Later branch commits require manual review.</p>}<p>Preconditions are checked again before execution.</p><div className="dialog-actions"><button onClick={() => setPlanned(null)}>Cancel</button><button disabled={busy} onClick={() => { void execute(planned); }}>Run {planned.action.kind}</button></div></>}
     </dialog>
   </section>;
 }

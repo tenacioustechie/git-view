@@ -79,7 +79,9 @@ export type RepositoryAction =
   | { kind: 'createBranch'; statusSnapshotId: SnapshotId; name: string; startOid: Oid; switchAfterCreate: boolean }
   | { kind: 'switchBranch'; statusSnapshotId: SnapshotId; localRef: string }
   | { kind: 'merge' | 'squashMerge'; statusSnapshotId: SnapshotId; sourceRef: string }
-  | { kind: 'continueMerge' | 'abortMerge'; statusSnapshotId: SnapshotId };
+  | { kind: 'continueMerge' | 'abortMerge'; statusSnapshotId: SnapshotId }
+  | { kind: 'combineCommits'; statusSnapshotId: SnapshotId; commitOids: string[]; message: string }
+  | { kind: 'recoverCombine'; statusSnapshotId: SnapshotId; recoveryId: string };
 
 export type RepositoryActionPlan =
   | { kind: 'eligible'; planId: string; expiresAt: string; summary: string; destination: string | null }
@@ -128,3 +130,4 @@ export interface BatchPlan { planId: string; expiresAt: string; candidates: Batc
 export interface Batch { batchId: string; operationIds: string[] }
 export interface LaunchRequest { requestId: string; kind: 'repository' | 'project' | 'welcome'; path: string | null; error: AppError | null }
 export interface DiffRequest { repositoryId: string; snapshotId: string; fileId: string; context: 'staged' | 'unstaged' | 'commit' }
+export interface RewriteRecord { recoveryId: string; phase: string; branch: string; originalHead: string; replacementHead: string | null; baseOid: string; treeOid: string; backupRef: string; replacementRef: string | null; commitOids: string[]; message: string; createdAt: string; error: string | null; canRecover: boolean }

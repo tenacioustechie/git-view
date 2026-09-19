@@ -115,5 +115,29 @@ M2 native rerun after review fixes passed all 16 checks; report
 `/tmp/git-view-native-m2-mac.json`. M2 local gate is accepted before starting M3.
 M3 design recorded in `docs/REWRITE_RECOVERY.md`; implementation is now authorized
 under the existing Git/repository worker ownership.
+
+Windows M2 gate passed at `f2e5021f0cc9bbb937ad8c291fb3fd6286b26283`:
+28 UI/graph tests, 11 platform-applicable unit tests, 6 integrated acceptance tests,
+22 M1 Git tests, 16 merge tests, strict Clippy, and all 16 native desktop checks.
+Report: `C:\codeme\git-view\.tools\GitViewNativeSmoke-b177cb750269477ab3e3e0b785073b15.json`.
+Git for Windows is 2.53.0.windows.1. Explicit Windows debug benchmark
+`cargo test --manifest-path src-tauri/Cargo.toml --test git_engine acceptance_performance_measurements -- --ignored --nocapture`
+passed: 10,000-commit first 200 rows 190.90 ms; 25 sequential status reads 1405.05 ms.
+This excludes GUI rendering; native virtualization/timing is part of final smoke.
+
+M3 engine, UI and native scenarios are implemented against the shared action/recovery
+contracts. Independent review corrected missing-ref reconciliation, symbolic-ref
+transaction races, hook-added replacement refs, journal overwrite after tampering,
+and post-hook recovery revalidation. Twenty M3 integration cases pass. The unit
+suite also exercises twelve install and three recovery interruption points,
+backup collision refusal, and bounded guard subprocess cleanup. Recovery preserves
+later staged, unstaged and untracked bytes; later commits require manual review.
+Candidate worktrees and backup/replacement refs are retained for durable recovery.
+Unsupported signing/config context differences are explicitly rejected.
+
+Final native acceptance is in progress. The first extended Mac run timed out
+without a final report; it is not counted as a pass. The current harness adds
+per-check progress files and an actual WebView reload during a running operation
+to diagnose and verify the complete sequence. No M3 native acceptance claim yet.
 Linux CI workflow added but not executed; no Linux verification claim.
 User's original README/runbook/setup-doc edits remain preserved and uncommitted.

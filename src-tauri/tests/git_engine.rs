@@ -253,8 +253,12 @@ async fn byte_paths_round_trip() {
     for name in &names {
         match std::fs::write(dir.path().join(name), "bytes") {
             Ok(()) => created += 1,
-            Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
-                eprintln!("Filesystem cannot create non-UTF-8 filename: {e}")
+            Err(e)
+                if name.to_str().is_none()
+                    && (e.kind() == std::io::ErrorKind::PermissionDenied
+                        || (cfg!(target_os = "macos") && e.raw_os_error() == Some(92))) =>
+            {
+                eprintln!("SKIP raw non-UTF-8 filename only: filesystem rejects its creation ({e}); tab/newline coverage remains mandatory.")
             }
             Err(e) => panic!("{e}"),
         }

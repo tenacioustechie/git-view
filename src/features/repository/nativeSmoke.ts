@@ -4,8 +4,24 @@ import { invoke } from '@tauri-apps/api/core';
 import { api, errorMessage } from '../../api/client';
 import type { OperationResult } from '../../api/types';
 
-interface SmokeContext { projectPath: string; cleanPath: string; dirtyPath: string; mergePath: string; m2?: boolean }
+interface SmokeContext { projectPath: string; cleanPath: string; dirtyPath: string; mergePath: string; m2?: boolean; m3?: boolean; performance?: boolean }
 interface SmokeResult { passed: boolean; checks: string[]; error?: string; body?: string }
+interface ReloadMarker { version: 1; repositoryId: string; operationId: string; path: string; checks: string[] }
+const reloadKey = 'git-view.native-smoke.reload.v1';
+let progressWrite: Promise<unknown> = Promise.resolve();
+function progressChecks(): string[] {
+  const checks: string[] = [];
+  checks.push = (...items: string[]) => {
+    const length = Array.prototype.push.apply(checks, items);
+    const snapshot = [...checks];
+    // Serialize writes so a slow earlier diagnostic cannot overwrite a newer
+    // checkpoint. Diagnostic failures must not change the acceptance outcome.
+    progressWrite = progressWrite.then(() => invoke('native_smoke_progress', { checks: snapshot })).catch(() => undefined);
+    return length;
+  };
+  progressWrite = progressWrite.then(() => invoke('native_smoke_progress', { checks: [] })).catch(() => undefined);
+  return checks;
+}
 const pause = (ms: number) => new Promise<void>(resolve => window.setTimeout(resolve, ms));
 function assert(value: unknown, message: string): asserts value { if (!value) throw new Error(message); }
 function visible(element: Element) { return !element.closest('[hidden]') && element.getClientRects().length > 0; }
@@ -57,6 +73,70 @@ async function assertDiffVisible() {
   const diff = await region('File diff');
   await until('text diff renders', () => diff.querySelector('.unified-diff'));
   assert(diff.querySelector('.unified-diff')!.textContent?.trim(), 'Selected file must render an actual patch');
+}
+
+async function checkHistoryKeyboardAndAlignment(repository: HTMLElement, checks: string[]) {
+  const scroll = repository.querySelector<HTMLElement>('.history-list');
+  assert(scroll, 'History scroll viewport must exist');
+  await until('multiple real history rows rendered', () => scroll.querySelectorAll('.history-row').length > 1);
+  const rows = [...scroll.querySelectorAll<HTMLButtonElement>('.history-row')];
+  const firstOid = rows[0].title.split('\n')[0];
+  rows[0].click();
+  await until('initial history selection applied', () => rows[0].getAttribute('aria-pressed') === 'true');
+  scroll.focus();
+  assert(document.activeElement === scroll, 'History viewport must accept keyboard focus');
+  scroll.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+  await until('ArrowDown selects next actual commit', () => scroll.querySelector<HTMLButtonElement>('.history-row[aria-pressed="true"]')?.title.split('\n')[0] === rows[1].title.split('\n')[0]);
+  scroll.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
+  await until('Home restores tip selection', () => scroll.querySelector<HTMLButtonElement>('.history-row[aria-pressed="true"]')?.title.split('\n')[0] === firstOid);
+  for (const row of rows.slice(0, 5)) {
+    const rowBox = row.getBoundingClientRect();
+    const svg = row.querySelector('svg')!;
+    const svgBox = svg.getBoundingClientRect();
+    const circle = row.querySelector('circle')!;
+    const nodeCenter = svgBox.top + Number(circle.getAttribute('cy'));
+    assert(Math.abs(rowBox.height - 44) <= 1 && Math.abs(svgBox.height - rowBox.height) <= 1, 'SVG edge height must align with virtualized row height');
+    assert(Math.abs(nodeCenter - (rowBox.top + rowBox.height / 2)) <= 1, 'Graph node must align to the center of its text row');
+  }
+  checks.push('Native history keyboard ArrowDown/Home selected actual commits; focused viewport and SVG node/edge geometry align with 44px virtual rows');
+}
+
+function textContrast(foreground: string, background: string) {
+  const luminance = (color: string) => {
+    const channels = color.match(/[\d.]+/g)?.slice(0, 3).map(Number);
+    assert(channels?.length === 3 && color.startsWith('rgb'), `Expected native computed RGB color, got ${color}`);
+    const linear = channels.map(channel => { const value = channel / 255; return value <= .04045 ? value / 12.92 : ((value + .055) / 1.055) ** 2.4; });
+    return linear[0] * .2126 + linear[1] * .7152 + linear[2] * .0722;
+  };
+  const a = luminance(foreground), b = luminance(background);
+  return (Math.max(a, b) + .05) / (Math.min(a, b) + .05);
+}
+
+async function checkNativeAppearance(checks: string[]) {
+  const originalTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  const originalWidth = window.innerWidth, originalHeight = window.innerHeight;
+  const colors: string[] = [];
+  try {
+    for (const theme of ['dark', 'light'] as const) {
+      const width = theme === 'dark' ? 1280 : 1000;
+      const height = theme === 'dark' ? 800 : 700;
+      await invoke('native_smoke_appearance', { theme, width, height });
+      await until(`native ${theme} appearance`, () => window.matchMedia('(prefers-color-scheme: dark)').matches === (theme === 'dark'));
+      await until(`native viewport width ${width}`, () => Math.abs(window.innerWidth - width) <= 5);
+      await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+      const style = getComputedStyle(document.documentElement);
+      colors.push(style.backgroundColor);
+      assert(textContrast(style.color, style.backgroundColor) >= 4.5, `${theme} body text must have readable contrast against the background`);
+      const panels = document.querySelector<HTMLElement>('.repository-panels');
+      assert(panels && panels.clientHeight > 100 && panels.clientWidth > 700, `${theme} resized repository panels must remain usable`);
+      const viewport = document.querySelector<HTMLElement>('.history-list');
+      assert(viewport && viewport.clientHeight > 100 && viewport.getBoundingClientRect().bottom <= window.innerHeight + 1, 'History viewport must stay bounded inside resized window');
+    }
+    assert(colors[0] !== colors[1], 'Native appearance switch must change the rendered theme palette');
+    checks.push('Native dark/light window themes changed rendered palettes with body text contrast ≥4.5; 1280×800 and 1000×700 layouts retained bounded usable history panels');
+  } finally {
+    await invoke('native_smoke_appearance', { theme: originalTheme, width: originalWidth, height: originalHeight });
+  }
 }
 
 async function runMergeSmoke(checks: string[]) {
@@ -162,10 +242,177 @@ async function runMergeSmoke(checks: string[]) {
   }
 }
 
+async function runCombineSmoke(checks: string[]) {
+  for (const scenario of ['combine', 'hookFailure', 'staleRecovery'] as const) {
+    const fixture = await invoke<{ repositoryId: string; path: string; commitOids: string[]; baseOid: string; treeOid: string }>('native_smoke_m3_case', { scenario });
+    const opened = await api.openRepository(fixture.path);
+    const repository = await until(`M3 ${scenario} repository opens`, () => {
+      const node = document.querySelector<HTMLElement>('.repository-screen');
+      return node?.querySelector('.repository-title strong')?.getAttribute('title') === opened.displayPath ? node : null;
+    });
+    assert(opened.status.head.kind === 'branch' && !opened.status.dirty, 'Combine fixture must be clean on a branch');
+    const originalHead = opened.status.head.oid;
+    assert(fixture.commitOids.length === 2 && fixture.commitOids[0] === originalHead, 'Fixture must identify the latest two commits');
+    await click('Combine commits…', repository);
+    const panel = await region('Combine commits');
+    const count = await until('combine count', () => panel.querySelector<HTMLInputElement>('[aria-label="Newest commits to combine"]'));
+    type(count, '1');
+    await until('one-commit selection rejected', () => [...panel.querySelectorAll<HTMLButtonElement>('button')].some(node => node.textContent === 'Preview combine commits' && node.disabled));
+    type(count, '2');
+    const selection = panel.querySelector('[aria-label="Commits to replace"]');
+    await until('exact selected suffix rendered', () => fixture.commitOids.every(oid => selection?.textContent?.includes(oid)));
+    const message = `Native ${scenario} combined message`;
+    const input = await until('combined message editor', () => panel.querySelector<HTMLTextAreaElement>('[aria-label="Combined commit message"]'));
+    type(input, message);
+    const combined = await operation('combineCommits', fixture.repositoryId, async () => {
+      await click('Preview combine commits', panel);
+      const preview = await until('combine review modal', () => repository.querySelector<HTMLDialogElement>('dialog[open]'));
+      assert(fixture.commitOids.every(oid => preview.textContent?.includes(oid)), 'Authoritative combine preview must list exact selected commits');
+      assert(preview.textContent?.includes(message) && preview.textContent.includes('may already be published'), 'Combine preview must include edited message and publication warning');
+      await click('Run combineCommits', preview);
+    });
+    await refreshRepository();
+    const record = (await api.listRewrites(fixture.repositoryId)).find(item => item.message === message);
+    assert(record, 'Combine operation must leave a durable recovery record');
+    assert(record.originalHead === originalHead && record.baseOid === fixture.baseOid && record.treeOid === fixture.treeOid, 'Recovery record must retain original head, replacement parent and final tree');
+    const verify = async (expected: 'combined' | 'recovered' | 'stale' | 'hookFailure') => {
+      const verified = await invoke<{ verified: boolean }>('native_smoke_m3_verify', { repositoryId: fixture.repositoryId, recoveryId: record.recoveryId, expected });
+      assert(verified.verified, `Native fixture verification failed: ${scenario}/${expected}`);
+    };
+    if (scenario === 'hookFailure') {
+      assert(combined.state === 'failed', 'Rejecting hook must fail the combine candidate commit');
+      const unchanged = await api.getStatus(fixture.repositoryId);
+      assert(unchanged.head.kind === 'branch' && unchanged.head.oid === originalHead && !unchanged.dirty, 'Failed combine must preserve original HEAD/index/worktree');
+      const retained = await until('failed combine draft retained', () => panel.querySelector<HTMLTextAreaElement>('[aria-label="Combined commit message"]'));
+      assert(retained.value === message, 'Combined message must survive real hook failure');
+      await until('failed combine record visible', () => panel.querySelector('.rewrite-record')?.textContent?.includes(record.backupRef));
+      await verify('hookFailure');
+      checks.push('M3 DOM combine rejected by real hook: original branch/tree unchanged, backup and failed record retained, edited message preserved');
+      continue;
+    }
+    assert(combined.state === 'succeeded', `Combine failed: ${combined.error?.message ?? combined.reason}`);
+    const installed = await api.getStatus(fixture.repositoryId);
+    assert(installed.head.kind === 'branch' && installed.head.oid === record.replacementHead && installed.head.oid !== originalHead, 'Combined replacement must be installed on original branch');
+    const details = await api.getCommit(fixture.repositoryId, installed.head.oid);
+    assert(details.parents.length === 1 && details.parents[0] === fixture.baseOid && details.message.trim() === message, 'Replacement must have chosen message and parent before selected suffix');
+    await verify('combined');
+    await invoke('native_smoke_m3_edit', { repositoryId: fixture.repositoryId, commit: scenario === 'staleRecovery' });
+    await refreshRepository();
+    const afterEdits = await api.getStatus(fixture.repositoryId);
+    const records = await api.listRewrites(fixture.repositoryId);
+    const current = records.find(item => item.recoveryId === record.recoveryId);
+    assert(current, 'Recovery journal must persist after external edits');
+    const recordElement = await until('recovery record renders', () => [...panel.querySelectorAll<HTMLElement>('.rewrite-record')].find(node => node.textContent?.includes(record.backupRef)));
+    if (scenario === 'staleRecovery') {
+      assert(!current.canRecover, 'Later branch commit must block automatic recovery');
+      await until('stale recovery control disabled', () => [...recordElement.querySelectorAll<HTMLButtonElement>('button')].some(node => node.textContent === 'Preview recovery' && node.disabled));
+      const rejected = await api.planAction(fixture.repositoryId, { kind: 'recoverCombine', statusSnapshotId: afterEdits.snapshotId, recoveryId: record.recoveryId });
+      assert(rejected.kind === 'blocked', 'Backend must also reject recovery after a later branch commit');
+      await verify('stale');
+      checks.push('M3 DOM backup record disabled recovery after later branch commit; real backend rejected stale recovery and preserved later history');
+    } else {
+      assert(afterEdits.dirty && afterEdits.counts.staged > 0 && afterEdits.counts.unstaged > 0 && afterEdits.counts.untracked > 0, 'Recovery fixture must contain later staged, unstaged and untracked edits');
+      assert(current.canRecover, 'Later working-file edits must still allow guarded recovery');
+      const recovered = await operation('recoverCombine', fixture.repositoryId, async () => {
+        await click('Preview recovery', recordElement);
+        const preview = await until('recovery preview', () => repository.querySelector<HTMLDialogElement>('dialog[open]'));
+        assert(preview.textContent?.includes('preserves working-file edits'), 'Recovery preview must explain edit preservation');
+        await click('Run recoverCombine', preview);
+      });
+      assert(recovered.state === 'succeeded', `Recovery failed: ${recovered.error?.message ?? recovered.reason}`);
+      const restored = await api.getStatus(fixture.repositoryId);
+      assert(restored.head.kind === 'branch' && restored.head.oid === originalHead, 'Recovery must restore original branch tip');
+      assert(JSON.stringify(restored.counts) === JSON.stringify(afterEdits.counts), 'Recovery must preserve staged/unstaged/untracked states');
+      await verify('recovered');
+      checks.push('M3 DOM exact two-tip combine preserved final tree and backup; recovery restored original history while preserving later staged/unstaged/untracked contents');
+    }
+  }
+}
+
+async function runPerformanceSmoke(checks: string[]) {
+  const started = performance.now();
+  const fixture = await invoke<{ repositoryId: string; path: string }>('native_smoke_performance');
+  const opened = await api.openRepository(fixture.path);
+  const repository = await until('performance repository opens', () => {
+    const node = document.querySelector<HTMLElement>('.repository-screen');
+    return node?.querySelector('.repository-title strong')?.getAttribute('title') === opened.displayPath ? node : null;
+  });
+  const scroll = await until('first 200 history rows laid out', () => {
+    const node = repository.querySelector<HTMLDivElement>('.history-list');
+    const layout = node?.firstElementChild as HTMLElement | null;
+    return node && layout && Number.parseFloat(layout.style.height) >= 200 * 44 && node.querySelector('.history-row') ? node : null;
+  });
+  const firstRenderMs = performance.now() - started;
+  const rowsBefore = scroll.querySelectorAll('.history-row').length;
+  assert(rowsBefore > 0 && rowsBefore < 80, `Virtualization must bound first-page DOM rows: ${rowsBefore}`);
+  const firstVisibleOid = () => [...scroll.querySelectorAll<HTMLButtonElement>('.history-row')].find(row => {
+    const box = row.getBoundingClientRect(), viewport = scroll.getBoundingClientRect();
+    return box.bottom > viewport.top && box.top < viewport.bottom;
+  })?.title.split('\n')[0];
+  const beforeOid = firstVisibleOid();
+  assert(beforeOid && scroll.scrollHeight > scroll.clientHeight, 'History viewport must be bounded and scrollable');
+  const scrolled = performance.now();
+  scroll.scrollTop = scroll.scrollHeight;
+  scroll.dispatchEvent(new Event('scroll'));
+  await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+  await until('virtual history scroll changes visible OID', () => firstVisibleOid() && firstVisibleOid() !== beforeOid);
+  const scrollMs = performance.now() - scrolled;
+  const rowsAfter = scroll.querySelectorAll('.history-row').length;
+  assert(rowsAfter > 0 && rowsAfter < 80, `Virtualized scrolled DOM rows must stay bounded: ${rowsAfter}`);
+  checks.push(`Native WebView 10,000-commit fixture: fixture creation plus navigation to first 200-row layout ${firstRenderMs.toFixed(1)} ms; scroll including two animation frames ${scrollMs.toFixed(1)} ms; rendered rows ${rowsBefore} before/${rowsAfter} after, visible OID changed`);
+}
+
+async function startRunningOperationReload(checks: string[]) {
+  const fixture = await invoke<{ repositoryId: string; operationId: string; path: string }>('native_smoke_slow_commit');
+  await until('slow commit actually running before full reload', async () => {
+    const operation = (await api.getOperations()).find(item => item.operationId === fixture.operationId);
+    assert(!operation || operation.state === 'queued' || operation.state === 'running', `Slow fixture completed before reload could be tested: ${operation?.state}`);
+    return operation?.state === 'running';
+  });
+  const marker: ReloadMarker = { version: 1, ...fixture, checks: [...checks] };
+  sessionStorage.setItem(reloadKey, JSON.stringify(marker));
+  assert(sessionStorage.getItem(reloadKey), 'Reload checkpoint must be retained in sessionStorage');
+  await progressWrite;
+  window.location.reload();
+}
+
+async function finishRunningOperationReload(marker: ReloadMarker, checks: string[]) {
+  assert(marker.version === 1 && typeof marker.repositoryId === 'string' && typeof marker.operationId === 'string', 'Native reload checkpoint must be valid');
+  // The helper is idempotent: requeue this repository's navigation after React's
+  // full remount, without starting another mutation or replaying an action plan.
+  const fixture = await invoke<{ repositoryId: string; operationId: string; path: string }>('native_smoke_slow_commit');
+  assert(fixture.repositoryId === marker.repositoryId && fixture.operationId === marker.operationId && fixture.path === marker.path, 'Reload must reconnect to the original repository and operation');
+  const completed = await until('original commit completes after full reload', async () => (await api.getOperations()).find(item => item.operationId === marker.operationId && !['queued', 'running'].includes(item.state)), 120000);
+  assert(completed.state === 'succeeded', `Commit did not survive WebView reload: ${completed.error?.message ?? completed.reason}`);
+  const opened = await api.openRepository(marker.path);
+  const repository = await until('reloaded repository view restored', () => {
+    const node = document.querySelector<HTMLElement>('.repository-screen');
+    return node?.querySelector('.repository-title strong')?.getAttribute('title') === opened.displayPath ? node : null;
+  });
+  await until('reloaded UI reconciles original operation outcome', () => repository.querySelector('.repository-activity')?.textContent?.includes('commit: succeeded'));
+  const status = await api.getStatus(marker.repositoryId);
+  assert(status.head.kind === 'branch' && !status.dirty && status.counts.staged === 0, 'Reloaded operation must leave its successfully committed fixture clean');
+  const history = await api.getHistory(marker.repositoryId, 'HEAD');
+  assert(history.commits.length >= 2 && history.commits[0].oid === status.head.oid, 'Reloaded repository must expose the actual newly committed history');
+  await until('reloaded UI refreshes actual clean state', () => repository.querySelector('.repository-title')?.textContent?.includes('Clean'));
+  checks.push('Full native WebView reload during a running commit preserved the original backend operation; restarted renderer queried success, restored repository navigation, and displayed committed clean state');
+}
+
 export async function runNativeSmoke(): Promise<void> {
-  const checks: string[] = [];
+  const checks = progressChecks();
   let result: SmokeResult;
   try {
+    const reloadCheckpoint = sessionStorage.getItem(reloadKey);
+    if (reloadCheckpoint) {
+      const marker = JSON.parse(reloadCheckpoint) as ReloadMarker;
+      assert(Array.isArray(marker.checks) && marker.checks.every(check => typeof check === 'string'), 'Reload checkpoint must retain prior verification results');
+      checks.push(...marker.checks);
+      await finishRunningOperationReload(marker, checks);
+      sessionStorage.removeItem(reloadKey);
+      await progressWrite;
+      await invoke('native_smoke_report', { result: { passed: true, checks } satisfies SmokeResult });
+      return;
+    }
     const context = await invoke<SmokeContext>('native_smoke_context');
     const group = await region('Repository group');
     const project = await api.openProject(context.projectPath);
@@ -201,12 +448,20 @@ export async function runNativeSmoke(): Promise<void> {
 
     const cleanMember = project.members.find(member => member.kind === 'ready' && member.repositoryId === clean.repositoryId);
     assert(cleanMember, 'Clean fixture must be a group member');
+    const groupSearch = group.querySelector<HTMLInputElement>('input[type="search"]');
+    assert(groupSearch, 'Group search control must exist');
+    type(groupSearch, cleanMember.label);
+    await until('group filter applied', () => group.querySelectorAll('.group-table-scroll tbody tr').length === 1);
     const cleanRow = [...group.querySelectorAll<HTMLTableRowElement>('.group-table-scroll tbody tr')].find(row => row.querySelector('.group-path')?.getAttribute('title') === cleanMember.displayPath);
     assert(cleanRow, 'Clean member row must be rendered');
+    const selectedMember = cleanRow.querySelector<HTMLInputElement>('input[type="checkbox"]');
+    assert(selectedMember, 'Group member checkbox must exist');
+    if (!selectedMember.checked) selectedMember.click();
     await click(cleanMember.label, cleanRow);
     const repository = await region('Repository');
     await until('virtualized history renders', () => repository.querySelector<HTMLButtonElement>('.history-row'));
-    repository.querySelector<HTMLButtonElement>('.history-row')!.click();
+    await checkHistoryKeyboardAndAlignment(repository, checks);
+    await checkNativeAppearance(checks);
     const commitDetails = await region('Commit details');
     const historicalFile = await until('historical changed file', () => commitDetails.querySelector<HTMLButtonElement>('.file-list button'));
     historicalFile.click();
@@ -236,6 +491,10 @@ export async function runNativeSmoke(): Promise<void> {
     await until('stage reflected in commit control', () => [...repository.querySelectorAll<HTMLButtonElement>('button')].find(node => node.textContent === 'Commit staged changes (1)'));
     const message = `Native smoke staged-only commit ${Date.now()}`;
     const messageInput = await until('commit message editor', () => repository.querySelector<HTMLTextAreaElement>('#commit-message'));
+    messageInput.focus();
+    const focusStyle = getComputedStyle(messageInput);
+    assert(document.activeElement === messageInput && focusStyle.outlineStyle !== 'none' && Number.parseFloat(focusStyle.outlineWidth) >= 2, 'Keyboard-editable commit field must display a visible focus outline');
+    checks.push('Native commit editor accepts focus with a visible outline');
     type(messageInput, message);
     const committed = await operation('commit', clean.repositoryId, () => click('Commit staged changes (1)', repository));
     assert(committed.state === 'succeeded', `Commit failed: ${committed.error?.message ?? committed.reason}`);
@@ -276,6 +535,11 @@ export async function runNativeSmoke(): Promise<void> {
     assert(JSON.stringify((await api.getStatus(clean.repositoryId)).head) === JSON.stringify(committedStatus.head), 'Failed commit must not advance HEAD');
     await click('← Back', repository);
     const returnedGroup = await region('Repository group');
+    assert(returnedGroup.querySelector<HTMLInputElement>('input[type="search"]')?.value === cleanMember.label, 'Group search must survive repository navigation');
+    const restoredSelection = [...returnedGroup.querySelectorAll<HTMLTableRowElement>('.group-table-scroll tbody tr')].find(row => row.querySelector('.group-path')?.getAttribute('title') === cleanMember.displayPath)?.querySelector<HTMLInputElement>('input[type="checkbox"]');
+    assert(restoredSelection?.checked, 'Group checked selection must survive repository navigation');
+    checks.push('Returning from repository preserved the group search filter and checked member');
+    await click('Clear filters', returnedGroup);
     await click('Refresh', returnedGroup);
     await until('returned dashboard refreshed', () => [...returnedGroup.querySelectorAll<HTMLTableRowElement>('.group-table-scroll tbody tr')].some(row => row.textContent?.includes(cleanMember.label) && row.textContent.includes('1 staged')));
     const returnedRow = [...returnedGroup.querySelectorAll<HTMLTableRowElement>('.group-table-scroll tbody tr')].find(row => row.querySelector('.group-path')?.getAttribute('title') === cleanMember.displayPath);
@@ -283,6 +547,8 @@ export async function runNativeSmoke(): Promise<void> {
     await click(cleanMember.label, returnedRow);
     const retained = await until('retained draft after navigation', () => document.querySelector<HTMLTextAreaElement>('#commit-message'));
     assert(retained.value === failedMessage, 'Draft must survive leaving and reopening repository');
+    await until('operation state reconciled after repository remount', () => document.querySelector('.repository-activity')?.textContent?.includes('commit: failed'));
+    checks.push('Repository remount queried real operation snapshots and restored failed commit activity without relying on prior events');
     checks.push('Real rejecting hook failed without moving HEAD; draft survived failure and navigation; group status refreshed');
 
     const forward = (mode: 'repository' | 'welcome' | 'invalid' | 'project') => invoke<{ exitCode: number; stdout: string; stderr: string }>('native_smoke_forward_launch', { mode });
@@ -291,13 +557,14 @@ export async function runNativeSmoke(): Promise<void> {
     assert(document.querySelector('.repository-screen') && document.querySelector<HTMLTextAreaElement>('#commit-message')?.value === failedMessage, 'Invalid CLI must leave the current repository and draft untouched');
     checks.push('Warm invalid explicit repository CLI returned nonzero without changing the open repository');
 
+    const warmLaunchStarted = performance.now();
     const welcomeLaunch = await forward('welcome');
     assert(welcomeLaunch.exitCode === 0, `Warm welcome launch failed: ${welcomeLaunch.stderr}`);
     await until('warm no-argument launch outside Git shows welcome', () => {
       const welcome = document.querySelector<HTMLElement>('.welcome');
       return welcome && visible(welcome) ? welcome : null;
     });
-    checks.push('Warm no-argument CLI from outside Git forwarded to welcome');
+    checks.push(`Warm no-argument CLI from outside Git forwarded to welcome; CLI subprocess through visible welcome render ${(performance.now() - warmLaunchStarted).toFixed(1)} ms`);
 
     const repositoryLaunch = await forward('repository');
     assert(repositoryLaunch.exitCode === 0, `Warm repository launch failed: ${repositoryLaunch.stderr}`);
@@ -314,9 +581,14 @@ export async function runNativeSmoke(): Promise<void> {
     assert(forwardedGroup.querySelectorAll('.group-table-scroll tbody tr').length === project.members.length, 'Warm project launch must retain all fixture members');
     checks.push('Warm group CLI resolved relative project path from invoking cwd and displayed the requested group');
     if (context.m2) await runMergeSmoke(checks);
-    result = { passed: true, checks };
+    if (context.m3) await runCombineSmoke(checks);
+    if (context.performance) await runPerformanceSmoke(checks);
+    await startRunningOperationReload(checks);
+    return; // The reloaded renderer resumes above and submits the final report.
   } catch (cause) {
+    sessionStorage.removeItem(reloadKey);
     result = { passed: false, checks, error: errorMessage(cause), body: document.body.innerText.slice(0, 16000) };
   }
+  await progressWrite;
   await invoke('native_smoke_report', { result });
 }

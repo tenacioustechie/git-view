@@ -23,6 +23,7 @@ impl GitEngine {
         let mut target_ref = None;
         let mut summary = None;
         let mut squash_start = None;
+        let mut rewrite = None;
         let finish_squash = matches!(action, RepositoryAction::Commit { .. })
             && status.git_state == GitState::SquashMerge;
         let snapshot_id = match &action {
@@ -48,7 +49,13 @@ impl GitEngine {
                 status_snapshot_id, ..
             }
             | RepositoryAction::ContinueMerge { status_snapshot_id }
-            | RepositoryAction::AbortMerge { status_snapshot_id } => Some(status_snapshot_id),
+            | RepositoryAction::AbortMerge { status_snapshot_id }
+            | RepositoryAction::CombineCommits {
+                status_snapshot_id, ..
+            }
+            | RepositoryAction::RecoverCombine {
+                status_snapshot_id, ..
+            } => Some(status_snapshot_id),
             RepositoryAction::Fetch { .. } => None,
         };
         if let Some(snapshot_id) = snapshot_id {
@@ -478,6 +485,34 @@ impl GitEngine {
                     format!("Merge {} ({oid}) into {branch} at {original_head}; allow fast-forward or create a normal merge commit.",source.full_name)
                 });
             }
+            RepositoryAction::CombineCommits {
+                commit_oids,
+                message,
+                ..
+            } => {
+                rewrite = Some(
+                    Box::pin(self.prepare_combine(
+                        &repo,
+                        status,
+                        &observed.fingerprint,
+                        commit_oids,
+                        message,
+                    ))
+                    .await?,
+                );
+                args = Vec::new();
+                summary=Some(format!("Replace these {} tip commits with one commit: {}. Original HEAD is retained in a backup ref. This rewrites history; remote-tracking refs cannot prove these commits are unpublished. Message: {}",commit_oids.len(),commit_oids.join(", "),message));
+                destination = Some(match &status.head {
+                    Head::Branch { name, oid } => format!("{name} at {oid}"),
+                    _ => String::new(),
+                });
+            }
+            RepositoryAction::RecoverCombine { recovery_id, .. } => {
+                rewrite = Some(Box::pin(self.prepare_recovery(&repo, status, recovery_id)).await?);
+                args = Vec::new();
+                summary=Some("Restore the recorded original branch tip using verified backup refs. The index and working files are left byte-for-byte unchanged; later commits or a changed branch block recovery.".into());
+                destination = Some(recovery_id.clone());
+            }
             RepositoryAction::ContinueMerge { .. } => {
                 if status.git_state != GitState::Merge {
                     return Err(AppError::new(
@@ -513,6 +548,7 @@ impl GitEngine {
             head_guard: None,
             squash_start,
             finish_squash,
+            rewrite,
             action,
             args,
             input,
@@ -594,6 +630,9 @@ impl GitEngine {
             }
         }
         check_canceled()?;
+        if let Some(rewrite) = &plan.rewrite {
+            return Box::pin(self.execute_rewrite(&plan.repository, rewrite, &canceled)).await;
+        }
         let _squash_activity = plan
             .squash_start
             .as_ref()

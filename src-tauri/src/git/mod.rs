@@ -1,6 +1,9 @@
 mod actions;
 mod history;
 mod merge;
+mod ref_guard;
+mod rewrite;
+mod rewrite_config;
 mod runner;
 mod status;
 use crate::contracts::*;
@@ -55,6 +58,8 @@ pub(crate) struct State {
 pub struct GitEngine {
     pub(crate) state: Arc<Mutex<State>>,
     pub(crate) runner: runner::Runner,
+    #[cfg(test)]
+    pub(crate) rewrite_failure: Arc<std::sync::Mutex<Option<String>>>,
 }
 #[derive(Clone)]
 pub struct PreparedAction {
@@ -70,6 +75,7 @@ pub struct PreparedAction {
     pub(crate) head_guard: Option<Head>,
     pub(crate) squash_start: Option<merge::SquashJournal>,
     pub(crate) finish_squash: bool,
+    pub(crate) rewrite: Option<rewrite::PreparedRewrite>,
 }
 impl PreparedAction {
     /// Restrict a filtered batch fetch to the HEAD observed in its preview.
@@ -259,3 +265,6 @@ impl GitEngine {
             .ok_or_else(|| AppError::new("stale_snapshot", "Refresh the repository selection."))
     }
 }
+
+#[cfg(test)]
+mod rewrite_tests;

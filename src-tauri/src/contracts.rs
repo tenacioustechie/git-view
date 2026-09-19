@@ -277,6 +277,15 @@ pub enum RepositoryAction {
     AbortMerge {
         status_snapshot_id: String,
     },
+    CombineCommits {
+        status_snapshot_id: String,
+        commit_oids: Vec<String>,
+        message: String,
+    },
+    RecoverCombine {
+        status_snapshot_id: String,
+        recovery_id: String,
+    },
 }
 impl RepositoryAction {
     pub fn kind(&self) -> &'static str {
@@ -293,8 +302,29 @@ impl RepositoryAction {
             Self::SquashMerge { .. } => "squashMerge",
             Self::ContinueMerge { .. } => "continueMerge",
             Self::AbortMerge { .. } => "abortMerge",
+            Self::CombineCommits { .. } => "combineCommits",
+            Self::RecoverCombine { .. } => "recoverCombine",
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RewriteRecord {
+    pub recovery_id: String,
+    pub phase: String,
+    pub branch: String,
+    pub original_head: String,
+    pub replacement_head: Option<String>,
+    pub base_oid: String,
+    pub tree_oid: String,
+    pub backup_ref: String,
+    pub replacement_ref: Option<String>,
+    pub commit_oids: Vec<String>,
+    pub message: String,
+    pub created_at: String,
+    pub error: Option<String>,
+    pub can_recover: bool,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(

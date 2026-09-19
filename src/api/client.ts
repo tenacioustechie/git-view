@@ -26,4 +26,5 @@ export const api = {
   getOperations: (batchId: string | null = null) => invoke<T.OperationResult[]>('get_operations', { batchId }),
   getLaunchRequest: () => invoke<T.LaunchRequest | null>('get_launch_request'),
   ackLaunchRequest: (requestId: string) => invoke<void>('ack_launch_request', { requestId }),
+  listRewrites: (repositoryId: string) => invoke<T.RewriteRecord[]>('list_rewrites', { repositoryId }),
 };

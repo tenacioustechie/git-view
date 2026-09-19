@@ -13,12 +13,13 @@ export function App() {
   const [busy,setBusy]=useState(false);
   const [projectName,setProjectName]=useState('');
   const opening=useRef(false);
+  const dialogPending=useRef(false);
   const acceptRepository=useCallback((repo:RepositoryOpen)=>{setRepository(repo);setError(null);},[]);
-  async function perform(task:()=>Promise<void>) {setBusy(true);setError(null);try {await task();} catch(e) {setError(errorMessage(e));} finally {setBusy(false);}}
+  async function perform(task:()=>Promise<void>) {dialogPending.current=true;setBusy(true);setError(null);try {await task();} catch(e) {setError(errorMessage(e));} finally {dialogPending.current=false;setBusy(false);}}
   useEffect(()=>{
     let disposed=false;
     const intake=async()=>{
-      if(opening.current || document.querySelector('dialog[open]')) return;
+      if(opening.current || dialogPending.current || document.querySelector('dialog[open]')) return;
       opening.current=true;
       try {
         const request=await api.getLaunchRequest();
