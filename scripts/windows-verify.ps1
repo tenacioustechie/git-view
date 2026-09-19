@@ -21,7 +21,7 @@ pnpm.cmd build
 if ($LASTEXITCODE -ne 0) { throw 'Smoke frontend build failed' }
 cargo build --manifest-path src-tauri/Cargo.toml --features native-smoke,tauri/custom-protocol
 if ($LASTEXITCODE -ne 0) { throw 'Native smoke build failed' }
-$env:GIT_VIEW_NATIVE_SMOKE_REPORT = Join-Path $env:TEMP ('git-view-native-' + (git rev-parse --short HEAD) + '.json')
+$env:GIT_VIEW_NATIVE_SMOKE_REPORT = Join-Path $env:TEMP ('git-view-native-' + (git rev-parse --short HEAD) + '-' + [guid]::NewGuid().ToString('N') + '.json')
 $smoke = Start-Process -FilePath 'C:\codeme\git-view\src-tauri\target\debug\git-view.exe' -WorkingDirectory $env:TEMP -PassThru
 if (-not $smoke.WaitForExit(240000)) { Stop-Process -Id $smoke.Id; throw 'Native WebView smoke timed out' }
 if (-not (Test-Path $env:GIT_VIEW_NATIVE_SMOKE_REPORT)) { throw 'Native smoke produced no report' }

@@ -86,7 +86,8 @@ fn portable(mut content: ProjectContent, file: &Path) -> ProjectContent {
     for member in &mut content.repositories {
         let p = Path::new(&member.path);
         if p.is_absolute() && !foreign_path(&member.path) {
-            if let Some(relative) = relative_path(file.parent().unwrap(), p) {
+            let canonical = p.canonicalize().unwrap_or_else(|_| p.to_path_buf());
+            if let Some(relative) = relative_path(file.parent().unwrap(), &canonical) {
                 member.path = relative.to_string_lossy().into_owned();
                 if cfg!(windows) {
                     member.path = member.path.replace('\\', "/");

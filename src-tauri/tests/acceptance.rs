@@ -408,3 +408,59 @@ async fn hundred_members_finish_with_bounded_cancelable_scheduling() {
         .iter()
         .all(|o| matches!(o.state, JobState::Canceled | JobState::Succeeded)));
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn concurrent_project_saves_accept_only_one_revision() {
+    let temp = tempfile::tempdir().unwrap();
+    let engine = GitEngine::isolated();
+    let catalog = Catalog::new();
+    let project = catalog
+        .create(
+            &engine,
+            &temp.path().join("p.json"),
+            ProjectContent {
+                version: 1,
+                name: "Original".into(),
+                repositories: vec![],
+            },
+        )
+        .await
+        .unwrap();
+    let mut first = project.content.clone();
+    first.name = "First".into();
+    let mut second = project.content.clone();
+    second.name = "Second".into();
+    let a = catalog.save(&engine, &project.project_id, &project.revision, first);
+    let b = catalog.save(&engine, &project.project_id, &project.revision, second);
+    let (a, b) = tokio::join!(a, b);
+    assert_ne!(a.is_ok(), b.is_ok());
+    let saved = read_project(Path::new(&project.display_path)).unwrap().0;
+    assert!(saved.name == "First" || saved.name == "Second");
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn unix_backslash_paths_survive_project_save() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("repo\\literal");
+    init(&path);
+    let engine = GitEngine::isolated();
+    let catalog = Catalog::new();
+    let project = catalog
+        .create(
+            &engine,
+            &temp.path().join("p.json"),
+            ProjectContent {
+                version: 1,
+                name: "Paths".into(),
+                repositories: vec![ProjectMember {
+                    path: path.to_str().unwrap().into(),
+                    label: None,
+                }],
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(project.content.repositories[0].path, "repo\\literal");
+    assert!(matches!(project.members[0], RepositoryRow::Ready { .. }));
+}
