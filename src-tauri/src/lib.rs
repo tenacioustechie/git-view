@@ -166,6 +166,7 @@ pub fn run() {
         native_smoke::native_smoke_context,
         native_smoke::native_smoke_prepare_changes,
         native_smoke::native_smoke_fail_hook,
+        native_smoke::native_smoke_forward_launch,
         native_smoke::native_smoke_report
     ]);
     builder

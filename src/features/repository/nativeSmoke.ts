@@ -181,6 +181,35 @@ export async function runNativeSmoke(): Promise<void> {
     const retained = await until('retained draft after navigation', () => document.querySelector<HTMLTextAreaElement>('#commit-message'));
     assert(retained.value === failedMessage, 'Draft must survive leaving and reopening repository');
     checks.push('Real rejecting hook failed without moving HEAD; draft survived failure and navigation; group status refreshed');
+
+    const forward = (mode: 'repository' | 'welcome' | 'invalid' | 'project') => invoke<{ exitCode: number; stdout: string; stderr: string }>('native_smoke_forward_launch', { mode });
+    const invalidLaunch = await forward('invalid');
+    assert(invalidLaunch.exitCode !== 0, 'Invalid explicit repository CLI must exit nonzero');
+    assert(document.querySelector('.repository-screen') && document.querySelector<HTMLTextAreaElement>('#commit-message')?.value === failedMessage, 'Invalid CLI must leave the current repository and draft untouched');
+    checks.push('Warm invalid explicit repository CLI returned nonzero without changing the open repository');
+
+    const welcomeLaunch = await forward('welcome');
+    assert(welcomeLaunch.exitCode === 0, `Warm welcome launch failed: ${welcomeLaunch.stderr}`);
+    await until('warm no-argument launch outside Git shows welcome', () => {
+      const welcome = document.querySelector<HTMLElement>('.welcome');
+      return welcome && visible(welcome) ? welcome : null;
+    });
+    checks.push('Warm no-argument CLI from outside Git forwarded to welcome');
+
+    const repositoryLaunch = await forward('repository');
+    assert(repositoryLaunch.exitCode === 0, `Warm repository launch failed: ${repositoryLaunch.stderr}`);
+    const reopened = await region('Repository');
+    assert(reopened.querySelector('.repository-title strong')?.getAttribute('title') === clean.displayPath, 'Warm repo . must resolve against the second process cwd');
+    const forwardedDraft = await until('draft after warm repository launch', () => reopened.querySelector<HTMLTextAreaElement>('#commit-message'));
+    assert(forwardedDraft.value === failedMessage, 'Canonical repository draft must survive warm CLI navigation');
+    checks.push('Warm repo . used invoking cwd, selected the existing canonical repository, and retained its draft');
+
+    const projectLaunch = await forward('project');
+    assert(projectLaunch.exitCode === 0, `Warm project launch failed: ${projectLaunch.stderr}`);
+    const forwardedGroup = await region('Repository group');
+    await until('warm relative project launch displays correct group', () => forwardedGroup.querySelector('h1')?.textContent === project.name);
+    assert(forwardedGroup.querySelectorAll('.group-table-scroll tbody tr').length === project.members.length, 'Warm project launch must retain all fixture members');
+    checks.push('Warm group CLI resolved relative project path from invoking cwd and displayed the requested group');
     result = { passed: true, checks };
   } catch (cause) {
     result = { passed: false, checks, error: errorMessage(cause), body: document.body.innerText.slice(0, 16000) };

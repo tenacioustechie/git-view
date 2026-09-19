@@ -122,6 +122,34 @@ fn fixture(state: &AppState) -> AppResult<&Fixture> {
         .as_ref()
         .ok_or_else(|| AppError::new("smoke_disabled", "No native fixture active."))
 }
+
+#[tauri::command]
+pub async fn native_smoke_forward_launch(
+    state: State<'_, AppState>,
+    mode: String,
+) -> AppResult<serde_json::Value> {
+    let fixture = fixture(&state)?;
+    let executable =
+        std::env::current_exe().map_err(|e| AppError::new("test_launch", e.to_string()))?;
+    let root = fixture._root.path();
+    let (cwd, args) = match mode.as_str() {
+        "repository" => (Path::new(&fixture.context.clean_path), vec!["repo", "."]),
+        "welcome" => (root, vec![]),
+        "invalid" => (root, vec!["repo", "missing-native-repository"]),
+        "project" => (root, vec!["group", "native.git-view.json"]),
+        _ => return Err(AppError::new("test_launch", "Unknown test mode")),
+    };
+    let output = tokio::process::Command::new(executable)
+        .current_dir(cwd)
+        .env_remove("GIT_VIEW_NATIVE_SMOKE_REPORT")
+        .args(args)
+        .output()
+        .await
+        .map_err(|e| AppError::new("test_launch", e.to_string()))?;
+    Ok(
+        serde_json::json!({"exitCode":output.status.code(),"stdout":String::from_utf8_lossy(&output.stdout),"stderr":String::from_utf8_lossy(&output.stderr)}),
+    )
+}
 #[tauri::command]
 pub fn native_smoke_context(state: State<'_, AppState>) -> AppResult<Context> {
     Ok(fixture(&state)?.context.clone())
