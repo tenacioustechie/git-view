@@ -182,6 +182,7 @@ pub fn run() {
         commands::list_rewrites,
         commands::discover_repositories,
         native_smoke::native_smoke_context,
+        native_smoke::native_smoke_focus,
         native_smoke::native_smoke_discovery_case,
         native_smoke::native_smoke_prepare_changes,
         native_smoke::native_smoke_fail_hook,

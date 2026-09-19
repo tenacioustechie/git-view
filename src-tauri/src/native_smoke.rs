@@ -21,6 +21,13 @@ pub async fn native_smoke_progress(
 }
 
 #[tauri::command]
+pub async fn native_smoke_focus(window: tauri::WebviewWindow) -> AppResult<()> {
+    window
+        .set_focus()
+        .map_err(|e| AppError::new("fixture", e.to_string()))
+}
+
+#[tauri::command]
 pub async fn native_smoke_appearance(
     window: tauri::WebviewWindow,
     theme: String,

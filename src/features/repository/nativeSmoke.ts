@@ -79,8 +79,13 @@ async function focusCommitEditor(repository: HTMLElement) {
   let diagnostics = '';
   let stableFrames = 0;
   let previous: HTMLTextAreaElement | null = null;
+  let lastForegroundRequest = -Infinity;
   try {
     return await until('stable commit editor focus and visible outline', async () => {
+      if (!document.hasFocus() && performance.now() - lastForegroundRequest >= 500) {
+        lastForegroundRequest = performance.now();
+        await invoke('native_smoke_focus');
+      }
       const input = repository.querySelector<HTMLTextAreaElement>('#commit-message');
       if (!input?.isConnected) { diagnostics = 'Commit textarea is absent or detached'; return null; }
       if (document.activeElement !== input) input.focus();
