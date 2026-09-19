@@ -9,7 +9,7 @@ export type Head =
   | { kind: 'detached'; oid: Oid }
   | { kind: 'unborn'; name: string };
 
-export type GitState = 'idle' | 'merge' | 'rebase' | 'cherryPick' | 'revert' | 'other';
+export type GitState = 'idle' | 'merge' | 'squashMerge' | 'rebase' | 'cherryPick' | 'revert' | 'other';
 
 export interface RepositoryStatus {
   repositoryId: RepositoryId;
@@ -23,6 +23,7 @@ export interface RepositoryStatus {
   upstream: null | { ref: string; remote: string; ahead: number | null; behind: number | null };
   lastSuccessfulFetchAt: string | null;
   activeOperationId: string | null;
+  squashMerge?: { originalHead: string; sourceOid: string; sourceRef: string } | null;
 }
 
 export type RepositoryRow =

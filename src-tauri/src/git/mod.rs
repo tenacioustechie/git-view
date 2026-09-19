@@ -1,5 +1,6 @@
 mod actions;
 mod history;
+mod merge;
 mod runner;
 mod status;
 use crate::contracts::*;
@@ -19,6 +20,7 @@ pub(crate) struct Repository {
     pub git_dir: PathBuf,
     pub common_dir: PathBuf,
     pub lock: Arc<Mutex<()>>,
+    pub squash_running: Arc<std::sync::atomic::AtomicBool>,
 }
 #[derive(Clone)]
 pub(crate) struct FileEntry {
@@ -66,6 +68,8 @@ pub struct PreparedAction {
     pub(crate) config_fingerprint: String,
     pub(crate) target_ref: Option<(String, String)>,
     pub(crate) head_guard: Option<Head>,
+    pub(crate) squash_start: Option<merge::SquashJournal>,
+    pub(crate) finish_squash: bool,
 }
 impl PreparedAction {
     /// Restrict a filtered batch fetch to the HEAD observed in its preview.
@@ -208,6 +212,7 @@ impl GitEngine {
                         git_dir,
                         common_dir,
                         lock,
+                        squash_running: Arc::new(std::sync::atomic::AtomicBool::new(false)),
                     },
                 );
                 repository_id

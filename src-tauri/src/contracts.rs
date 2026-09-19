@@ -45,6 +45,7 @@ pub enum Head {
 pub enum GitState {
     Idle,
     Merge,
+    SquashMerge,
     Rebase,
     CherryPick,
     Revert,
@@ -81,6 +82,15 @@ pub struct RepositoryStatus {
     pub upstream: Option<Upstream>,
     pub last_successful_fetch_at: Option<String>,
     pub active_operation_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub squash_merge: Option<SquashMergeState>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SquashMergeState {
+    pub original_head: String,
+    pub source_oid: String,
+    pub source_ref: String,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(

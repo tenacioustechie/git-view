@@ -45,6 +45,10 @@
 .repository-error,.repository-notice { padding:10px 16px; border-bottom:1px solid var(--border); }
 .repository-error { color:var(--danger); display:flex; align-items:center; justify-content:space-between; gap:10px; }
 .repository-notice { background:color-mix(in srgb,var(--accent) 10%,var(--panel)); }
+.merge-notice { display:flex; align-items:center; justify-content:space-between; gap:16px; }
+.merge-notice p { margin:5px 0; font-size:13px; }
+.merge-notice-actions { display:flex; gap:8px; flex-shrink:0; }
+.merge-controls small { display:block; margin:8px 0; }
 .repository-activity { border-top:1px solid var(--border); padding:10px 16px; max-height:180px; overflow:auto; }
 .repository-screen summary { cursor:pointer; }
 .repository-activity li { padding:5px 0; font-size:13px; }

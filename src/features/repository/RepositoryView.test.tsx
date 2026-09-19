@@ -97,4 +97,57 @@ describe('repository workflows (mocked IPC)', () => {
     fireEvent.change(parents, { target: { value: fixtures.mergeCommit.parents[1] } });
     await waitFor(() => expect(api.getCommit).toHaveBeenLastCalledWith(repository.repositoryId, fixtures.mergeCommit.oid, fixtures.mergeCommit.parents[1]));
   });
+  it('previews separate ordinary merge and squash merge actions with source and target', async () => {
+    vi.mocked(api.listRefs).mockResolvedValue([{ fullName: 'refs/heads/feature', label: 'feature', oid: 'feature-tip', kind: 'local' }]);
+    vi.mocked(api.planAction).mockResolvedValue({ kind: 'eligible', planId: 'merge-plan', expiresAt: '2030-01-01T00:00:00Z', summary: 'Merge feature-tip into main-tip', destination: 'refs/heads/main' });
+    render(<RepositoryView repository={repository} />);
+    fireEvent.click(screen.getByText('Merge branches'));
+    await within(screen.getByLabelText('Merge source branch')).findByRole('option', { name: 'feature' });
+    fireEvent.change(screen.getByLabelText('Merge source branch'), { target: { value: 'refs/heads/feature' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Merge branch' }));
+    const normalPreview = await screen.findByRole('dialog');
+    expect(normalPreview.textContent).toContain('refs/heads/feature');
+    expect(normalPreview.textContent).toContain('Current target: main');
+    expect(api.planAction).toHaveBeenLastCalledWith(repository.repositoryId, { kind: 'merge', statusSnapshotId: repository.status.snapshotId, sourceRef: 'refs/heads/feature' });
+    expect(api.runAction).not.toHaveBeenCalled();
+    fireEvent.click(within(normalPreview).getByRole('button', { name: 'Cancel' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Squash merge branch' }));
+    const squashPreview = await screen.findByRole('dialog');
+    expect(squashPreview.textContent).toContain('result stays staged');
+    expect(api.planAction).toHaveBeenLastCalledWith(repository.repositoryId, { kind: 'squashMerge', statusSnapshotId: repository.status.snapshotId, sourceRef: 'refs/heads/feature' });
+    expect(api.runAction).not.toHaveBeenCalled();
+  });
+  it('exposes ordinary merge abort but prevents continuation while conflicts remain', async () => {
+    repository.status = { ...repository.status, gitState: 'merge', counts: { staged: 0, unstaged: 0, untracked: 0, conflicted: 1 } };
+    vi.mocked(api.getStatus).mockResolvedValue(repository.status);
+    render(<RepositoryView repository={repository} />);
+    expect((screen.getByRole('button', { name: 'Continue merge' }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Abort merge' }));
+    await screen.findByRole('dialog');
+    expect(api.planAction).toHaveBeenLastCalledWith(repository.repositoryId, { kind: 'abortMerge', statusSnapshotId: repository.status.snapshotId });
+    expect(api.runAction).not.toHaveBeenCalled();
+  });
+  it('continues a resolved ordinary merge through a fresh plan', async () => {
+    repository.status = { ...repository.status, gitState: 'merge' };
+    vi.mocked(api.getStatus).mockResolvedValue(repository.status);
+    render(<RepositoryView repository={repository} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Continue merge' }));
+    const preview = await screen.findByRole('dialog');
+    fireEvent.click(within(preview).getByRole('button', { name: 'Run continueMerge' }));
+    await waitFor(() => expect(api.runAction).toHaveBeenCalledWith('plan'));
+    expect(api.planAction).toHaveBeenLastCalledWith(repository.repositoryId, { kind: 'continueMerge', statusSnapshotId: repository.status.snapshotId });
+  });
+  it('restores squash review from backend state and offers an explicit normal commit without ordinary abort', async () => {
+    repository.status = { ...repository.status, gitState: 'squashMerge', squashMerge: { originalHead: 'original-tip', sourceOid: 'source-tip', sourceRef: 'refs/heads/feature' } };
+    vi.mocked(api.getStatus).mockResolvedValue(repository.status);
+    render(<RepositoryView repository={repository} />);
+    expect(screen.getByText('Squash merge review')).toBeTruthy();
+    expect(screen.getByRole('status').textContent).toContain('Original HEAD: original-tip');
+    expect(screen.getByRole('status').textContent).toContain('does not create MERGE_HEAD');
+    expect(screen.queryByRole('button', { name: 'Abort merge' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Continue merge' })).toBeNull();
+    fireEvent.change(await screen.findByLabelText('Commit message'), { target: { value: 'Reviewed squash result' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Commit staged changes (1)' }));
+    await waitFor(() => expect(api.planAction).toHaveBeenCalledWith(repository.repositoryId, { kind: 'commit', statusSnapshotId: repository.status.snapshotId, message: 'Reviewed squash result' }));
+  });
 });

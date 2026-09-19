@@ -226,6 +226,12 @@ impl Runner {
                 e.to_string(),
             )
         })?;
+        if mutation && output.code < 0 {
+            let mut error=AppError::new("outcome_uncertain","Git was interrupted before a normal exit. Refresh repository state and review the operation before retrying.");
+            error.output_truncated = Some(output.truncated);
+            error.details = Some(redact(&String::from_utf8_lossy(&output.stderr)));
+            return Err(error);
+        }
         if !mutation && output.stdout.len() == limit && output.truncated {
             return Err(AppError::new(
                 "output_limit",
@@ -378,6 +384,29 @@ mod tests {
                 .unwrap()
                 .code,
             "git_unavailable"
+        );
+    }
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn signaled_mutation_is_an_uncertain_outcome() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let executable = dir.path().join("interrupted-git");
+        std::fs::write(&executable, "#!/bin/sh\nkill -TERM $$\n").unwrap();
+        std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let runner = Runner {
+            executable: executable.into_os_string(),
+            isolated: true,
+            ..Runner::default()
+        };
+        assert_eq!(
+            runner
+                .run(dir.path(), &[], None, true, DIAGNOSTIC_LIMIT)
+                .await
+                .err()
+                .unwrap()
+                .code,
+            "outcome_uncertain"
         );
     }
 }

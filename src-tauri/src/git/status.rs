@@ -164,7 +164,7 @@ impl GitEngine {
                 }
             }
         }
-        let git_state = if repo.git_dir.join("rebase-merge").exists()
+        let mut git_state = if repo.git_dir.join("rebase-merge").exists()
             || repo.git_dir.join("rebase-apply").exists()
         {
             GitState::Rebase
@@ -179,6 +179,49 @@ impl GitEngine {
         } else {
             GitState::Idle
         };
+        let journal = merge::read_squash(repo)?;
+        if let Some(journal) = &journal {
+            if journal.phase == merge::SquashPhase::Running
+                && !repo
+                    .squash_running
+                    .load(std::sync::atomic::Ordering::Acquire)
+            {
+                return Err(AppError::new("squash_manual_review","The recorded squash attempt was interrupted before its outcome was recorded. Journal and working changes were preserved; review git-view-squash.json in the worktree Git directory manually before removing its marker."));
+            }
+            merge::validate_context(journal, &head)?;
+            if git_state != GitState::Idle {
+                return Err(AppError::new("squash_manual_review","A squash review journal coexists with another Git operation. Journal and working changes were preserved; manual review is required."));
+            }
+            git_state = GitState::SquashMerge;
+            evidence.extend_from_slice(
+                serde_json::to_string(journal)
+                    .expect("serializing squash journal")
+                    .as_bytes(),
+            );
+        }
+        let squash_merge = journal.map(|journal| journal.state);
+        // These files define ordinary merge continuation/abort semantics. Existence
+        // alone is insufficient: external edits must invalidate a prepared action.
+        for name in [
+            "MERGE_HEAD",
+            "MERGE_MSG",
+            "MERGE_MODE",
+            "ORIG_HEAD",
+            "MERGE_AUTOSTASH",
+            "AUTO_MERGE",
+            "CHERRY_PICK_HEAD",
+            "REVERT_HEAD",
+        ] {
+            evidence.extend_from_slice(name.as_bytes());
+            evidence.push(0);
+            if let Some(bytes) = merge::read_metadata(&repo.git_dir.join(name), 512 * 1024)? {
+                evidence.push(1);
+                evidence.extend_from_slice(&(bytes.len() as u64).to_le_bytes());
+                evidence.extend_from_slice(&bytes);
+            } else {
+                evidence.push(0);
+            }
+        }
         evidence.extend_from_slice(format!("{git_state:?}").as_bytes());
         let remote = match &head {
             Head::Branch { name, .. } => {
@@ -227,6 +270,7 @@ impl GitEngine {
             observed_at: now(),
             head,
             git_state,
+            squash_merge,
             dirty: !files.is_empty() || submodule_dirty,
             counts,
             submodule_dirty,
@@ -244,7 +288,19 @@ impl GitEngine {
     }
     pub async fn get_status(&self, repository_id: &str) -> AppResult<RepositoryStatus> {
         let repo = self.repository(repository_id).await?;
-        let snapshot = self.observe(&repo).await?;
+        // Acquire before observing. A clean snapshot captured before a concurrent
+        // squash must never authorize deleting that newer operation's journal.
+        let reconciliation_guard = repo.lock.try_lock().ok();
+        let mut snapshot = self.observe(&repo).await?;
+        if reconciliation_guard.is_some()
+            && snapshot
+                .status
+                .as_ref()
+                .is_some_and(|status| status.git_state == GitState::SquashMerge && !status.dirty)
+        {
+            merge::clear_squash(&repo)?;
+            snapshot = self.observe(&repo).await?;
+        }
         let mut status = snapshot.status.clone().unwrap();
         status.snapshot_id = self.save_snapshot(snapshot).await;
         Ok(status)
@@ -408,5 +464,76 @@ mod tests {
         #[cfg(unix)]
         assert_eq!(os_bytes(&files[0].path), b"raw-\xff");
         assert_eq!(files[1].wire.display_path, "tabs\tand\nlines");
+    }
+    #[tokio::test]
+    async fn observation_cannot_cleanup_journal_using_a_stale_clean_read() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = GitEngine::isolated();
+        for args in [
+            vec!["init", "-b", "main"],
+            vec!["config", "user.name", "Fixture"],
+            vec!["config", "user.email", "fixture@example.invalid"],
+            vec!["config", "commit.gpgsign", "false"],
+            vec!["config", "core.hooksPath", ".disabled-hooks"],
+            vec!["commit", "--allow-empty", "-m", "base"],
+        ] {
+            runner::checked(
+                engine
+                    .runner
+                    .run(
+                        dir.path(),
+                        &runner::args(&args),
+                        None,
+                        true,
+                        runner::DIAGNOSTIC_LIMIT,
+                    )
+                    .await
+                    .unwrap(),
+            )
+            .unwrap();
+        }
+        let opened = engine.open_repository(dir.path()).await.unwrap();
+        let repo = engine.repository(&opened.repository_id).await.unwrap();
+        let oid = match opened.status.head {
+            Head::Branch { oid, .. } => oid,
+            _ => panic!("attached fixture"),
+        };
+        let journal = merge::SquashJournal {
+            version: 1,
+            operation_id: id(),
+            phase: merge::SquashPhase::Review,
+            original_branch: "refs/heads/main".into(),
+            state: SquashMergeState {
+                original_head: oid.clone(),
+                source_oid: oid,
+                source_ref: "refs/heads/source".into(),
+            },
+        };
+        merge::write_squash(&repo, &journal).unwrap();
+        // An observer may see clean bytes while a squash is only just starting.
+        // Merely observing must never clear the journal, even if no lock is held.
+        let stale = engine.observe(&repo).await.unwrap();
+        assert!(!stale.status.unwrap().dirty);
+        assert!(merge::read_squash(&repo).unwrap().is_some());
+        std::fs::write(dir.path().join("new squash result"), "staged").unwrap();
+        runner::checked(
+            engine
+                .runner
+                .run(
+                    dir.path(),
+                    &runner::args(&["add", "--", "new squash result"]),
+                    None,
+                    true,
+                    runner::DIAGNOSTIC_LIMIT,
+                )
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        // Reconciliation must acquire the lock and read the current state afresh.
+        let fresh = engine.get_status(&opened.repository_id).await.unwrap();
+        assert_eq!(fresh.git_state, GitState::SquashMerge);
+        assert_eq!(fresh.counts.staged, 1);
+        assert!(merge::read_squash(&repo).unwrap().is_some());
     }
 }

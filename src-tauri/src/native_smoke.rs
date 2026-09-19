@@ -14,11 +14,13 @@ pub struct Context {
     pub clean_path: String,
     pub dirty_path: String,
     pub merge_path: String,
+    pub m2: bool,
 }
 pub struct Fixture {
     pub context: Context,
     pub report: PathBuf,
     pub _root: tempfile::TempDir,
+    pub cases: std::sync::Mutex<std::collections::HashMap<String, PathBuf>>,
 }
 fn git(path: &Path, args: &[&str]) -> String {
     let output = Command::new("git")
@@ -111,9 +113,11 @@ pub fn setup(report: PathBuf) -> Fixture {
             clean_path: root.path().join("Clean").to_str().unwrap().into(),
             dirty_path: root.path().join("Dirty").to_str().unwrap().into(),
             merge_path: merge.to_str().unwrap().into(),
+            m2: true,
         },
         report,
         _root: root,
+        cases: Default::default(),
     }
 }
 fn fixture(state: &AppState) -> AppResult<&Fixture> {
@@ -121,6 +125,81 @@ fn fixture(state: &AppState) -> AppResult<&Fixture> {
         .smoke
         .as_ref()
         .ok_or_else(|| AppError::new("smoke_disabled", "No native fixture active."))
+}
+
+#[tauri::command]
+pub async fn native_smoke_m2_case(
+    state: State<'_, AppState>,
+    scenario: String,
+) -> AppResult<serde_json::Value> {
+    if ![
+        "merge",
+        "squash",
+        "mergeContinue",
+        "mergeAbort",
+        "squashConflict",
+    ]
+    .contains(&scenario.as_str())
+    {
+        return Err(AppError::new("fixture", "Unsupported merge case"));
+    }
+    let f = fixture(&state)?;
+    let path = f
+        ._root
+        .path()
+        .join(format!("{scenario}-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir(&path).unwrap();
+    git(&path, &["init", "-b", "main"]);
+    configure(&path);
+    std::fs::write(path.join("conflict.txt"), "base\n").unwrap();
+    commit(&path, "Base");
+    git(&path, &["switch", "-c", "feature"]);
+    let conflict = !["merge", "squash"].contains(&scenario.as_str());
+    let file = if conflict {
+        "conflict.txt"
+    } else {
+        "feature.txt"
+    };
+    std::fs::write(path.join(file), "feature\n").unwrap();
+    commit(&path, "Feature");
+    git(&path, &["switch", "main"]);
+    std::fs::write(
+        path.join(if conflict { "conflict.txt" } else { "main.txt" }),
+        "main\n",
+    )
+    .unwrap();
+    commit(&path, "Main");
+    let opened = state.engine.open_repository(&path).await?;
+    f.cases
+        .lock()
+        .unwrap()
+        .insert(opened.repository_id.clone(), path);
+    state.launches.push(LaunchRequest {
+        request_id: uuid::Uuid::new_v4().to_string(),
+        kind: "repository".into(),
+        path: Some(opened.display_path.clone()),
+        error: None,
+    });
+    Ok(
+        serde_json::json!({"repositoryId":opened.repository_id,"path":opened.display_path,"sourceRef":"refs/heads/feature"}),
+    )
+}
+
+#[tauri::command]
+pub async fn native_smoke_resolve_conflicts(
+    state: State<'_, AppState>,
+    repository_id: String,
+) -> AppResult<()> {
+    let path = fixture(&state)?
+        .cases
+        .lock()
+        .unwrap()
+        .get(&repository_id)
+        .cloned()
+        .ok_or_else(|| AppError::new("fixture", "Unknown test-owned repository"))?;
+    std::fs::write(path.join("conflict.txt"), "resolved both sides\n")
+        .map_err(|e| AppError::new("fixture", e.to_string()))?;
+    Ok(())
 }
 
 #[tauri::command]

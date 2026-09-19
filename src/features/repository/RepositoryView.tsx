@@ -37,6 +37,7 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
   const [branchName, setBranchName] = useState('');
   const [switchNew, setSwitchNew] = useState(true);
   const [branchTarget, setBranchTarget] = useState('');
+  const [mergeSource, setMergeSource] = useState('');
   const generation = useRef(0);
   const detailGeneration = useRef(0);
   const submittedDrafts = useRef(new Map<string, string>());
@@ -137,6 +138,9 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
     setBusy(true); setPlanned(null); setError(null);
     try {
       const operation = await api.runAction(plan.planId);
+      if (action.kind === 'squashMerge' || action.kind === 'merge') {
+        detailGeneration.current++; setSelected(null); setDetails(null); setDiffRequest(null);
+      }
       seenOperations.current.set(operation.operationId, operation.state);
       setOperations(old => [...old.filter(item => item.operationId !== operation.operationId), operation]);
       if (action.kind === 'commit') {
@@ -188,7 +192,14 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
       </div></details>
     </header>
     {error && <div role="alert" className="repository-error">{error}<button onClick={() => setError(null)} aria-label="Dismiss error">×</button></div>}
-    {status.gitState !== 'idle' && <div role="status" className="repository-notice">{status.gitState} in progress. Resolve conflicts in your editor, then refresh. Incompatible actions will be blocked.</div>}
+    {status.gitState === 'merge' ? <div role="status" className="repository-notice merge-notice">
+      <div><strong>Merge in progress</strong><p>{status.counts.conflicted > 0 ? 'Resolve each conflicted file in your editor, refresh, then stage its resolution.' : 'Review the staged merge result, then continue to create the merge commit.'}</p></div>
+      <div className="merge-notice-actions"><button onClick={working}>Review working changes</button><button disabled={active || status.counts.conflicted > 0} onClick={() => { void act({ kind: 'continueMerge', statusSnapshotId: status.snapshotId }, true); }}>Continue merge</button><button disabled={active} onClick={() => { void act({ kind: 'abortMerge', statusSnapshotId: status.snapshotId }, true); }}>Abort merge</button></div>
+    </div> : status.gitState === 'squashMerge' ? <div role="status" className="repository-notice merge-notice">
+      <div><strong>Squash merge review</strong><p>{status.counts.conflicted > 0 ? 'Resolve conflicts in your editor, refresh, and stage each resolution. Then review and commit the result below.' : 'Review the staged changes and enter a message below to create one normal commit.'} Squash merge does not create MERGE_HEAD. There is no ordinary merge to continue or abort; keep any wanted changes and use Git externally for manual cleanup.</p>
+        {status.squashMerge && <small>Source: {status.squashMerge.sourceRef} ({status.squashMerge.sourceOid.slice(0, 8)}) · Original HEAD: {status.squashMerge.originalHead}</small>}
+      </div><button onClick={working}>Review working changes</button>
+    </div> : status.gitState !== 'idle' && <div role="status" className="repository-notice">{status.gitState} in progress. Resolve conflicts in your editor, then refresh. Incompatible actions will be blocked.</div>}
     {status.submoduleDirty && <div className="repository-notice">A submodule has working changes. Open the submodule separately to review it.</div>}
     <div className="repository-panels">
       <aside className="repository-refs">
@@ -196,6 +207,13 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
         {(['local', 'remote', 'tag'] as const).map(kind => <div key={kind}><h3>{kind === 'local' ? 'Local branches' : kind === 'remote' ? 'Remote branches' : 'Tags'}</h3>{refs.filter(ref => ref.kind === kind).map(ref => <button title={ref.fullName} key={ref.fullName} className={scope === ref.fullName ? 'selected' : ''} onClick={() => setScope(ref.fullName)}>{ref.label}</button>)}</div>)}
         <details><summary>Switch branch</summary><label>Local branch<select value={branchTarget} onChange={event => setBranchTarget(event.target.value)}><option value="">Choose branch</option>{refs.filter(ref => ref.kind === 'local').map(ref => <option key={ref.fullName} value={ref.fullName}>{ref.label}</option>)}</select></label><button disabled={active || !branchTarget} onClick={() => { void act({ kind: 'switchBranch', statusSnapshotId: status.snapshotId, localRef: branchTarget }, true); }}>Preview switch</button></details>
         <details><summary>Create branch</summary><label>Name<input value={branchName} onChange={event => setBranchName(event.target.value)} /></label><label><input type="checkbox" checked={switchNew} onChange={event => setSwitchNew(event.target.checked)} /> Switch after creating</label><button disabled={active || !branchName || status.head.kind === 'unborn'} onClick={() => { if (status.head.kind !== 'unborn') void act({ kind: 'createBranch', statusSnapshotId: status.snapshotId, name: branchName, startOid: selected ?? status.head.oid, switchAfterCreate: switchNew }, true); }}>Preview create</button><small>Starts at {selected ? selected.slice(0, 8) : 'HEAD'}.</small></details>
+        <details className="merge-controls"><summary>Merge branches</summary>
+          <label>Source branch<select aria-label="Merge source branch" value={mergeSource} onChange={event => setMergeSource(event.target.value)}><option value="">Choose source</option>{refs.filter(ref => (ref.kind === 'local' || ref.kind === 'remote') && (status.head.kind !== 'branch' || ref.fullName !== `refs/heads/${status.head.name}`)).map(ref => <option key={ref.fullName} value={ref.fullName}>{ref.label}</option>)}</select></label>
+          <small>Target: {headLabel}. Start with a clean working tree.</small>
+          <button disabled={active || !mergeSource || status.gitState !== 'idle' || status.head.kind !== 'branch'} onClick={() => { void act({ kind: 'merge', statusSnapshotId: status.snapshotId, sourceRef: mergeSource }, true); }}>Merge branch</button>
+          <button disabled={active || !mergeSource || status.gitState !== 'idle' || status.head.kind !== 'branch'} onClick={() => { void act({ kind: 'squashMerge', statusSnapshotId: status.snapshotId, sourceRef: mergeSource }, true); }}>Squash merge branch</button>
+          <small>Squash merge stages the branch changes for review and an explicit commit.</small>
+        </details>
       </aside>
       <section className="repository-history" aria-label="History">
         <button className={`working-entry ${selected === null ? 'selected' : ''}`} onClick={working}>Working changes <small>{status.counts.staged} staged · {status.counts.unstaged} unstaged · {status.counts.untracked} untracked · {status.counts.conflicted} conflicts</small></button>
@@ -224,7 +242,8 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
             <form className="commit-form" onSubmit={event => { event.preventDefault(); void act({ kind: 'commit', statusSnapshotId: status.snapshotId, message: draft }); }}>
               <label htmlFor="commit-message">Commit message</label><textarea id="commit-message" value={draft} placeholder="Describe the staged changes" onChange={event => { setDraft(event.target.value); drafts.set(id, event.target.value); }} rows={4} />
               <small>Only staged content is committed. Drafts stay with this repository while the app is open.</small>
-              <button type="submit" disabled={active || status.counts.staged === 0 || status.counts.conflicted > 0 || !draft.trim()}>Commit staged changes ({status.counts.staged})</button>
+              {status.gitState === 'merge' && <small>Use Continue merge above to finish this merge.</small>}
+              <button type="submit" disabled={active || status.gitState === 'merge' || status.counts.staged === 0 || status.counts.conflicted > 0 || !draft.trim()}>Commit staged changes ({status.counts.staged})</button>
             </form>
           </>}
         </>}
@@ -233,7 +252,7 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
     </div>
     <details className="repository-activity"><summary>Activity · {operations.length ? `${operations[operations.length - 1].action}: ${operations[operations.length - 1].state}` : 'No operations this session'}</summary><ol>{operations.slice(-30).reverse().map(operation => <li key={operation.operationId}><strong>{operation.action}: {operation.state}</strong>{operation.reason && ` · ${operation.reason}`}{operation.error && <span role="alert"> · {operation.error.message}</span>}{operation.outcomeUncertain && ' · Outcome uncertain. Refresh and inspect the repository before retrying.'}{operation.outputTruncated && ' · Operation output truncated.'}</li>)}</ol></details>
     <dialog ref={dialog} onCancel={() => setPlanned(null)} aria-labelledby="action-preview-title">
-      {planned && <><h2 id="action-preview-title">Review {planned.action.kind}</h2><p>{planned.plan.summary}</p>{planned.plan.destination && <p><strong>Destination:</strong> {planned.plan.destination}</p>}<p>Preconditions are checked again before execution.</p><div className="dialog-actions"><button onClick={() => setPlanned(null)}>Cancel</button><button disabled={busy} onClick={() => { void execute(planned); }}>Run {planned.action.kind}</button></div></>}
+      {planned && <><h2 id="action-preview-title">Review {planned.action.kind === 'squashMerge' ? 'squash merge' : planned.action.kind}</h2><p>{planned.plan.summary}</p>{(planned.action.kind === 'merge' || planned.action.kind === 'squashMerge') && <p><strong>Source:</strong> {planned.action.sourceRef}<br /><strong>Current target:</strong> {headLabel}</p>}{planned.plan.destination && <p><strong>Destination:</strong> {planned.plan.destination}</p>}{planned.action.kind === 'squashMerge' && <p>The result stays staged for review. You must explicitly create the normal commit afterward. Squash conflicts have no ordinary merge abort.</p>}{planned.action.kind === 'abortMerge' && <p>Abort the current ordinary merge. Git will attempt to restore the state before the merge; inspect any changes you made during conflict resolution before proceeding.</p>}<p>Preconditions are checked again before execution.</p><div className="dialog-actions"><button onClick={() => setPlanned(null)}>Cancel</button><button disabled={busy} onClick={() => { void execute(planned); }}>Run {planned.action.kind}</button></div></>}
     </dialog>
   </section>;
 }

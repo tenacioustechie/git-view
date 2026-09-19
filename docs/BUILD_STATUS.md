@@ -97,5 +97,23 @@ See [Microsoft manifest guidance](https://learn.microsoft.com/en-us/windows/win3
 
 M2 ordinary merge and squash-merge implementation now assigned to original Git
 and repository owners. M3 remains behind M2 acceptance and recovery-design gates.
+
+Windows M1 gate at `d5895bd88cb446a7332d560489ace4808f4e5c0f`: typecheck/lint,
+24 frontend tests, 10 Rust unit tests, 6 integrated acceptance tests, 22 Git tests
+(Unix-only byte-path test not applicable), and strict Clippy passed. One explicit
+performance benchmark remains ignored in default suites. Native WebView smoke
+timed out under SSH session 0; rerunning through a temporary Interactive scheduled
+task in Brian's active desktop session passed all 11 real workflow/CLI checks.
+Report: `C:\codeme\git-view\.tools\GitViewNativeSmoke-59807fe367a1446bb3c5488636452012.json`.
+`scripts/windows-desktop-smoke.ps1` removes its temporary task after execution.
+
+M2 initial Mac native smoke passed 16 combined M1/M2 checks. Cross-review then
+hardened merge metadata preconditions, squash-journal cleanup races, and external
+commit/branch reconciliation. Backend evidence: 16 M2, 23 M1, 12 unit tests passed;
+strict Clippy passed. Native rerun pending to close the M2 gate.
+M2 native rerun after review fixes passed all 16 checks; report
+`/tmp/git-view-native-m2-mac.json`. M2 local gate is accepted before starting M3.
+M3 design recorded in `docs/REWRITE_RECOVERY.md`; implementation is now authorized
+under the existing Git/repository worker ownership.
 Linux CI workflow added but not executed; no Linux verification claim.
 User's original README/runbook/setup-doc edits remain preserved and uncommitted.

@@ -21,6 +21,10 @@ impl GitEngine {
         let mut input = None;
         let mut destination = None;
         let mut target_ref = None;
+        let mut summary = None;
+        let mut squash_start = None;
+        let finish_squash = matches!(action, RepositoryAction::Commit { .. })
+            && status.git_state == GitState::SquashMerge;
         let snapshot_id = match &action {
             RepositoryAction::Stage { snapshot_id, .. }
             | RepositoryAction::Unstage { snapshot_id, .. } => Some(snapshot_id),
@@ -148,7 +152,10 @@ impl GitEngine {
                 snapshot_id,
                 file_ids,
             } => {
-                if status.git_state != GitState::Idle {
+                if !matches!(
+                    status.git_state,
+                    GitState::Idle | GitState::Merge | GitState::SquashMerge
+                ) {
                     return Err(AppError::new(
                         "operation_in_progress",
                         "This operation is not available during an ongoing Git operation.",
@@ -213,7 +220,9 @@ impl GitEngine {
                 input = Some(paths);
             }
             RepositoryAction::Commit { message, .. } => {
-                if status.git_state != GitState::Idle || status.counts.conflicted > 0 {
+                if !matches!(status.git_state, GitState::Idle | GitState::SquashMerge)
+                    || status.counts.conflicted > 0
+                {
                     return Err(AppError::new(
                         "operation_in_progress",
                         "Resolve the ongoing Git operation first.",
@@ -391,19 +400,119 @@ impl GitEngine {
                 args = push;
                 destination = Some(format!("{} {destination_ref}", remote.name));
             }
-            _ => return Err(AppError::new(
-                "unsupported",
-                "Merge and history rewriting are not enabled until the M1 acceptance gate passes.",
-            )),
+            RepositoryAction::Merge { source_ref, .. }
+            | RepositoryAction::SquashMerge { source_ref, .. } => {
+                self.require_clean(status)?;
+                let (branch, original_head) = match &status.head {
+                    Head::Branch { name, oid } => (name, oid),
+                    _ => {
+                        return Err(AppError::new(
+                            "invalid_head",
+                            "Merge requires an attached, existing branch.",
+                        ))
+                    }
+                };
+                let references = self.list_refs(repository_id).await?;
+                let source = references
+                    .iter()
+                    .find(|reference| reference.full_name == *source_ref)
+                    .ok_or_else(|| {
+                        AppError::new("invalid_ref", "Select an available source reference.")
+                    })?;
+                let oid = self.resolve_commit(&repo, &source.oid).await?;
+                target_ref = Some((source.full_name.clone(), oid.clone()));
+                let squash = matches!(action, RepositoryAction::SquashMerge { .. });
+                if squash {
+                    let ancestor = self
+                        .runner
+                        .run(
+                            &repo.root,
+                            &runner::args(&["merge-base", "--is-ancestor", &oid, original_head]),
+                            None,
+                            false,
+                            runner::STRUCTURED_LIMIT,
+                        )
+                        .await?;
+                    if ancestor.code == 0 {
+                        return Err(AppError::new(
+                            "already_up_to_date",
+                            "The source is already included in the current branch.",
+                        ));
+                    }
+                    if ancestor.code != 1 {
+                        runner::checked(ancestor)?;
+                    }
+                    squash_start = Some(merge::SquashJournal {
+                        version: 1,
+                        operation_id: id(),
+                        phase: merge::SquashPhase::Running,
+                        original_branch: format!("refs/heads/{branch}"),
+                        state: SquashMergeState {
+                            original_head: original_head.clone(),
+                            source_oid: oid.clone(),
+                            source_ref: source.full_name.clone(),
+                        },
+                    });
+                }
+                args = runner::args(&[
+                    "-c",
+                    &format!("branch.{branch}.mergeOptions="),
+                    "-c",
+                    "merge.autoStash=false",
+                    "merge",
+                    "--no-edit",
+                    "--no-autostash",
+                    "--ff",
+                    if squash { "--squash" } else { "--no-squash" },
+                    if squash { "--no-commit" } else { "--commit" },
+                    "--",
+                    &oid,
+                ]);
+                destination = Some(format!(
+                    "{} ({oid}) → {branch} ({original_head})",
+                    source.full_name
+                ));
+                summary = Some(if squash {
+                    format!("Squash-merge {} ({oid}) into {branch} at {original_head}. Leave the result staged for review and a separate normal commit; no ordinary merge abort is available.",source.full_name)
+                } else {
+                    format!("Merge {} ({oid}) into {branch} at {original_head}; allow fast-forward or create a normal merge commit.",source.full_name)
+                });
+            }
+            RepositoryAction::ContinueMerge { .. } => {
+                if status.git_state != GitState::Merge {
+                    return Err(AppError::new(
+                        "invalid_operation",
+                        "There is no ordinary merge to continue.",
+                    ));
+                }
+                if status.counts.conflicted > 0 {
+                    return Err(AppError::new(
+                        "unresolved_conflicts",
+                        "Resolve and stage every conflict before continuing the merge.",
+                    ));
+                }
+                args = runner::args(&["commit", "--no-edit"]);
+                summary=Some("Complete the ordinary merge with its recorded message, normal hooks, and signing configuration.".into());
+            }
+            RepositoryAction::AbortMerge { .. } => {
+                if status.git_state != GitState::Merge {
+                    return Err(AppError::new("invalid_operation","Only an ordinary merge with MERGE_HEAD can be aborted. Squash changes require manual review and cleanup."));
+                }
+                args = runner::args(&["merge", "--abort"]);
+                summary=Some("Abort the ordinary merge. Git will try to restore its pre-merge state; uncommitted resolution edits may be discarded.".into());
+            }
         }
         Ok(PreparedAction {
-            summary: format!("{} in {}", action.kind(), repo.root.to_string_lossy()),
+            summary: summary
+                .unwrap_or_else(|| format!("{} in {}", action.kind(), repo.root.to_string_lossy())),
             destination,
             repository: repo.clone(),
             fingerprint: snapshot_id.map(|_| observed.fingerprint),
             config_fingerprint: self.config_fingerprint(&repo).await?,
             target_ref,
             head_guard: None,
+            squash_start,
+            finish_squash,
             action,
             args,
             input,
@@ -485,16 +594,27 @@ impl GitEngine {
             }
         }
         check_canceled()?;
-        let output = runner::checked(
-            self.runner.run(
+        let _squash_activity = plan
+            .squash_start
+            .as_ref()
+            .map(|_| merge::SquashActivity::begin(&plan.repository));
+        if let Some(state) = &plan.squash_start {
+            merge::write_squash(&plan.repository, state)?;
+        }
+        let output = self
+            .runner
+            .run(
                 &plan.repository.root,
                 &plan.args,
                 plan.input.clone(),
                 true,
                 runner::DIAGNOSTIC_LIMIT,
             )
-            .await?,
-        ).map_err(|mut error| {
+            .await?;
+        if let Some(journal) = &plan.squash_start {
+            merge::finish_attempt(&plan.repository, &journal.operation_id)?;
+        }
+        let output=runner::checked(output).map_err(|mut error| {
             if !matches!(plan.action,RepositoryAction::Fetch{..}|RepositoryAction::Push{..}) && plan.repository.git_dir.join("index.lock").exists() {
                 error.code="lock_conflict".into();
                 error.message="Git could not acquire the repository index lock. Another Git process may be active; no lock was removed.".into();
@@ -502,6 +622,9 @@ impl GitEngine {
             }
             error
         })?;
+        if plan.finish_squash {
+            self.finish_squash_commit(&plan.repository).await?;
+        }
         if matches!(
             plan.action,
             RepositoryAction::Fetch { .. } | RepositoryAction::Pull { .. }

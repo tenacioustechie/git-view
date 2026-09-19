@@ -4,7 +4,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { api, errorMessage } from '../../api/client';
 import type { OperationResult } from '../../api/types';
 
-interface SmokeContext { projectPath: string; cleanPath: string; dirtyPath: string; mergePath: string }
+interface SmokeContext { projectPath: string; cleanPath: string; dirtyPath: string; mergePath: string; m2?: boolean }
 interface SmokeResult { passed: boolean; checks: string[]; error?: string; body?: string }
 const pause = (ms: number) => new Promise<void>(resolve => window.setTimeout(resolve, ms));
 function assert(value: unknown, message: string): asserts value { if (!value) throw new Error(message); }
@@ -57,6 +57,109 @@ async function assertDiffVisible() {
   const diff = await region('File diff');
   await until('text diff renders', () => diff.querySelector('.unified-diff'));
   assert(diff.querySelector('.unified-diff')!.textContent?.trim(), 'Selected file must render an actual patch');
+}
+
+async function runMergeSmoke(checks: string[]) {
+  const scenarios = ['merge', 'squash', 'mergeContinue', 'mergeAbort', 'squashConflict'] as const;
+  for (const scenario of scenarios) {
+    const fixture = await invoke<{ repositoryId: string; path: string; sourceRef: string }>('native_smoke_m2_case', { scenario });
+    const opened = await api.openRepository(fixture.path);
+    const repository = await until(`M2 ${scenario} repository opens`, () => {
+      const node = document.querySelector<HTMLElement>('.repository-screen');
+      return node?.querySelector('.repository-title strong')?.getAttribute('title') === opened.displayPath ? node : null;
+    });
+    const before = await api.getStatus(fixture.repositoryId);
+    assert(before.head.kind === 'branch' && !before.dirty && before.gitState === 'idle', `${scenario} fixture must start clean on an attached branch`);
+    const originalHead = before.head.oid;
+    const source = (await api.listRefs(fixture.repositoryId)).find(ref => ref.fullName === fixture.sourceRef);
+    assert(source, `${scenario} source branch must exist`);
+    const squash = scenario === 'squash' || scenario === 'squashConflict';
+    const conflicts = scenario === 'mergeContinue' || scenario === 'mergeAbort' || scenario === 'squashConflict';
+    const action = squash ? 'squashMerge' : 'merge';
+    const controls = repository.querySelector<HTMLDetailsElement>('.merge-controls');
+    assert(controls, 'Merge branch controls must be available');
+    if (!controls.open) controls.querySelector('summary')!.click();
+    const selector = await until('merge source loaded', () => {
+      const node = controls.querySelector<HTMLSelectElement>('[aria-label="Merge source branch"]');
+      return node && [...node.options].some(option => option.value === fixture.sourceRef) ? node : null;
+    });
+    selector.value = fixture.sourceRef;
+    selector.dispatchEvent(new Event('change', { bubbles: true }));
+    const mergeOperation = await operation(action, fixture.repositoryId, async () => {
+      await click(squash ? 'Squash merge branch' : 'Merge branch', controls);
+      const preview = await until('merge preview', () => repository.querySelector<HTMLDialogElement>('dialog[open]'));
+      assert(preview.textContent?.includes(fixture.sourceRef) && preview.textContent.includes('Current target:'), 'Merge preview must show source and target');
+      await click(`Run ${action}`, preview);
+    });
+    assert(mergeOperation.state === (conflicts ? 'failed' : 'succeeded'), `${scenario} initial merge outcome: ${mergeOperation.state}, ${mergeOperation.error?.message ?? mergeOperation.reason}`);
+    await refreshRepository();
+    let status = await api.getStatus(fixture.repositoryId);
+    if (conflicts) {
+      assert(status.counts.conflicted > 0 && status.gitState === (squash ? 'squashMerge' : 'merge'), `${scenario} must retain a persistent conflict state`);
+      assert(status.head.kind === 'branch' && status.head.oid === originalHead, 'Conflicted merge must not advance HEAD');
+      if (squash) {
+        assert(repository.textContent?.includes('does not create MERGE_HEAD'), 'Squash conflicts must explain the absent ordinary merge state');
+        assert(![...repository.querySelectorAll('button')].some(node => node.textContent === 'Abort merge'), 'Squash conflict must not offer destructive ordinary abort');
+      } else {
+        const continuation = [...repository.querySelectorAll<HTMLButtonElement>('button')].find(node => node.textContent === 'Continue merge');
+        assert(continuation?.disabled, 'Continue merge must remain disabled until conflicts are staged');
+      }
+      if (scenario === 'mergeAbort') {
+        const aborted = await operation('abortMerge', fixture.repositoryId, async () => {
+          await click('Abort merge', repository);
+          const preview = await until('abort preview', () => repository.querySelector<HTMLDialogElement>('dialog[open]'));
+          await click('Run abortMerge', preview);
+        });
+        assert(aborted.state === 'succeeded', `Abort failed: ${aborted.error?.message ?? aborted.reason}`);
+        status = await api.getStatus(fixture.repositoryId);
+        assert(status.gitState === 'idle' && !status.dirty && status.head.kind === 'branch' && status.head.oid === originalHead, 'Abort must restore the original clean branch');
+        checks.push('M2 DOM ordinary merge conflict exposed abort; previewed abort restored original clean HEAD');
+        continue;
+      }
+      const unresolved = (await api.getChanges(fixture.repositoryId)).files.filter(file => file.conflicted).map(file => file.displayPath);
+      await invoke('native_smoke_resolve_conflicts', { repositoryId: fixture.repositoryId });
+      await refreshRepository();
+      for (const path of unresolved) {
+        const staged = await operation('stage', fixture.repositoryId, async () => {
+          const row = await until(`conflict row ${path}`, () => [...repository.querySelectorAll<HTMLButtonElement>('.file-list button[title]')].find(node => node.title === path)?.closest('li'));
+          await click('Stage resolution', row);
+        });
+        assert(staged.state === 'succeeded', 'Conflict resolution stage must succeed');
+        await refreshRepository();
+      }
+      status = await api.getStatus(fixture.repositoryId);
+      assert(status.counts.conflicted === 0, 'All conflict resolutions must be staged');
+    }
+    if (squash) {
+      assert(status.gitState === 'squashMerge' && status.head.kind === 'branch' && status.head.oid === originalHead && status.counts.staged > 0, 'Squash must leave staged review without moving HEAD');
+      assert(status.squashMerge?.originalHead === originalHead && status.squashMerge.sourceOid === source.oid, 'Persistent squash review must retain source and original HEAD');
+      assert(repository.textContent?.includes('Squash merge review'), 'Renderer must show persistent squash review');
+      const message = `Native ${scenario} reviewed result`;
+      const input = await until('squash message', () => repository.querySelector<HTMLTextAreaElement>('#commit-message'));
+      type(input, message);
+      const committed = await operation('commit', fixture.repositoryId, () => click(/^Commit staged changes \(/, repository));
+      assert(committed.state === 'succeeded', `Squash explicit commit failed: ${committed.error?.message ?? committed.reason}`);
+      status = await api.getStatus(fixture.repositoryId);
+      assert(status.gitState === 'idle' && status.head.kind === 'branch', 'Explicit squash commit must clear review state');
+      const details = await api.getCommit(fixture.repositoryId, status.head.oid);
+      assert(details.parents.length === 1 && details.parents[0] === originalHead && details.message.trim() === message, 'Squash result must be one normal commit on original HEAD with reviewed message');
+      checks.push(`M2 DOM ${scenario === 'squashConflict' ? 'squash conflict resolved and staged externally' : 'squash merge left staged review'}; explicit normal commit has one parent and chosen message`);
+    } else {
+      if (scenario === 'mergeContinue') {
+        const continued = await operation('continueMerge', fixture.repositoryId, async () => {
+          await click('Continue merge', repository);
+          const preview = await until('continue merge preview', () => repository.querySelector<HTMLDialogElement>('dialog[open]'));
+          await click('Run continueMerge', preview);
+        });
+        assert(continued.state === 'succeeded', `Continue merge failed: ${continued.error?.message ?? continued.reason}`);
+        status = await api.getStatus(fixture.repositoryId);
+      }
+      assert(status.gitState === 'idle' && status.head.kind === 'branch', 'Successful ordinary merge must end idle on branch');
+      const details = await api.getCommit(fixture.repositoryId, status.head.oid);
+      assert(details.parents.length === 2 && details.parents[0] === originalHead && details.parents[1] === source.oid, 'Ordinary merge must preserve both actual parents');
+      checks.push(`M2 DOM ordinary merge ${scenario === 'mergeContinue' ? 'conflict resolution and Continue merge' : 'preview and execution'} produced a two-parent merge`);
+    }
+  }
 }
 
 export async function runNativeSmoke(): Promise<void> {
@@ -210,6 +313,7 @@ export async function runNativeSmoke(): Promise<void> {
     await until('warm relative project launch displays correct group', () => forwardedGroup.querySelector('h1')?.textContent === project.name);
     assert(forwardedGroup.querySelectorAll('.group-table-scroll tbody tr').length === project.members.length, 'Warm project launch must retain all fixture members');
     checks.push('Warm group CLI resolved relative project path from invoking cwd and displayed the requested group');
+    if (context.m2) await runMergeSmoke(checks);
     result = { passed: true, checks };
   } catch (cause) {
     result = { passed: false, checks, error: errorMessage(cause), body: document.body.innerText.slice(0, 16000) };
