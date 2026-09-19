@@ -24,10 +24,12 @@ export function DiscoveryView({ initialRoot, initialDepth, onProjectCreated, onC
     saveInFlight.current = true; setSaving(true); setError(null);
     const content = { version: 1 as const, name: name.trim(), repositories: candidates.map(candidate => ({ path: candidate.displayPath, label: candidate.label })) };
     try {
-      const path = await withNavigationBlock(() => save({ title: 'Save discovered project', defaultPath: 'discovered.git-view.json', filters: [{ name: 'Git View project', extensions: ['json'] }] }));
-      if (!path || !mounted.current) return;
-      const project = await api.createProject(path, content);
-      if (mounted.current) onProjectCreated(project);
+      await withNavigationBlock(async () => {
+        const path = await save({ title: 'Save discovered project', defaultPath: 'discovered.git-view.json', filters: [{ name: 'Git View project', extensions: ['json'] }] });
+        if (!path || !mounted.current) return;
+        const project = await api.createProject(path, content);
+        if (mounted.current) onProjectCreated(project);
+      });
     } catch (cause) { if (mounted.current) setError(errorMessage(cause)); }
     finally { saveInFlight.current = false; if (mounted.current) setSaving(false); }
   }
@@ -92,7 +94,7 @@ export function DiscoveryPicker({ initialRoot = '', initialDepth = 3, onConfirm,
     inFlight.current = true; setScanning(true); setError(null);
     const request = ++generation.current;
     try {
-      const next = await api.discoverRepositories(root.trim(), Number(depth));
+      const next = await api.discoverRepositories(root, Number(depth));
       if (!mounted.current || request !== generation.current) return;
       const sameRoot = lastRoot.current === null || lastRoot.current === next.rootPath;
       setSelected(current => sameRoot ? current : new Set());

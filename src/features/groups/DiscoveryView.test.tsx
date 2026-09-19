@@ -26,6 +26,31 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('Discovery renderer', () => {
+  it('preserves trailing whitespace in a folder chosen by the native picker', async () => {
+    vi.mocked(open).mockResolvedValue('/work/trailing ');
+    render(<DiscoveryView onProjectCreated={vi.fn()} onCancel={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Choose folder' }));
+    await waitFor(() => expect((screen.getByLabelText('Root folder') as HTMLInputElement).value).toBe('/work/trailing '));
+    await scan();
+    expect(api.discoverRepositories).toHaveBeenCalledWith('/work/trailing ', 3);
+  });
+
+  it('blocks launch navigation until creation and the project callback have completed', async () => {
+    vi.mocked(save).mockResolvedValue('/work/chosen.git-view.json');
+    let resolveCreate!: (value: Project) => void;
+    vi.mocked(api.createProject).mockReturnValue(new Promise(resolve => { resolveCreate = resolve; }));
+    const onProjectCreated = vi.fn(() => { expect(navigationBlocked()).toBe(true); });
+    render(<DiscoveryView initialRoot="/work" onProjectCreated={onProjectCreated} onCancel={vi.fn()} />);
+    await scan(); fireEvent.click(checkbox('Include API'));
+    fireEvent.click(screen.getByRole('button', { name: 'Save selected as project (1)' }));
+    await waitFor(() => expect(api.createProject).toHaveBeenCalledTimes(1));
+    expect(navigationBlocked()).toBe(true);
+    expect(onProjectCreated).not.toHaveBeenCalled();
+    await act(async () => resolveCreate(project));
+    expect(onProjectCreated).toHaveBeenCalledWith(project);
+    expect(navigationBlocked()).toBe(false);
+  });
+
   it('reviews partial results and saves only explicitly selected repositories', async () => {
     vi.mocked(api.discoverRepositories).mockResolvedValue({ ...result, truncated: true, issues: [{ path: '/work/private', reason: 'Permission denied' }] });
     vi.mocked(save).mockResolvedValue('/work/chosen.git-view.json');

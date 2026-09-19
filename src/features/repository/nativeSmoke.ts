@@ -385,6 +385,15 @@ async function runPerformanceSmoke(checks: string[]) {
 }
 
 interface DiscoveryFixture { rootPath: string; projectPath: string; candidatePaths: string[]; exists: boolean }
+function lexicalDiscoveryRoot(path: string) {
+  let normalized = path.replace(/\\/g, '/');
+  // CLI cwd.join('.') may retain trailing '/.'. Only remove trailing lexical
+  // separators/dot components: never resolve '..', case, or symlink identities.
+  while ((normalized.endsWith('/.') || normalized.endsWith('/')) && normalized !== '/' && !/^[a-z]:\/$/i.test(normalized)) {
+    normalized = normalized.slice(0, normalized.endsWith('/.') ? -2 : -1);
+  }
+  return normalized;
+}
 async function runDiscoverySmoke(checks: string[]) {
   const fixtureAction = (action: 'setup' | 'launch' | 'inspect' | 'add' | 'openProject') => invoke<DiscoveryFixture>('native_smoke_discovery_case', { action });
   const fixture = await fixtureAction('setup');
@@ -394,7 +403,7 @@ async function runDiscoverySmoke(checks: string[]) {
   const labelInput = (scope: ParentNode, label: string) => [...scope.querySelectorAll<HTMLLabelElement>('label')].find(node => node.textContent?.trim() === label)?.querySelector<HTMLInputElement>('input');
   const root = labelInput(review, 'Root folder');
   const depth = labelInput(review, 'Search depth');
-  assert(root?.value === fixture.rootPath && depth?.value === '2', 'CLI scan must preserve invoking root and explicit depth');
+  assert(root && lexicalDiscoveryRoot(root.value) === lexicalDiscoveryRoot(fixture.rootPath) && depth?.value === '2', `CLI scan must preserve invoking root and explicit depth: ${JSON.stringify({ actualRoot: root?.value, expectedRoot: fixture.rootPath, actualDepth: depth?.value, expectedDepth: '2' })}`);
   assert(review.querySelectorAll('tbody tr').length === 0, 'CLI discovery must open unsaved review before explicit scan');
   await click('Scan repositories', review);
   await until('two discovered candidates displayed', () => review.querySelectorAll('tbody tr').length === 2);
@@ -404,6 +413,9 @@ async function runDiscoverySmoke(checks: string[]) {
   const chosenRow = candidates.find(row => row.querySelector('.discovery-path')?.textContent === fixture.candidatePaths[0]);
   assert(chosenRow, 'Subset candidate must be visible');
   chosenRow.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click();
+  const projectName = labelInput(review, 'Project name');
+  assert(projectName, 'Discovery review must expose a project name field');
+  type(projectName, 'Native discovered subset');
   await button('Save selected as project (1)', review);
   assert(!(await fixtureAction('inspect')).exists, 'Scanning and selecting must not create or modify a project file');
   checks.push('Discovery warm CLI resolved root/depth; explicit DOM scan found two real repositories including Unicode nested path, initially unchecked; subset review created no project file');
@@ -415,7 +427,7 @@ async function runDiscoverySmoke(checks: string[]) {
     path: row.querySelector('.discovery-path')!.textContent!, label: row.cells[1].textContent!,
   }));
   assert(selected.length === 1, 'Only the checked discovery candidate may be saved');
-  const created = await api.createProject(fixture.projectPath, { version: 1, name: 'Native discovered subset', repositories: selected });
+  const created = await api.createProject(fixture.projectPath, { version: 1, name: projectName.value, repositories: selected });
   assert((await fixtureAction('inspect')).exists, 'Explicit real create_project IPC must write the selected project');
   await fixtureAction('openProject');
   const group = await until('saved discovered project opens through CLI', () => {
