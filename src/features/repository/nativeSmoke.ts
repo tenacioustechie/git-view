@@ -441,12 +441,14 @@ async function runDiscoverySmoke(checks: string[]) {
   });
   assert(group.querySelectorAll('.group-table-scroll tbody tr').length === 1, 'Reopened project must contain only selected candidate');
   const saved = await api.openProject(fixture.projectPath);
-  assert(saved.members.length === 1 && saved.members[0].displayPath === selected[0].path, 'Saved subset must resolve to exactly the checked repository');
+  const selectedRepository = await api.openRepository(selected[0].path);
+  assert(saved.members.length === 1 && saved.members[0].kind === 'ready' && saved.members[0].repositoryId === selectedRepository.repositoryId, 'Saved subset must resolve to exactly the checked canonical repository');
   checks.push('Discovery DOM-selected subset saved through real create_project IPC and reopened through CLI with exactly one member; native OS save picker was not automated');
 
   const expanded = await fixtureAction('add');
   const addedPath = expanded.candidatePaths.find(path => !fixture.candidatePaths.includes(path));
   assert(addedPath && expanded.candidatePaths.length === 3, 'Rescan fixture must add exactly one repository');
+  const addedRepository = await api.openRepository(addedPath);
   const scanFromGroup = async () => {
     await click('Discover repositories', group);
     const picker = await region('Repository discovery');
@@ -485,7 +487,7 @@ async function runDiscoverySmoke(checks: string[]) {
   await click('Save project', await region('Edit project'));
   await until('explicitly saved discovery addition displayed', () => group.querySelectorAll('.group-table-scroll tbody tr').length === 2);
   const updated = await api.openProject(fixture.projectPath);
-  assert(updated.members.length === 2 && updated.members.some(member => member.displayPath === selected[0].path) && updated.members.some(member => member.displayPath === addedPath), 'Explicit DOM save must preserve original member and append only selected addition');
+  assert(updated.members.length === 2 && updated.members.some(member => member.kind === 'ready' && member.repositoryId === selectedRepository.repositoryId) && updated.members.some(member => member.kind === 'ready' && member.repositoryId === addedRepository.repositoryId), 'Explicit DOM save must preserve original canonical repository and append only selected addition');
   assert(updated.revision !== saved.revision, 'Explicit discovery-addition save must produce a new project revision');
   checks.push('Existing group discovery excluded duplicates and proposed unchecked addition; rescans/cancel/draft cancel preserved saved membership, explicit DOM Save project appended only chosen repository');
 }
