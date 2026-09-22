@@ -22,6 +22,7 @@ export interface OperationContext {
   canAbort: boolean;
   canSkip: boolean;
   reason: string;
+  rebase?: { ontoRef: string | null; ontoOid: Oid | null; currentOid: Oid | null; completed: number | null; total: number | null; appOwned: boolean } | null;
 }
 
 export interface RepositoryStatus {
@@ -99,6 +100,8 @@ export type RepositoryAction =
   | { kind: 'continueMerge' | 'abortMerge'; statusSnapshotId: SnapshotId }
   | { kind: 'cherryPick'; statusSnapshotId: SnapshotId; sourceOid: Oid }
   | { kind: 'continueCherryPick' | 'abortCherryPick' | 'skipCherryPick'; statusSnapshotId: SnapshotId }
+  | { kind: 'startRebase'; statusSnapshotId: SnapshotId; ontoRef: string }
+  | { kind: 'continueRebase' | 'skipRebase' | 'abortRebase'; statusSnapshotId: SnapshotId }
   | { kind: 'createStash'; statusSnapshotId: SnapshotId; message: string; includeUntracked: boolean }
   | { kind: 'applyStash'; statusSnapshotId: SnapshotId; stashSnapshotId: SnapshotId; entryId: string; restoreIndex: boolean }
   | { kind: 'deleteStash'; statusSnapshotId: SnapshotId; stashSnapshotId: SnapshotId; entryId: string }
@@ -107,7 +110,7 @@ export type RepositoryAction =
   | { kind: 'recoverCombine'; statusSnapshotId: SnapshotId; recoveryId: string };
 
 export type RepositoryActionPlan =
-  | { kind: 'eligible'; planId: string; expiresAt: string; summary: string; destination: string | null }
+  | { kind: 'eligible'; planId: string; expiresAt: string; summary: string; destination: string | null; rebasePreview?: { branch: string; originalHead: Oid; ontoRef: string; ontoOid: Oid; baseOid: Oid; commits: { oid: Oid; subject: string }[] } }
   | { kind: 'blocked'; reason: string; error: AppError | null };
 
 export interface DiffHunk {
@@ -132,7 +135,7 @@ export interface AppError {
   outputTruncated?: boolean;
 }
 
-export type JobState = 'queued' | 'running' | 'succeeded' | 'failed' | 'skipped' | 'canceled';
+export type JobState = 'queued' | 'running' | 'succeeded' | 'stopped' | 'failed' | 'skipped' | 'canceled';
 export interface OperationResult {
   operationId: string;
   batchId: string | null;

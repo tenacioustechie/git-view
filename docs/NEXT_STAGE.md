@@ -2,7 +2,8 @@
 
 Started 21 September 2026; product decisions finalized 22 September 2026.
 Status: **A1–A4 complete on tested macOS/Windows; the following rebase stage
-requires its separate detailed design**.
+has a [detailed design](REBASE_DESIGN.md) and source implementation with a
+passing macOS gate. Windows acceptance and packages remain pending**.
 Implementation resumed after a computer crash on 22 September 2026. A1 passes
 its tests, native acceptance, release builds, and package checks at `fe33bf3`;
 A2 passes the same gates at `fd637b8`, A3 at `7c0eef5`, and A4 at `9fe0fb8`;
@@ -64,7 +65,7 @@ resolution with clear visual guidance in Git View.
 | A2: cherry-pick and conflict guidance | Apply one non-merge commit; understand target/source and stopped state; resolve externally and continue/abort | Success/conflict/abort/empty-state coverage, reload reconciliation, consistent ordinary merge/squash guidance, native acceptance and packages |
 | A3: stash | Save changes, inspect, Apply while retaining the stash, or separately Delete; untracked inclusion is opt-in | Content/index preservation, identity/concurrency and conflict tests, native acceptance and packages |
 | A4: hunk staging | Stage/unstage supported complete text hunks without changing working-file content | Exact index assertions, stale hunk rejection, mixed staged/unstaged and line-ending cases, native acceptance and packages |
-| Following stage: rebase | Plan and implement rebase with understandable state and recovery | Separate detailed design after this stage; interactive rebase and force push are not added by this scheduling decision |
+| Following stage: rebase | Plan and implement rebase with understandable state and recovery | [Detailed design](REBASE_DESIGN.md), then a separate implementation and platform gate; interactive rebase and force push are not added by this scheduling decision |
 
 Apply the full completion gate below to each A1–A4 slice before starting the next.
 No further product answers are needed to start A1. Record any technical limitation

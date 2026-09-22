@@ -29,6 +29,8 @@ interface OperationContext {
   canAbort: boolean;
   canSkip: boolean;
   reason: string;
+  rebase?: { ontoRef: string | null; ontoOid: Oid | null; currentOid: Oid | null;
+    completed: number | null; total: number | null; appOwned: boolean } | null;
 }
 
 interface RepositoryStatus {
@@ -105,13 +107,17 @@ type RepositoryAction =
   | { kind: 'continueMerge' | 'abortMerge'; statusSnapshotId: SnapshotId }
   | { kind: 'cherryPick'; statusSnapshotId: SnapshotId; sourceOid: Oid }
   | { kind: 'continueCherryPick' | 'abortCherryPick' | 'skipCherryPick'; statusSnapshotId: SnapshotId }
+  | { kind: 'startRebase'; statusSnapshotId: SnapshotId; ontoRef: string }
+  | { kind: 'continueRebase' | 'skipRebase' | 'abortRebase'; statusSnapshotId: SnapshotId }
   | { kind: 'createStash'; statusSnapshotId: SnapshotId; message: string; includeUntracked: boolean }
   | { kind: 'applyStash'; statusSnapshotId: SnapshotId; stashSnapshotId: SnapshotId; entryId: string; restoreIndex: boolean }
   | { kind: 'deleteStash'; statusSnapshotId: SnapshotId; stashSnapshotId: SnapshotId; entryId: string }
   | { kind: 'finalizeStashDelete'; statusSnapshotId: SnapshotId; recoveryId: string };
 
 type RepositoryActionPlan =
-  | { kind: 'eligible'; planId: string; expiresAt: string; summary: string; destination: string | null }
+  | { kind: 'eligible'; planId: string; expiresAt: string; summary: string; destination: string | null;
+      rebasePreview?: { branch: string; originalHead: Oid; ontoRef: string; ontoOid: Oid;
+        baseOid: Oid; commits: { oid: Oid; subject: string }[] } }
   | { kind: 'blocked'; reason: string; error: AppError | null };
 
 interface DiffHunk {
@@ -134,7 +140,7 @@ interface AppError {
   details?: string; // bounded, redacted diagnostic text
 }
 
-type JobState = 'queued' | 'running' | 'succeeded' | 'failed' | 'skipped' | 'canceled';
+type JobState = 'queued' | 'running' | 'succeeded' | 'stopped' | 'failed' | 'skipped' | 'canceled';
 interface OperationResult {
   operationId: string;
   batchId: string | null;
@@ -252,6 +258,17 @@ observed operation state. All include `statusSnapshotId`. The optional
 target branch, stop reason, and backend-assessed available actions. An empty
 source list or null context field means unknown, not permission to infer a source
 from selected history. Multiple source OIDs support ordinary merges honestly.
+
+The guided rebase action binds an exact backend-listed local or fetched remote
+`ontoRef` and a status snapshot. The eligible plan carries `rebasePreview` with
+the original branch/HEAD, exact target tip, merge base, and complete ordered
+source commit IDs and subjects. Execution revalidates those values under the
+repository lock. Rebase Continue, Skip, and Abort use fresh status snapshots
+and backend-assessed capabilities from `operationContext.rebase`. An app-owned
+conflict or empty stop returns `stopped` with real operation context; it is not
+reported as success. Unknown or externally started rebase states expose no app
+mutation controls. The backup and per-worktree record remain internal backend
+state. The [rebase design](REBASE_DESIGN.md) records the scope and recovery gate.
 Capability flags are explanatory; execution always revalidates the plan.
 
 `plan_repository_action` receives the discriminated action and repository ID and creates a backend-held plan, expiring after five minutes. Record resolved refs/destinations and required HEAD/index/status observations in that plan. `run_repository_action(planId)` revalidates and executes it; submitting a plan twice returns the existing operation. Simple file actions can plan and run from one UI gesture; remote/branch/merge actions show the resolved target where required. M2 adds normal merge, merge continue/abort, and squash-merge variants; return an unsupported error until implemented. No arbitrary argv variant.

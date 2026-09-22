@@ -29,6 +29,17 @@ impl GitEngine {
         {
             return Err(AppError::new("cherry_pick_manual_review","The recorded cherry-pick disagrees with the repository state. Inspect the operation context and journal before changing the index, files, or history."));
         }
+        if status.operation_context.as_ref().is_some_and(|context| {
+            context.kind == GitState::Rebase
+                && context.stop_reason == OperationStopReason::Unknown
+                && context
+                    .rebase
+                    .as_ref()
+                    .is_some_and(|rebase| rebase.app_owned)
+        }) && !matches!(action, RepositoryAction::Fetch { .. })
+        {
+            return Err(AppError::new("rebase_manual_review", "The rebase state cannot be verified. Inspect Git metadata, working files, and any saved backup before changing the repository."));
+        }
         let args;
         let mut input = None;
         let mut destination = None;
@@ -38,6 +49,7 @@ impl GitEngine {
         let mut rewrite = None;
         let mut remote_checkout = None;
         let mut cherry = None;
+        let mut rebase = None;
         let mut stash = None;
         let mut hunk = None;
         let finish_squash = matches!(action, RepositoryAction::Commit { .. })
@@ -73,6 +85,12 @@ impl GitEngine {
             | RepositoryAction::ContinueCherryPick { status_snapshot_id }
             | RepositoryAction::AbortCherryPick { status_snapshot_id }
             | RepositoryAction::SkipCherryPick { status_snapshot_id }
+            | RepositoryAction::StartRebase {
+                status_snapshot_id, ..
+            }
+            | RepositoryAction::ContinueRebase { status_snapshot_id }
+            | RepositoryAction::SkipRebase { status_snapshot_id }
+            | RepositoryAction::AbortRebase { status_snapshot_id }
             | RepositoryAction::CreateStash {
                 status_snapshot_id, ..
             }
@@ -211,6 +229,10 @@ impl GitEngine {
                     && status.operation_context.as_ref().is_some_and(|context| {
                         context.can_abort && context.stop_reason != OperationStopReason::Unknown
                     }))
+                    && !(status.git_state == GitState::Rebase
+                        && status.operation_context.as_ref().is_some_and(|context| {
+                            context.can_abort && context.stop_reason != OperationStopReason::Unknown
+                        }))
                 {
                     return Err(AppError::new(
                         "operation_in_progress",
@@ -600,6 +622,16 @@ impl GitEngine {
                 args = command;
                 summary = Some(description);
             }
+            RepositoryAction::StartRebase { .. }
+            | RepositoryAction::ContinueRebase { .. }
+            | RepositoryAction::SkipRebase { .. }
+            | RepositoryAction::AbortRebase { .. } => {
+                let (prepared, command, description) =
+                    self.prepare_rebase(&repo, status, &action).await?;
+                rebase = Some(prepared);
+                args = command;
+                summary = Some(description);
+            }
             RepositoryAction::CreateStash { .. }
             | RepositoryAction::ApplyStash { .. }
             | RepositoryAction::DeleteStash { .. }
@@ -635,7 +667,11 @@ impl GitEngine {
             }
         }
         let config_fingerprint = self.config_fingerprint(&repo).await?;
-        if (remote_checkout.is_some() || cherry.is_some() || stash.is_some() || hunk.is_some())
+        if (remote_checkout.is_some()
+            || cherry.is_some()
+            || rebase.is_some()
+            || stash.is_some()
+            || hunk.is_some())
             && config_fingerprint != initial_config
         {
             return Err(AppError::new(
@@ -657,6 +693,7 @@ impl GitEngine {
             rewrite,
             remote_checkout,
             cherry,
+            rebase,
             stash,
             hunk,
             action,
@@ -748,6 +785,9 @@ impl GitEngine {
         }
         if let Some(cherry) = &plan.cherry {
             return Box::pin(self.execute_cherry(plan, cherry, &canceled)).await;
+        }
+        if let Some(rebase) = &plan.rebase {
+            return Box::pin(self.execute_rebase(plan, rebase, &canceled)).await;
         }
         if let Some(hunk) = &plan.hunk {
             return Box::pin(self.execute_hunk(plan, hunk, &canceled)).await;

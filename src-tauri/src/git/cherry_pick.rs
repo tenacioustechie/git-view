@@ -259,6 +259,9 @@ impl GitEngine {
         repo: &Repository,
         status: &mut RepositoryStatus,
     ) -> AppResult<()> {
+        if self.rebase_context(repo, status).await? {
+            return Ok(());
+        }
         let journal = read_journal(repo)?;
         if journal.is_some() && status.git_state == GitState::Idle {
             status.git_state = GitState::Other;
@@ -308,6 +311,7 @@ impl GitEngine {
             can_abort: false,
             can_skip: false,
             reason: String::new(),
+            rebase: None,
         };
         if let Some(error) = source_error {
             context.reason=format!("Operation source metadata could not be read reliably: {}. Inspect the working changes and recover the Git operation manually.",error.message);

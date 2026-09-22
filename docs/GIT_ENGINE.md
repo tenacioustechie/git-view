@@ -106,6 +106,28 @@ reason, and backend capabilities for cherry-pick, ordinary merge, and squash
 review. Conflict completion follows Git index state, not a search for text
 markers. Missing original context is displayed as unknown.
 
+## Guided rebase
+
+The first rebase workflow takes an exact local or fetched remote ref and a clean
+attached branch. Preview records one merge base and the complete linear source
+range, capped at 100 commits; merge commits, shallow ancestry, grafts, and
+replacement refs are rejected. A non-interactive `git rebase --merge --onto`
+uses the reviewed target/base OIDs, with autostash and automatic other-ref
+updates disabled. `--reapply-cherry-picks --empty=stop` makes duplicates and
+becomes-empty commits available for explicit review. Normal hooks and signing
+remain active. Pull still never rebases automatically.
+
+Before Git starts, the engine creates a unique backup under
+`refs/git-view/rebase-backups/` and writes `git-view-rebase.json` in the
+worktree Git directory. Refresh reconciles the record with actual rebase
+metadata and `REBASE_HEAD`; Continue, Skip, and Abort are enabled only for a
+matching app-owned stop. An external rebase is inspectable but read-only in the
+app. Skip names the current commit and warns that its change and resolution
+edits can be lost. Abort may discard resolution edits while restoring the
+original branch. Unexpected metadata/ref outcomes remain for manual review;
+there is no automatic reset. The backup is retained after completion. The
+[rebase design](REBASE_DESIGN.md) gives command options and acceptance cases.
+
 ## Complete text hunks
 
 A4 extends working text diffs with bounded, backend-issued hunk identities.

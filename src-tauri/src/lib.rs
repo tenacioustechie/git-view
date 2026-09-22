@@ -197,6 +197,8 @@ pub fn run() {
         native_smoke::native_smoke_remote_checkout_verify,
         native_smoke::native_smoke_cherry_pick_case,
         native_smoke::native_smoke_cherry_pick_verify,
+        native_smoke::native_smoke_rebase_case,
+        native_smoke::native_smoke_rebase_verify,
         native_smoke::native_smoke_stash_case,
         native_smoke::native_smoke_stash_verify,
         native_smoke::native_smoke_hunk_case,

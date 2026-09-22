@@ -4,7 +4,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { api, errorMessage } from '../../api/client';
 import type { OperationResult } from '../../api/types';
 
-interface SmokeContext { projectPath: string; cleanPath: string; dirtyPath: string; mergePath: string; m2?: boolean; m3?: boolean; performance?: boolean; discovery?: boolean; historySearch?: boolean; remoteCheckout?: boolean; cherryPick?: boolean; stash?: boolean; hunks?: boolean }
+interface SmokeContext { projectPath: string; cleanPath: string; dirtyPath: string; mergePath: string; m2?: boolean; m3?: boolean; performance?: boolean; discovery?: boolean; historySearch?: boolean; remoteCheckout?: boolean; cherryPick?: boolean; stash?: boolean; hunks?: boolean; rebase?: boolean }
 interface SmokeResult { passed: boolean; checks: string[]; error?: string; body?: string }
 interface ReloadMarker { version: 1; repositoryId: string; operationId: string; path: string; checks: string[] }
 const reloadKey = 'git-view.native-smoke.reload.v1';
@@ -890,6 +890,62 @@ async function runHunkSmoke(checks: string[]) {
   checks.push('Native partial commit contains only the first hunk with exact parent/message; second edit remains uncommitted and visible, unrelated index and every working-file byte preserved');
 }
 
+interface RebaseFixture { repositoryId: string; path: string; originalOid: string; targetOid: string; scenario: string }
+async function runRebaseSmoke(checks: string[]) {
+  for (const scenario of ['success', 'conflictContinue', 'conflictSkip', 'conflictAbort'] as const) {
+    const fixture = await invoke<RebaseFixture>('native_smoke_rebase_case', { scenario });
+    const repository = await stashRepository(fixture.path);
+    const controls = await until('rebase branch controls', () => repository.querySelector<HTMLDetailsElement>('.rebase-controls'));
+    controls.open = true;
+    controls.dispatchEvent(new Event('toggle'));
+    const select = await until('rebase target selector', () => controls.querySelector<HTMLSelectElement>('select[aria-label="Rebase onto branch"]'));
+    await until('local main rebase target', () => select.querySelector('option[value="refs/heads/main"]'));
+    select.value = 'refs/heads/main';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    const before = await api.getStatus(fixture.repositoryId);
+    assert(before.head.kind === 'branch' && before.head.oid === fixture.originalOid && before.gitState === 'idle', 'Selecting the rebase target must not change current HEAD');
+    const started = await operation('startRebase', fixture.repositoryId, async () => {
+      await click('Preview rebase', controls);
+      const preview = await until('exact rebase preview', () => repository.querySelector<HTMLDialogElement>('dialog[open]'));
+      assert(preview.textContent?.includes(fixture.originalOid) && preview.textContent.includes(fixture.targetOid) && preview.textContent.includes('Rebase source'), 'Rebase preview must show current/target OIDs and source commit');
+      await click('Run rebase branch', preview);
+    });
+    assert(started.state === (scenario === 'success' ? 'succeeded' : 'stopped'), `Rebase ${scenario} start: ${started.state}, ${started.error?.message ?? started.reason}`);
+    await refreshRepository();
+    if (scenario !== 'success') {
+      const notice = await region('Git operation');
+      assert(notice.textContent?.includes('Rebase in progress') && notice.textContent.includes(fixture.originalOid) && notice.textContent.includes('conflict.txt'), 'Stopped rebase must show original branch, source, and unresolved file');
+      assert(notice.textContent?.includes('ours is the chosen base'), 'Rebase conflict sides must be explained');
+      if (scenario === 'conflictContinue') {
+        await invoke('native_smoke_resolve_conflicts', { repositoryId: fixture.repositoryId });
+        await refreshRepository();
+        const staged = await operation('stage', fixture.repositoryId, async () => {
+          const row = await until('rebase conflict row', () => [...repository.querySelectorAll<HTMLButtonElement>('.repository-details .file-list button[title]')].find(node => node.title === 'conflict.txt')?.closest('li'));
+          await click('Stage resolution', row);
+        });
+        assert(staged.state === 'succeeded', 'Rebase resolution stage must succeed');
+        await refreshRepository();
+        const continued = await cherryCommand(repository, fixture.repositoryId, 'continueRebase', 'Continue rebase', 'Run continue rebase');
+        assert(continued.state === 'succeeded', `Rebase Continue failed: ${continued.error?.message ?? continued.reason}`);
+      } else {
+        const kind = scenario === 'conflictSkip' ? 'skipRebase' : 'abortRebase';
+        const label = scenario === 'conflictSkip' ? 'Skip commit' : 'Abort rebase';
+        const confirm = `Run ${scenario === 'conflictSkip' ? 'skip commit' : 'abort rebase'}`;
+        const result = await operation(kind, fixture.repositoryId, async () => {
+          await click(label, notice);
+          const preview = await until(`${label} confirmation`, () => repository.querySelector<HTMLDialogElement>('dialog[open]'));
+          assert(preview.textContent?.includes(scenario === 'conflictSkip' ? 'omitted' : 'restore original HEAD'), 'Rebase recovery confirmation must explain its effect');
+          await click(confirm, preview);
+        });
+        assert(result.state === 'succeeded', `Rebase ${label} failed: ${result.error?.message ?? result.reason}`);
+      }
+    }
+    const verified = await invoke<{ verified: boolean }>('native_smoke_rebase_verify', { repositoryId: fixture.repositoryId, scenario });
+    assert(verified.verified, `Native rebase ${scenario} Git verification failed`);
+    checks.push(`Native rebase ${scenario}: reviewed exact branch/target/source, operation state, and final refs/files/backup through actual DOM and IPC`);
+  }
+}
+
 async function startRunningOperationReload(checks: string[]) {
   const fixture = await invoke<{ repositoryId: string; operationId: string; path: string }>('native_smoke_slow_commit');
   await until('slow commit actually running before full reload', async () => {
@@ -949,6 +1005,7 @@ export async function runNativeSmoke(): Promise<void> {
       await finishStashReload(marker, checks);
       sessionStorage.removeItem(stashReloadKey);
       if ((await invoke<SmokeContext>('native_smoke_context')).hunks) await runHunkSmoke(checks);
+      if ((await invoke<SmokeContext>('native_smoke_context')).rebase) await runRebaseSmoke(checks);
       await startRunningOperationReload(checks);
       return;
     }
@@ -961,6 +1018,7 @@ export async function runNativeSmoke(): Promise<void> {
       sessionStorage.removeItem(cherryReloadKey);
       if ((await invoke<SmokeContext>('native_smoke_context')).stash) { await runStashSmoke(checks); return; }
       if ((await invoke<SmokeContext>('native_smoke_context')).hunks) await runHunkSmoke(checks);
+      if ((await invoke<SmokeContext>('native_smoke_context')).rebase) await runRebaseSmoke(checks);
       await startRunningOperationReload(checks);
       return;
     }
@@ -1137,6 +1195,7 @@ export async function runNativeSmoke(): Promise<void> {
     if (context.cherryPick) { await runCherryPickSmoke(checks); return; }
     if (context.stash) { await runStashSmoke(checks); return; }
     if (context.hunks) await runHunkSmoke(checks);
+    if (context.rebase) await runRebaseSmoke(checks);
     await startRunningOperationReload(checks);
     return; // The reloaded renderer resumes above and submits the final report.
   } catch (cause) {

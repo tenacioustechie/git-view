@@ -67,6 +67,7 @@ pub struct Context {
     pub cherry_pick: bool,
     pub stash: bool,
     pub hunks: bool,
+    pub rebase: bool,
 }
 pub struct Fixture {
     pub context: Context,
@@ -77,6 +78,7 @@ pub struct Fixture {
     pub slow_commit: tokio::sync::Mutex<Option<serde_json::Value>>,
     pub remote_checkouts: std::sync::Mutex<std::collections::HashMap<String, serde_json::Value>>,
     pub cherry_picks: std::sync::Mutex<std::collections::HashMap<String, serde_json::Value>>,
+    pub rebases: std::sync::Mutex<std::collections::HashMap<String, serde_json::Value>>,
     pub stashes: std::sync::Mutex<std::collections::HashMap<String, serde_json::Value>>,
     pub slow_stash: tokio::sync::Mutex<Option<serde_json::Value>>,
     pub hunks: tokio::sync::Mutex<Option<serde_json::Value>>,
@@ -181,6 +183,7 @@ pub fn setup(report: PathBuf) -> Fixture {
             cherry_pick: true,
             stash: true,
             hunks: true,
+            rebase: true,
         },
         report,
         _root: root,
@@ -189,6 +192,7 @@ pub fn setup(report: PathBuf) -> Fixture {
         slow_commit: Default::default(),
         remote_checkouts: Default::default(),
         cherry_picks: Default::default(),
+        rebases: Default::default(),
         stashes: Default::default(),
         slow_stash: Default::default(),
         hunks: Default::default(),
@@ -370,6 +374,138 @@ pub async fn native_smoke_remote_checkout_verify(
         return Err(AppError::new(
             "fixture",
             "Remote checkout changed unexpected state",
+        ));
+    }
+    Ok(serde_json::json!({ "verified": true }))
+}
+
+#[tauri::command]
+pub async fn native_smoke_rebase_case(
+    state: State<'_, AppState>,
+    scenario: String,
+) -> AppResult<serde_json::Value> {
+    if !matches!(
+        scenario.as_str(),
+        "success" | "conflictContinue" | "conflictSkip" | "conflictAbort"
+    ) {
+        return Err(AppError::new("fixture", "Unknown rebase scenario"));
+    }
+    let f = fixture(&state)?;
+    let existing = f.rebases.lock().unwrap().get(&scenario).cloned();
+    let result = if let Some(record) = existing {
+        record
+    } else {
+        let path = f._root.path().join(format!("rebase-{scenario}"));
+        std::fs::create_dir(&path).unwrap();
+        git(&path, &["init", "--template=", "-b", "main"]);
+        configure(&path);
+        std::fs::write(path.join("conflict.txt"), "base\n").unwrap();
+        commit(&path, "Rebase base");
+        git(&path, &["switch", "-c", "feature"]);
+        if scenario == "success" {
+            std::fs::write(path.join("feature.txt"), "feature\n").unwrap();
+        } else {
+            std::fs::write(path.join("conflict.txt"), "feature\n").unwrap();
+        }
+        commit(&path, "Rebase source");
+        let original_oid = git(&path, &["rev-parse", "HEAD"]);
+        git(&path, &["switch", "main"]);
+        if scenario == "success" {
+            std::fs::write(path.join("target.txt"), "target\n").unwrap();
+        } else {
+            std::fs::write(path.join("conflict.txt"), "target\n").unwrap();
+        }
+        commit(&path, "Rebase target");
+        let target_oid = git(&path, &["rev-parse", "HEAD"]);
+        git(&path, &["switch", "feature"]);
+        let opened = state.engine.open_repository(&path).await?;
+        f.cases
+            .lock()
+            .unwrap()
+            .insert(opened.repository_id.clone(), path);
+        let record = serde_json::json!({ "repositoryId": opened.repository_id, "path": opened.display_path,
+            "originalOid": original_oid, "targetOid": target_oid, "scenario": scenario });
+        f.rebases
+            .lock()
+            .unwrap()
+            .insert(scenario.clone(), record.clone());
+        record
+    };
+    state.launches.push(LaunchRequest {
+        request_id: uuid::Uuid::new_v4().to_string(),
+        kind: "repository".into(),
+        path: Some(result["path"].as_str().unwrap().into()),
+        error: None,
+        scan_depth: None,
+    });
+    Ok(result)
+}
+
+#[tauri::command]
+pub async fn native_smoke_rebase_verify(
+    state: State<'_, AppState>,
+    repository_id: String,
+    scenario: String,
+) -> AppResult<serde_json::Value> {
+    let record = fixture(&state)?
+        .rebases
+        .lock()
+        .unwrap()
+        .get(&scenario)
+        .cloned()
+        .ok_or_else(|| AppError::new("fixture", "Unknown rebase fixture"))?;
+    if record["repositoryId"] != repository_id {
+        return Err(AppError::new("fixture", "Rebase fixture arguments differ"));
+    }
+    let path = Path::new(record["path"].as_str().unwrap());
+    let original = record["originalOid"].as_str().unwrap();
+    let target = record["targetOid"].as_str().unwrap();
+    let status = state.engine.get_status(&repository_id).await?;
+    let backup = git(
+        path,
+        &[
+            "for-each-ref",
+            "--format=%(objectname)",
+            "refs/git-view/rebase-backups/",
+        ],
+    );
+    let head = git(path, &["rev-parse", "HEAD"]);
+    let mut verified = status.git_state == GitState::Idle
+        && !status.dirty
+        && status.operation_context.is_none()
+        && git(path, &["symbolic-ref", "--short", "HEAD"]) == "feature"
+        && git(path, &["rev-parse", "main"]) == target
+        && backup == original
+        && !path.join(".git/git-view-rebase.json").exists();
+    match scenario.as_str() {
+        "success" => {
+            verified &= head != original
+                && head != target
+                && git(path, &["rev-parse", "HEAD^"]) == target
+                && std::fs::read_to_string(path.join("feature.txt")).unwrap() == "feature\n"
+                && std::fs::read_to_string(path.join("target.txt")).unwrap() == "target\n";
+        }
+        "conflictContinue" => {
+            verified &= head != original
+                && head != target
+                && git(path, &["rev-parse", "HEAD^"]) == target
+                && std::fs::read_to_string(path.join("conflict.txt")).unwrap()
+                    == "resolved both sides\n";
+        }
+        "conflictSkip" => {
+            verified &= head == target
+                && std::fs::read_to_string(path.join("conflict.txt")).unwrap() == "target\n";
+        }
+        "conflictAbort" => {
+            verified &= head == original
+                && std::fs::read_to_string(path.join("conflict.txt")).unwrap() == "feature\n";
+        }
+        _ => verified = false,
+    }
+    if !verified {
+        return Err(AppError::new(
+            "fixture",
+            "Rebase changed unexpected refs, files, or metadata",
         ));
     }
     Ok(serde_json::json!({ "verified": true }))

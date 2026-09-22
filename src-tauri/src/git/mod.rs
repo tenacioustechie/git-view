@@ -4,6 +4,7 @@ mod discovery;
 mod history;
 mod hunks;
 mod merge;
+mod rebase;
 mod ref_guard;
 mod remote_checkout;
 mod rewrite;
@@ -93,6 +94,7 @@ pub struct PreparedAction {
     pub(crate) rewrite: Option<rewrite::PreparedRewrite>,
     pub(crate) remote_checkout: Option<remote_checkout::Checkout>,
     pub(crate) cherry: Option<cherry_pick::CherryPlan>,
+    pub(crate) rebase: Option<rebase::RebasePlan>,
     pub(crate) stash: Option<stash::StashPlan>,
     pub(crate) hunk: Option<hunks::HunkPlan>,
 }

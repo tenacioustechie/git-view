@@ -1,5 +1,41 @@
 # Build status
 
+## 2026-09-22: guided rebase macOS source gate; Windows pending
+
+The current worktree, based on A4 code checkpoint `9fe0fb8`, adds guided linear
+rebase onto an exact existing local or fetched remote branch, ordered preview,
+backup and per-worktree record, stopped-state context, external-editor conflict
+resolution, Continue, reviewed Skip, and Abort. This entry describes an
+uncommitted source worktree; record the exact checkpoint and Windows results
+separately after synchronization. The collected A4 packages below are older
+and do not contain rebase.
+
+macOS arm64 checks passed: `pnpm typecheck`, `pnpm lint`, `pnpm test` (114 tests),
+locked full `cargo test`, `cargo fmt --check` after formatting, strict all-target
+Clippy with `native-smoke`, `VITE_NATIVE_SMOKE=1 pnpm build`, and a custom-protocol
+native build. Eight focused real-Git rebase tests cover clean replay, stopped
+conflict and reload, Continue, Skip, Abort, empty commit, hook rejection,
+metadata drift, stale target/dirty state, and merge-commit rejection. The native
+desktop report `/tmp/git-view-native-rebase-mac.json` passed **50/50 checks**,
+including clean replay and conflict Continue/Skip/Abort through the real UI/IPC
+with final ref, backup, and file assertions. Release packages and Windows
+checks are still pending for this source change.
+
+## 2026-09-22: rebase design preparation
+
+A [detailed design](REBASE_DESIGN.md) now describes the proposed first rebase
+workflow, safety checks, stopped-state recovery, and acceptance gate. The user
+confirmed local or fetched remote branches as selectable targets, a linear
+source range, and a separately reviewed Skip that warns the commit's change
+will be omitted. Disposable local repositories using macOS
+Git 2.51.2 confirmed conflict-stop metadata and staged-resolution Continue,
+showed that Continue can drop a commit after an `--empty=stop` pause, and
+accepted the proposed non-interactive command flags for a clean two-commit
+replay. The clean probe reattached the feature branch with the target tip as
+the first replayed commit's parent. This preparation does not validate the app
+implementation or Windows behavior; the latest app acceptance remains A4 at
+`9fe0fb8` below.
+
 ## 2026-09-22: A4 complete text-hunk staging delivered on tested platforms
 
 Source checkpoint `9fe0fb8194723e9253c9e8782c443d6c3e4f2e0f` was synchronized

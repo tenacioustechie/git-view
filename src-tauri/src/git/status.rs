@@ -216,6 +216,19 @@ impl GitEngine {
             "sequencer/abort-safety",
             "sequencer/opts",
             "git-view-cherry-pick.json",
+            "git-view-rebase.json",
+            "REBASE_HEAD",
+            "rebase-merge/head-name",
+            "rebase-merge/orig-head",
+            "rebase-merge/onto",
+            "rebase-merge/stopped-sha",
+            "rebase-merge/msgnum",
+            "rebase-merge/end",
+            "rebase-merge/done",
+            "rebase-merge/git-rebase-todo",
+            "rebase-apply/head-name",
+            "rebase-apply/orig-head",
+            "rebase-apply/onto",
         ] {
             evidence.extend_from_slice(name.as_bytes());
             evidence.push(0);

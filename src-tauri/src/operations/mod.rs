@@ -133,6 +133,7 @@ impl Operations {
                 let plan_id = id();
                 let summary = prepared.summary.clone();
                 let destination = prepared.destination.clone();
+                let rebase_preview = prepared.rebase.as_ref().and_then(|plan| plan.preview());
                 let mut state = self.state.lock().await;
                 state.plans.retain(|_, p| {
                     p.created.elapsed() < Duration::from_secs(300) || p.operation_id.is_some()
@@ -157,6 +158,7 @@ impl Operations {
                     expires_at: expires(),
                     summary,
                     destination,
+                    rebase_preview,
                 }
             }
         }
@@ -215,7 +217,9 @@ impl Operations {
                 operation.output_truncated = outcome.output_truncated;
             }
             Err(error) => {
-                operation.state = if error.code == "canceled" {
+                operation.state = if error.code == "rebase_stopped" {
+                    JobState::Stopped
+                } else if error.code == "canceled" {
                     JobState::Canceled
                 } else if error.code == "precondition_changed" || error.code == "stale_snapshot" {
                     JobState::Skipped

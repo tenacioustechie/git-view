@@ -14,18 +14,25 @@ export function OperationContext({ status, files, active, onPlan, onReview }: {
   </section>;
   const context = status.operationContext ?? null;
   const mismatchedCherry = context?.kind === 'cherryPick' && !['cherryPick', 'other'].includes(status.gitState);
+  const mismatchedRebase = context?.kind === 'rebase' && !['rebase', 'other'].includes(status.gitState);
   const cherry = status.gitState === 'cherryPick' || (status.gitState === 'other' && context?.kind === 'cherryPick');
+  const rebase = context?.kind === 'rebase' && ['rebase', 'other'].includes(status.gitState);
   const interruptedCherry = cherry && status.gitState !== 'cherryPick';
   const merge = !mismatchedCherry && !cherry && status.gitState === 'merge';
   const squash = !mismatchedCherry && !cherry && status.gitState === 'squashMerge';
   const conflicts = files?.filter(file => file.conflicted) ?? [];
   const unresolved = status.counts.conflicted > 0 || conflicts.length > 0;
   const sourceOids = context?.sourceOids ?? (squash && status.squashMerge ? [status.squashMerge.sourceOid] : []);
-  const sourceRef = context?.sourceRef ?? (squash ? status.squashMerge?.sourceRef : null);
+  const sourceRef = context?.kind === 'rebase' ? null : context?.sourceRef ?? (squash ? status.squashMerge?.sourceRef : null);
   const originalHead = context?.originalHead ?? (squash ? status.squashMerge?.originalHead : null);
-  const title = interruptedCherry ? 'Interrupted cherry-pick — review required' : cherry ? 'Cherry-pick in progress' : merge ? 'Merge in progress' : squash ? 'Squash merge review' : `${operationNames[status.gitState]} in progress`;
+  const title = interruptedCherry ? 'Interrupted cherry-pick — review required' : rebase && status.gitState === 'other' ? 'Interrupted rebase — review required' : rebase ? 'Rebase in progress' : cherry ? 'Cherry-pick in progress' : merge ? 'Merge in progress' : squash ? 'Squash merge review' : `${operationNames[status.gitState]} in progress`;
   const target = status.head.kind === 'detached' ? `Detached at ${status.head.oid}` : `${status.head.name}${status.head.kind === 'unborn' ? ' (no commits)' : ` at ${status.head.oid}`}`;
-  const guidance = mismatchedCherry ? 'Review the actual Git operation and the recorded cherry-pick manually before proceeding. Cherry-pick recovery controls are unavailable for this different operation. Refresh after resolving the mismatch externally.'
+  const guidance = mismatchedRebase ? 'The saved rebase record does not describe this active Git operation. Review both with Git externally before making changes.'
+    : mismatchedCherry ? 'Review the actual Git operation and the recorded cherry-pick manually before proceeding. Cherry-pick recovery controls are unavailable for this different operation. Refresh after resolving the mismatch externally.'
+    : rebase && context?.stopReason === 'empty' ? 'This commit has no staged change. Continue may drop it. Review Skip commit to omit it explicitly, or Abort rebase. Use Git externally to preserve an empty commit.'
+    : rebase && unresolved ? 'Resolve files in your external editor, return here, Refresh, and Stage resolution. During rebase, ours is the chosen base plus replayed commits; theirs is the commit being replayed.'
+    : rebase && context?.stopReason === 'ready' ? 'Review the staged result and current Git commit message, then Continue rebase. Normal hooks and signing still apply.'
+    : rebase ? 'Inspect the current rebase and use Git externally if its state cannot be verified. Refresh after external changes.'
     : unresolved ? 'Resolve each conflicted file in your editor, return here, Refresh, then Stage resolution for each file. Editing file content alone does not resolve Git’s index conflicts.'
     : cherry && context?.stopReason === 'empty' ? 'This cherry-pick has no remaining changes to commit. Review the result, then Skip empty cherry-pick to finish without creating a commit, or Abort cherry-pick.'
       : cherry && (!context || context.stopReason === 'unknown') ? 'Review the reported state and refresh after external Git changes. Use Git externally if a safe next action cannot be identified.'
@@ -38,9 +45,11 @@ export function OperationContext({ status, files, active, onPlan, onReview }: {
     {interruptedCherry && <p>Git reports {status.gitState}; the recorded cherry-pick does not match an active cherry-pick marker. No completed pick or rollback is assumed.</p>}
     <p><strong>Current target:</strong> {target}</p>
     {mismatchedCherry && <p><strong>Recorded cherry-pick warning:</strong> A separate cherry-pick record does not match the active {status.gitState}. Its recorded context below does not describe that active operation.</p>}
+    {mismatchedRebase && <p><strong>Recorded rebase warning:</strong> The saved rebase record does not match the active {status.gitState}. Its recorded context below does not describe that active operation.</p>}
     <p><strong>{mismatchedCherry ? 'Recorded cherry-pick target:' : 'Recorded target:'}</strong> {context?.targetBranch ?? 'Unknown — no reliable original branch context is available.'}</p>
     <p><strong>{mismatchedCherry ? 'Recorded cherry-pick source:' : 'Source:'}</strong> {sourceRef ? `${sourceRef} · ` : ''}{sourceOids.length ? sourceOids.join(', ') : 'Unknown — no reliable source context is available.'}</p>
     <p><strong>{mismatchedCherry ? 'Recorded cherry-pick original HEAD:' : 'Original HEAD:'}</strong> {originalHead ?? 'Unknown — no reliable original commit is available.'}</p>
+    {rebase && <><p><strong>Onto branch:</strong> {context?.rebase?.ontoRef ?? 'Unknown'}{context?.rebase?.ontoOid ? ` at ${context.rebase.ontoOid}` : ''}</p><p><strong>Commit being replayed:</strong> {context?.rebase?.currentOid ?? 'Unknown'}</p><p><strong>Progress:</strong> {context?.rebase?.completed ?? '?'} of {context?.rebase?.total ?? '?'} completed</p></>}
     {context?.reason && <p>{context.reason}</p>}
     {context?.kind === 'cherryPick' && context.stopReason === 'unknown' && <p>Resolve the recorded cherry-pick context before staging files or starting another mutation. Fetch and inspection remain available.</p>}
     <p>{guidance}</p>
@@ -51,6 +60,11 @@ export function OperationContext({ status, files, active, onPlan, onReview }: {
       <button disabled={active || unresolved || (cherry ? !context?.canContinue : context ? !context.canContinue : false)} onClick={() => onPlan({ kind: cherry ? 'continueCherryPick' : 'continueMerge', statusSnapshotId: status.snapshotId })}>{cherry ? 'Continue cherry-pick' : 'Continue merge'}</button>
       {cherry && context?.stopReason === 'empty' && <button disabled={active || !context.canSkip || unresolved} onClick={() => onPlan({ kind: 'skipCherryPick', statusSnapshotId: status.snapshotId })}>Skip empty cherry-pick</button>}
       <button disabled={active || (cherry ? !context?.canAbort : context ? !context.canAbort : false)} onClick={() => onPlan({ kind: cherry ? 'abortCherryPick' : 'abortMerge', statusSnapshotId: status.snapshotId })}>{interruptedCherry && status.gitState === 'other' ? 'Clear interrupted cherry-pick' : cherry ? 'Abort cherry-pick' : 'Abort merge'}</button>
+    </div>}
+    {rebase && <div className="operation-actions">
+      <button disabled={active || !context?.canContinue || unresolved} onClick={() => onPlan({ kind: 'continueRebase', statusSnapshotId: status.snapshotId })}>Continue rebase</button>
+      <button disabled={active || !context?.canSkip} onClick={() => onPlan({ kind: 'skipRebase', statusSnapshotId: status.snapshotId })}>Skip commit</button>
+      <button disabled={active || !context?.canAbort} onClick={() => onPlan({ kind: 'abortRebase', statusSnapshotId: status.snapshotId })}>Abort rebase</button>
     </div>}
   </section>;
 }

@@ -72,6 +72,18 @@ pub struct OperationContext {
     pub can_abort: bool,
     pub can_skip: bool,
     pub reason: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rebase: Option<RebaseProgress>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RebaseProgress {
+    pub onto_ref: Option<String>,
+    pub onto_oid: Option<String>,
+    pub current_oid: Option<String>,
+    pub completed: Option<usize>,
+    pub total: Option<usize>,
+    pub app_owned: bool,
 }
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -446,6 +458,19 @@ pub enum RepositoryAction {
     SkipCherryPick {
         status_snapshot_id: String,
     },
+    StartRebase {
+        status_snapshot_id: String,
+        onto_ref: String,
+    },
+    ContinueRebase {
+        status_snapshot_id: String,
+    },
+    SkipRebase {
+        status_snapshot_id: String,
+    },
+    AbortRebase {
+        status_snapshot_id: String,
+    },
     CreateStash {
         status_snapshot_id: String,
         message: String,
@@ -498,6 +523,10 @@ impl RepositoryAction {
             Self::ContinueCherryPick { .. } => "continueCherryPick",
             Self::AbortCherryPick { .. } => "abortCherryPick",
             Self::SkipCherryPick { .. } => "skipCherryPick",
+            Self::StartRebase { .. } => "startRebase",
+            Self::ContinueRebase { .. } => "continueRebase",
+            Self::SkipRebase { .. } => "skipRebase",
+            Self::AbortRebase { .. } => "abortRebase",
             Self::CreateStash { .. } => "createStash",
             Self::ApplyStash { .. } => "applyStash",
             Self::DeleteStash { .. } => "deleteStash",
@@ -538,11 +567,29 @@ pub enum RepositoryActionPlan {
         expires_at: String,
         summary: String,
         destination: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        rebase_preview: Option<RebasePreview>,
     },
     Blocked {
         reason: String,
         error: Option<AppError>,
     },
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RebasePreview {
+    pub branch: String,
+    pub original_head: String,
+    pub onto_ref: String,
+    pub onto_oid: String,
+    pub base_oid: String,
+    pub commits: Vec<RebaseCommit>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RebaseCommit {
+    pub oid: String,
+    pub subject: String,
 }
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -550,6 +597,7 @@ pub enum JobState {
     Queued,
     Running,
     Succeeded,
+    Stopped,
     Failed,
     Skipped,
     Canceled,

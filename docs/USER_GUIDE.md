@@ -1,9 +1,9 @@
 # Git View user guide
 
-Reviewed 22 September 2026 for version 0.1.0, including remote tracking checkout,
-cherry-pick, stash, and complete text-hunk controls, verified at source checkpoint
-`9fe0fb8` on macOS and Windows.
-See Build status for the current verification checkpoint.
+Reviewed 22 September 2026 for version 0.1.0, including the rebase controls in
+the current source worktree. The collected macOS and Windows packages remain at
+the A4 checkpoint `9fe0fb8` until the rebase platform gate is recorded in
+[Build status](BUILD_STATUS.md).
 This guide describes implemented behavior. See [Feature status](FEATURE_STATUS.md)
 for the remaining roadmap and [Build status](BUILD_STATUS.md) for tested versions,
 packages, and platform limitations.
@@ -20,6 +20,7 @@ packages, and platform limitations.
 - [Fetch, pull, and push](#fetch-pull-and-push)
 - [Create and switch branches](#create-and-switch-branches)
 - [Cherry-pick a commit](#cherry-pick-a-commit)
+- [Rebase a branch](#rebase-a-branch)
 - [Save and restore work with stashes](#save-and-restore-work-with-stashes)
 - [Merge a branch](#merge-a-branch)
 - [Squash merge a branch](#squash-merge-a-branch)
@@ -396,6 +397,54 @@ outside the worktree before retrying.
 Cherry-pick and its recovery actions do not recursively update submodule
 worktrees; manage submodule contents separately.
 
+## Rebase a branch
+
+Use **Rebase branch** to replay the current local branch's linear commits onto
+an existing local or fetched remote branch. Begin on a clean, attached local
+branch with an existing commit and no Git operation in progress. Untracked and
+submodule changes also block the start. Move ignored files outside the worktree
+before rebasing; the initial workflow blocks them because directory renames can
+put them at paths Git might overwrite.
+
+1. Expand **Rebase branch** in the branch controls and choose **Onto branch**.
+   Use **Fetch** separately if a remote branch is missing or stale. Selecting
+   a history scope does not change the current branch or the rebase target.
+2. Choose **Preview rebase**. Check the current branch and original HEAD, exact
+   target ref and commit, merge base, and every commit listed in replay order.
+3. Confirm **Run rebase branch**. Git View rechecks that the preview is still
+   current, saves a backup ref under `refs/git-view/rebase-backups/`, and starts
+   the replay. The source commits receive new IDs. No fetch or push follows.
+4. If Git stops, read **Rebase in progress** for the original branch/HEAD,
+   chosen base, current source commit, progress, unresolved files, and available
+   controls. Resolve conflicts in an external editor, return, **Refresh**, and
+   **Stage resolution**. During rebase, Git's “ours” is the chosen base plus
+   commits already replayed; “theirs” is the commit being replayed.
+5. When the conflict is fully staged, review **Continue rebase**. Git uses its
+   recorded commit message and normal hooks/signing. It may stop again at a
+   later commit. Your ordinary commit draft stays separate and is not used.
+
+**Skip commit** has a separate confirmation naming the commit. It omits that
+commit's change from the resulting branch and may discard edits made while
+resolving it. Use it only after reviewing those changes. A commit that becomes
+empty can stop for review; Continue may still drop it, so the app offers Skip
+or Abort rather than promising to preserve it. Use Git externally if you need
+to retain an empty commit or edit its message.
+
+**Abort rebase** has a separate confirmation. Git attempts to restore the
+original branch/HEAD and may discard resolution edits. Inspect actual refs and
+files afterward, especially if Git reports an error. The backup ref remains
+after completion or Abort for manual recovery; there is no one-click reset to
+it. If the recorded rebase metadata no longer matches Git, the app disables its
+recovery controls and asks for manual review. A rebase started outside Git View
+is displayed for context but must be continued, skipped, or aborted with Git.
+
+The initial workflow accepts up to 100 linear source commits with exactly one
+merge base. It excludes merge commits in the source range, shallow or grafted
+ancestry, replacement refs, symbolic remote HEADs, detached/unborn branches,
+automatic fetching, interactive rebase, and force push. A normal push can reject
+a rebased branch whose old commits were published; Git View has no force-push
+control. See [Feature status](FEATURE_STATUS.md) for platform verification.
+
 ## Save and restore work with stashes
 
 The **Stashes** button opens saved work for the current repository. Linked
@@ -558,7 +607,7 @@ acceptance remains outstanding. A group-filter focus shortcut is not implemented
 | External project edit conflicts with a draft | Save the draft separately with **Save edits as**, or **Reload project** to use the disk version. |
 
 Not yet available: individual-line staging, side-by-side diffs, blame/file history,
-rebase, batch push, group branch switching, integrated conflict editing,
+interactive rebase, batch push, group branch switching, integrated conflict editing,
 multiple windows, group templates, and persisted recent-project/view settings.
 The broader backlog and verification gaps are tracked in [Feature status](FEATURE_STATUS.md).
 

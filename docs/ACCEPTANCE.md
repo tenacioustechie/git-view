@@ -90,6 +90,14 @@ distinguished from automating the operating-system save picker itself.
 
 ## UI tests and native smoke
 
+The guided rebase gate uses the [rebase design](REBASE_DESIGN.md): exact
+local/fetched-remote target and ordered linear commit preview; stale/dirty and
+merge-commit rejection; backup and metadata reconciliation; stopped conflict,
+empty, Continue, reviewed Skip, and Abort through disposable Git repositories.
+Native macOS and Windows checks must use the visible controls and verify final
+branch/target/backup refs and file bytes. An external or mismatched rebase stays
+read-only in the app. Record each platform and package separately in Build status.
+
 A4 must split two separated changes into exact index content, then unstage one
 while preserving another, and commit only the selected block. Assert complete
 index blobs and unchanged working bytes, including other files and untracked
