@@ -13,6 +13,13 @@ staged diff review, retained draft, and a partial commit leaving the other
 edit visible. Windows and local release/package gates remain open; this worktree
 is not yet a tested source revision on Windows.
 
+The first Windows full run at `9ba61b0` passed 111 UI tests, typecheck/lint,
+then stopped at the A4 Unicode/line-ending fixture because Windows rejects
+a tab in a filename (OS error 123) before Git executes. The fixture now uses
+a Unicode path with spaces on Windows and retains the tab-path case on macOS.
+The focused macOS hunk suite and formatting pass after this test-only change;
+Windows full rerun remains required. The first Windows run is not a passing gate.
+
 A3's full gates passed before A4 started. Shared typed hunk capabilities,
 backend/index safety, renderer actions, and native fixtures are implemented.
 The A4 platform/package gate is still in progress. A3 packages/reports are preserved at

@@ -263,7 +263,11 @@ async fn crlf_unicode_and_missing_newline_round_trip() {
     ] {
         let dir = repo();
         let p = dir.path();
-        let name = "βeta tab\tfile";
+        let name = if cfg!(windows) {
+            "βeta space file"
+        } else {
+            "βeta tab\tfile"
+        };
         git(
             p,
             &[
