@@ -46,6 +46,7 @@ Get changed paths from NUL-delimited metadata rather than patch headers. Use ind
 | Create/switch branch | Validate name and resolve target; initial policy requires clean status and no ongoing operation; backend rechecks HEAD |
 | Remote tracking checkout | Resolve explicit fetch mapping, require clean idle state and unused local name/config namespace, pin reviewed source during execution, create/switch with direct tracking, preserve ignored files, inspect actual post-hook state |
 | Cherry-pick (A2) | One full non-merge commit ID, clean existing attached target, source/target preview, ignored-content protection, persistent stopped-state context, reviewed Continue/Abort/empty Skip |
+| Stash (A3) | Named Create with opt-in untracked files; bounded inspection; clean-destination Apply retaining entry; separately reviewed exact-entry Delete with backup and explicit interrupted-deletion recovery |
 | Merge (M2) | Clean starting state; show source and current target; use normal merge, allow fast-forward, avoid editor wait; support conflicts and hook failures |
 | Squash-merge (M2) | Clean starting state; merge source with `--squash`; leave changes staged for review and an explicit normal commit |
 
@@ -103,6 +104,51 @@ staged resolution edits; no automatic reset or rollback is performed.
 reason, and backend capabilities for cherry-pick, ordinary merge, and squash
 review. Conflict completion follows Git index state, not a search for text
 markers. Missing original context is displayed as unknown.
+
+## Stashes
+
+Stash entry identities bind a common Git directory, the complete bounded stash
+ref/reflog snapshot, and the selected occurrence. Duplicate object IDs are not
+interchangeable entries. Linked worktrees share the stash list and application
+mutation lock. Refresh invalidates changed list selections; no positional
+`stash@{n}` from the renderer is executed as an unchecked mutation target.
+
+Create saves tracked index/worktree changes with a nonblank, single-line message
+of at most 4,096 UTF-8 bytes. `--include-untracked` is explicit and initially off;
+ignored files remain excluded. No eligible changes produces an explanation,
+not a false successful creation. Changed submodules/gitlinks are rejected.
+Apply requires clean idle state and an existing HEAD, pins the reviewed object,
+and explicitly chooses `--index` or `--no-index` rather than inheriting
+`stash.index`. Default Apply can still stage newly added files. Neither success
+nor failure invokes Pop or Delete. Git can partially apply changes before an
+error, so failures refresh the actual index/worktree and do not automatically
+roll back. Both actions disable recursive submodule updates; Apply rejects saved
+gitlink changes and ignored-content collision/directory-rename hazards.
+See [Git stash](https://git-scm.com/docs/git-stash/2.51.0).
+
+Inspection compares the saved base against tracked WIP or saved index; the
+untracked section compares the optional third-parent tree against an empty tree.
+File identities and bounded historical diff handling are reused. Generic index
+conflicts without Git operation markers retain unknown source context and use
+external resolution, staging, and ordinary commit. They do not receive ordinary
+merge Continue/Abort controls.
+
+Delete initially supports files ref storage on macOS and Windows. It holds Git's
+reference transaction lock, revalidates the exact ref/reflog, retains the selected
+object under `refs/git-view/stash-deletions`, and journals the intended old/new
+metadata pair before installation. Multi-entry removal preserves other entries'
+order and metadata while repairing the old-object chain; singleton removal uses
+Git's prepared compare-and-swap reference deletion. Platform replacement requires
+the existing destination, avoiding recreation after an external whole-log drop.
+Uncertain installation outcomes retain recovery data. Opening/status/list reads
+never repair the journal. Explicit Finalize accepts only recorded metadata pairs;
+unrelated external state requires manual review. Backups remain after success.
+This does not exclude arbitrary direct filesystem writes or user hook effects.
+
+The initial list limit is 1,000 entries and 8 MiB of reflog data. Reftable storage
+is unsupported. Linux Delete has no implemented atomic replacement primitive;
+list/Create/Apply are separate from that platform limitation. Native Linux
+execution remains unverified.
 
 ## Group pull and batching
 

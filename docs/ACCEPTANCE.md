@@ -90,6 +90,25 @@ distinguished from automating the operating-system save picker itself.
 
 ## UI tests and native smoke
 
+The A3 stash gate verifies separate saved index/worktree bytes, default untracked
+exclusion and explicit inclusion, ignored-file preservation, no-change handling,
+default Apply versus Restore staged state, and retained entries on success or
+conflict. Apply failure may be partial; assert actual files and index rather than
+assuming rollback. Reject dirty destinations, active operations, changed
+submodules, unsupported gitlinks, and ignored-path overwrite hazards. Exercise
+shared linked-worktree lists, duplicate object occurrences, stale previews,
+external list changes, packed refs, and exact top/middle/oldest/singleton Delete.
+Deletion must preserve unrelated entries, HEAD, index, working files, and a
+recovery backup. Inject interrupted metadata writes and hook-driven changes;
+Finalize must be retryable for recorded states and reject unrelated state without
+repair during reads. Include alternate object formats where Git supports them.
+
+Native A3 checks create with the unchecked untracked default, inspect all saved
+sections and restore staged state with explicit untracked inclusion, cancel then
+delete a reviewed middle entry from a dirty checkout, show generic stash conflict
+guidance without ordinary merge controls, and reload the WebView during genuine
+stash creation. Verify resulting Git objects/files in disposable fixtures.
+
 The A2 cherry-pick gate requires disposable-repository checks for an exact
 single-commit patch, parent, source message/author, preserved target-only files,
 and unchanged source ref. Reject merge/initially empty sources, dirty or

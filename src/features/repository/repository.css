@@ -59,6 +59,14 @@
 .operation-actions { justify-content:flex-start; flex-wrap:wrap; margin-top:10px; }
 .operation-conflicts ul { margin:8px 0; padding-left:20px; }
 .cherry-pick-selection { border:1px solid var(--border); border-radius:6px; padding:10px; margin-bottom:16px; font-size:13px; }
+.stash-panel p { font-size:13px; line-height:1.5; }
+.stash-panel code { overflow-wrap:anywhere; font-size:12px; }
+.stash-create,.stash-recovery,.selected-stash { border:1px solid var(--border); padding:12px; margin:12px 0; border-radius:6px; }
+.stash-panel label { margin:10px 0; }
+.stash-list { list-style:none; padding:0; max-height:260px; overflow:auto; }
+.stash-list button { width:100%; text-align:left; margin:4px 0; }
+.stash-list strong,.stash-list small,.stash-list code { display:block; }
+.stash-list button[aria-pressed=true] { background:color-mix(in srgb,var(--accent) 16%,var(--panel)); }
 .merge-controls small { display:block; margin:8px 0; }
 .remote-checkout p,.remote-checkout dl { font-size:12px; overflow-wrap:anywhere; }
 .remote-checkout dt { color:var(--muted); margin-top:7px; }

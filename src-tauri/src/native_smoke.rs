@@ -65,6 +65,7 @@ pub struct Context {
     pub history_search: bool,
     pub remote_checkout: bool,
     pub cherry_pick: bool,
+    pub stash: bool,
 }
 pub struct Fixture {
     pub context: Context,
@@ -75,6 +76,8 @@ pub struct Fixture {
     pub slow_commit: tokio::sync::Mutex<Option<serde_json::Value>>,
     pub remote_checkouts: std::sync::Mutex<std::collections::HashMap<String, serde_json::Value>>,
     pub cherry_picks: std::sync::Mutex<std::collections::HashMap<String, serde_json::Value>>,
+    pub stashes: std::sync::Mutex<std::collections::HashMap<String, serde_json::Value>>,
+    pub slow_stash: tokio::sync::Mutex<Option<serde_json::Value>>,
 }
 fn git(path: &Path, args: &[&str]) -> String {
     let output = Command::new("git")
@@ -174,6 +177,7 @@ pub fn setup(report: PathBuf) -> Fixture {
             history_search: true,
             remote_checkout: true,
             cherry_pick: true,
+            stash: true,
         },
         report,
         _root: root,
@@ -182,6 +186,8 @@ pub fn setup(report: PathBuf) -> Fixture {
         slow_commit: Default::default(),
         remote_checkouts: Default::default(),
         cherry_picks: Default::default(),
+        stashes: Default::default(),
+        slow_stash: Default::default(),
     }
 }
 
@@ -1114,4 +1120,258 @@ pub async fn native_smoke_history_search_case(
         "matchOids": [newer, older], "bodyOid": older, "otherOid": other,
         "scopeRef": "refs/heads/main"
     }))
+}
+
+async fn stash_fixture(state: &AppState, scenario: &str) -> AppResult<serde_json::Value> {
+    if !matches!(
+        scenario,
+        "default" | "includeUntracked" | "conflict" | "delete" | "slow"
+    ) {
+        return Err(AppError::new("fixture", "Unknown stash scenario"));
+    }
+    let f = fixture(state)?;
+    let existing = f.stashes.lock().unwrap().get(scenario).cloned();
+    if let Some(record) = existing {
+        return Ok(record);
+    }
+    let path = f._root.path().join(format!("stash-{scenario}"));
+    std::fs::create_dir(&path).unwrap();
+    git(&path, &["init", "--template=", "-b", "main"]);
+    configure(&path);
+    let tracked = if scenario == "conflict" {
+        "conflict.txt"
+    } else {
+        "tracked.txt"
+    };
+    std::fs::write(path.join(tracked), "base\n").unwrap();
+    std::fs::write(path.join(".gitignore"), "ignored.txt\n").unwrap();
+    commit(&path, "Stash base");
+    std::fs::write(path.join("ignored.txt"), "private ignored bytes\n").unwrap();
+    if scenario == "conflict" {
+        std::fs::write(path.join(tracked), "saved stash side\n").unwrap();
+        git(&path, &["stash", "push", "-m", "Native conflicting stash"]);
+        std::fs::write(path.join(tracked), "current target side\n").unwrap();
+        commit(&path, "Diverged stash target");
+    } else if scenario == "delete" {
+        for (message, content) in [
+            ("Native first stash", "first\n"),
+            ("Native middle stash", "middle\n"),
+            ("Native newest stash", "newest\n"),
+        ] {
+            std::fs::write(path.join(tracked), content).unwrap();
+            git(&path, &["stash", "push", "-m", message]);
+        }
+        std::fs::write(path.join(tracked), "keep staged bytes\n").unwrap();
+        git(&path, &["add", "--", tracked]);
+        std::fs::write(path.join(tracked), "keep working bytes\n").unwrap();
+        std::fs::write(path.join("new.txt"), "keep untracked bytes\n").unwrap();
+    } else {
+        std::fs::write(path.join(tracked), "saved index bytes\n").unwrap();
+        git(&path, &["add", "--", tracked]);
+        std::fs::write(path.join(tracked), "saved working bytes\n").unwrap();
+        if scenario != "slow" {
+            std::fs::write(path.join("new.txt"), "saved untracked bytes\n").unwrap();
+        }
+    }
+    let oids: Vec<String> = git(&path, &["stash", "list", "--format=%H"])
+        .lines()
+        .map(str::to_owned)
+        .collect();
+    let opened = state.engine.open_repository(&path).await?;
+    let result = serde_json::json!({
+        "repositoryId": opened.repository_id, "path": opened.display_path,
+        "trackedPath": tracked, "untrackedPath": "new.txt", "scenario": scenario,
+        "stashOid": oids.first(), "selectedStashOid": if scenario == "delete" { oids.get(1) } else { None },
+        "originalOids": oids, "head": git(&path, &["rev-parse", "HEAD"]),
+        "originalIndex": git(&path, &["write-tree"]),
+    });
+    f.cases.lock().unwrap().insert(opened.repository_id, path);
+    f.stashes
+        .lock()
+        .unwrap()
+        .insert(scenario.into(), result.clone());
+    Ok(result)
+}
+
+#[tauri::command]
+pub async fn native_smoke_stash_case(
+    state: State<'_, AppState>,
+    scenario: String,
+) -> AppResult<serde_json::Value> {
+    let result = stash_fixture(&state, &scenario).await?;
+    state.launches.push(LaunchRequest {
+        request_id: uuid::Uuid::new_v4().to_string(),
+        kind: "repository".into(),
+        path: Some(result["path"].as_str().unwrap().into()),
+        error: None,
+        scan_depth: None,
+    });
+    Ok(result)
+}
+
+#[tauri::command]
+pub async fn native_smoke_stash_verify(
+    state: State<'_, AppState>,
+    repository_id: String,
+    scenario: String,
+    stage: String,
+) -> AppResult<serde_json::Value> {
+    let record = fixture(&state)?
+        .stashes
+        .lock()
+        .unwrap()
+        .get(&scenario)
+        .cloned()
+        .ok_or_else(|| AppError::new("fixture", "Unknown stash fixture"))?;
+    if record["repositoryId"] != repository_id {
+        return Err(AppError::new("fixture", "Stash fixture arguments differ"));
+    }
+    let path = Path::new(record["path"].as_str().unwrap());
+    let tracked = record["trackedPath"].as_str().unwrap();
+    let oids: Vec<_> = git(path, &["stash", "list", "--format=%H"])
+        .lines()
+        .map(str::to_owned)
+        .collect();
+    let status = state.engine.get_status(&repository_id).await?;
+    let mut verified = git(path, &["rev-parse", "HEAD"]) == record["head"].as_str().unwrap()
+        && git(path, &["symbolic-ref", "--short", "HEAD"]) == "main"
+        && std::fs::read_to_string(path.join("ignored.txt")).unwrap() == "private ignored bytes\n";
+    match (scenario.as_str(), stage.as_str()) {
+        ("default" | "includeUntracked" | "slow", "created") => {
+            verified &= oids.len() == 1
+                && status.git_state == GitState::Idle
+                && status.counts.staged == 0
+                && status.counts.unstaged == 0;
+            if let Some(oid) = oids.first() {
+                verified &= git(path, &["show", &format!("{oid}:{tracked}")])
+                    == "saved working bytes"
+                    && git(path, &["show", &format!("{oid}^2:{tracked}")]) == "saved index bytes"
+                    && std::fs::read_to_string(path.join(tracked)).unwrap() == "base\n"
+                    && git(path, &["show", &format!(":{tracked}")]) == "base";
+                let parents = git(path, &["show", "-s", "--format=%P", oid]);
+                verified &= parents.split_whitespace().count()
+                    == if scenario == "includeUntracked" { 3 } else { 2 };
+                if scenario == "includeUntracked" {
+                    verified &= !path.join("new.txt").exists()
+                        && !status.dirty
+                        && git(path, &["show", &format!("{oid}^3:new.txt")])
+                            == "saved untracked bytes";
+                } else if scenario == "default" {
+                    verified &= std::fs::read_to_string(path.join("new.txt")).unwrap()
+                        == "saved untracked bytes\n"
+                        && status.counts.untracked == 1;
+                } else {
+                    verified &= !status.dirty;
+                }
+                fixture(&state)?
+                    .stashes
+                    .lock()
+                    .unwrap()
+                    .get_mut(&scenario)
+                    .unwrap()["createdOid"] = oid.clone().into();
+            }
+        }
+        ("includeUntracked", "applied") => {
+            verified &= oids.len() == 1
+                && oids.first().map(String::as_str) == record["createdOid"].as_str()
+                && status.git_state == GitState::Idle
+                && status.counts.conflicted == 0
+                && std::fs::read_to_string(path.join(tracked)).unwrap() == "saved working bytes\n"
+                && git(path, &["show", &format!(":{tracked}")]) == "saved index bytes"
+                && std::fs::read_to_string(path.join("new.txt")).unwrap()
+                    == "saved untracked bytes\n";
+        }
+        ("delete", "deleted") => {
+            let original: Vec<String> =
+                serde_json::from_value(record["originalOids"].clone()).unwrap();
+            let expected = vec![original[0].clone(), original[2].clone()];
+            let backups = git(
+                path,
+                &["for-each-ref", "--format=%(objectname)", "refs/git-view/"],
+            );
+            verified &= oids == expected
+                && backups.lines().any(|oid| oid == original[1])
+                && git(path, &["write-tree"]) == record["originalIndex"].as_str().unwrap()
+                && std::fs::read_to_string(path.join(tracked)).unwrap() == "keep working bytes\n"
+                && std::fs::read_to_string(path.join("new.txt")).unwrap()
+                    == "keep untracked bytes\n"
+                && state
+                    .engine
+                    .list_stashes(&repository_id)
+                    .await?
+                    .recovery
+                    .is_none();
+        }
+        ("conflict", "conflicted") => {
+            verified &= oids.len() == 1
+                && oids.first().map(String::as_str) == record["stashOid"].as_str()
+                && status.git_state == GitState::Idle
+                && status.counts.conflicted > 0
+                && !path.join(".git/MERGE_HEAD").exists()
+                && !path.join(".git/CHERRY_PICK_HEAD").exists()
+                && !path.join(".git/sequencer").exists();
+        }
+        _ => {
+            return Err(AppError::new(
+                "fixture",
+                "Unsupported stash verification stage",
+            ))
+        }
+    }
+    if !verified {
+        return Err(AppError::new(
+            "fixture",
+            "Stash changed unexpected saved, index, or working state",
+        ));
+    }
+    Ok(serde_json::json!({"verified": true}))
+}
+
+#[tauri::command]
+pub async fn native_smoke_slow_stash(state: State<'_, AppState>) -> AppResult<serde_json::Value> {
+    let f = fixture(&state)?;
+    let mut cached = f.slow_stash.lock().await;
+    if cached.is_none() {
+        let record = stash_fixture(&state, "slow").await?;
+        let path = Path::new(record["path"].as_str().unwrap());
+        let hooks = path.join(".git/reload-stash-hooks");
+        std::fs::create_dir(&hooks).unwrap();
+        let hook = hooks.join("reference-transaction");
+        std::fs::write(&hook, "#!/bin/sh\nif [ \"$1\" = prepared ]; then\n  while read old new ref; do\n    if [ \"$ref\" = refs/stash ]; then sleep 8; fi\n  done\nfi\nexit 0\n").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        git(path, &["config", "core.hooksPath", hooks.to_str().unwrap()]);
+        let repository_id = record["repositoryId"].as_str().unwrap();
+        let status = state.engine.get_status(repository_id).await?;
+        let plan = state
+            .operations
+            .plan_action(
+                repository_id,
+                RepositoryAction::CreateStash {
+                    status_snapshot_id: status.snapshot_id,
+                    message: "Stash surviving WebView reload".into(),
+                    include_untracked: false,
+                },
+            )
+            .await;
+        let RepositoryActionPlan::Eligible { plan_id, .. } = plan else {
+            return Err(AppError::new("fixture", "Slow stash plan was blocked"));
+        };
+        let operation = state.operations.run_action(&plan_id).await?;
+        *cached = Some(
+            serde_json::json!({"repositoryId": repository_id, "path": record["path"], "operationId": operation.operation_id}),
+        );
+    }
+    let response = cached.as_ref().unwrap().clone();
+    state.launches.push(LaunchRequest {
+        request_id: uuid::Uuid::new_v4().to_string(),
+        kind: "repository".into(),
+        path: Some(response["path"].as_str().unwrap().into()),
+        error: None,
+        scan_depth: None,
+    });
+    Ok(response)
 }

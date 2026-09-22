@@ -17,6 +17,8 @@ export const api = {
   listRefs: (repositoryId: string) => invoke<T.GitRef[]>('list_refs', { repositoryId }),
   listRemotes: (repositoryId: string) => invoke<T.Remote[]>('list_remotes', { repositoryId }),
   listRemoteBranches: (repositoryId: string) => invoke<T.RemoteBranchListing>('list_remote_branches', { repositoryId }),
+  listStashes: (repositoryId: string) => invoke<T.StashList>('list_stashes', { repositoryId }),
+  getStashDetails: (repositoryId: string, listSnapshotId: string, entryId: string, section: T.StashSection) => invoke<T.CommitDetails>('get_stash_details', { repositoryId, listSnapshotId, entryId, section }),
   getHistory: (repositoryId: string, scope: string | null = null, snapshotId: string | null = null, cursor: string | null = null) => invoke<T.HistoryPage>('get_history', { repositoryId, scope, snapshotId, cursor }),
   searchHistory: (repositoryId: string, query: T.HistorySearch, scope: string | null = null, snapshotId: string | null = null, cursor: string | null = null) => invoke<T.HistoryPage>('search_history', { repositoryId, query, scope, snapshotId, cursor }),
   getCommit: (repositoryId: string, oid: string, parentOid: string | null = null) => invoke<T.CommitDetails>('get_commit', { repositoryId, oid, parentOid }),

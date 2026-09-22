@@ -4,10 +4,11 @@ import { invoke } from '@tauri-apps/api/core';
 import { api, errorMessage } from '../../api/client';
 import type { OperationResult } from '../../api/types';
 
-interface SmokeContext { projectPath: string; cleanPath: string; dirtyPath: string; mergePath: string; m2?: boolean; m3?: boolean; performance?: boolean; discovery?: boolean; historySearch?: boolean; remoteCheckout?: boolean; cherryPick?: boolean }
+interface SmokeContext { projectPath: string; cleanPath: string; dirtyPath: string; mergePath: string; m2?: boolean; m3?: boolean; performance?: boolean; discovery?: boolean; historySearch?: boolean; remoteCheckout?: boolean; cherryPick?: boolean; stash?: boolean }
 interface SmokeResult { passed: boolean; checks: string[]; error?: string; body?: string }
 interface ReloadMarker { version: 1; repositoryId: string; operationId: string; path: string; checks: string[] }
 const reloadKey = 'git-view.native-smoke.reload.v1';
+const stashReloadKey = 'git-view.native-smoke.stash-reload.v1';
 const cherryReloadKey = 'git-view.native-smoke.cherry-reload.v1';
 interface CherryFixture { repositoryId: string; path: string; sourceOid: string; targetOid: string; sourceRef: string; conflictPaths: string[] }
 interface CherryReloadMarker { fixture: CherryFixture; checks: string[] }
@@ -706,6 +707,127 @@ async function finishCherryPickReload(marker: CherryReloadMarker, checks: string
   checks.push('Native add/add cherry-pick conflict survived full WebView reload with accurate source/target/files; external edits remained unresolved until DOM Stage resolution, then Continue preserved source metadata and separate normal draft');
 }
 
+interface StashFixture { repositoryId: string; path: string; trackedPath: string; untrackedPath: string; stashOid?: string; selectedStashOid?: string }
+async function stashRepository(path: string) {
+  const repository = await until('stash fixture selected', () => {
+    const node = document.querySelector<HTMLElement>('.repository-screen');
+    return node?.querySelector('.repository-title strong')?.getAttribute('title') === path ? node : null;
+  });
+  await button('Refresh', repository);
+  return repository;
+}
+async function selectNativeStash(panel: HTMLElement, oid: string) {
+  const row = await until(`stash ${oid} listed`, () => [...panel.querySelectorAll<HTMLButtonElement>('.stash-list button')].find(node => node.title === oid));
+  row.click();
+  return until('selected stash metadata', () => {
+    const selected = panel.querySelector<HTMLElement>('[aria-label="Selected stash"]');
+    return selected?.querySelector('code')?.textContent === oid ? selected : null;
+  });
+}
+async function runStashSmoke(checks: string[]) {
+  for (const scenario of ['default', 'includeUntracked', 'delete', 'conflict'] as const) {
+    const fixture = await invoke<StashFixture>('native_smoke_stash_case', { scenario });
+    const repository = await stashRepository(fixture.path);
+    await click('Stashes', repository);
+    const panel = await region('Stashes');
+    if (scenario === 'default' || scenario === 'includeUntracked') {
+      const inclusion = await until('untracked stash checkbox', () => [...panel.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')].find(node => node.closest('label')?.textContent?.includes('Include untracked files')));
+      assert(!inclusion.checked, 'Untracked inclusion must initially be unchecked');
+      const message = panel.querySelector<HTMLInputElement>('[aria-label="Stash message"]');
+      assert(message, 'Stash message input must be available');
+      const savedMessage = `Native ${scenario} stash`;
+      type(message, savedMessage);
+      if (scenario === 'includeUntracked') inclusion.click();
+      const created = await cherryCommand(repository, fixture.repositoryId, 'createStash', 'Create stash', 'Run create stash');
+      assert(created.state === 'succeeded', `Create stash failed: ${created.error?.message ?? created.reason}`);
+      const verified = await invoke<{ verified: boolean }>('native_smoke_stash_verify', { repositoryId: fixture.repositoryId, scenario, stage: 'created' });
+      assert(verified.verified, 'Created stash must preserve exact saved contents and inclusion behavior');
+      await refreshRepository();
+      const entry = (await api.listStashes(fixture.repositoryId)).entries.find(entry => entry.message.includes(savedMessage));
+      assert(entry, 'Newly created stash must be listed');
+      if (scenario === 'default') {
+        checks.push('Native Create stash left Include untracked files unchecked; actual saved index/worktree contents verified, tracked worktree cleaned and untracked file retained');
+        continue;
+      }
+      const selected = await selectNativeStash(panel, entry.oid);
+      const selector = selected.querySelector<HTMLSelectElement>('[aria-label="Stash section"]');
+      assert(selector, 'Saved stash section selector must exist');
+      for (const [section, path, contents] of [['worktree', fixture.trackedPath, 'saved working bytes'], ['index', fixture.trackedPath, 'saved index bytes'], ['untracked', fixture.untrackedPath, 'saved untracked bytes']]) {
+        selector.value = section; selector.dispatchEvent(new Event('change', { bubbles: true }));
+        const files = await until(`actual saved ${section} details`, () => selected.querySelector<HTMLElement>(`[data-loaded-section="${section}"]`));
+        const file = await until(`saved stash file ${path}`, () => [...files.querySelectorAll<HTMLButtonElement>('button[title]')].find(node => node.title === path));
+        file.click();
+        await until(`saved ${section} patch`, () => selected.querySelector('.unified-diff')?.textContent?.includes(contents));
+      }
+      const restore = selected.querySelector<HTMLInputElement>('input[type="checkbox"]');
+      assert(restore && !restore.checked, 'Restore staged state must initially be unchecked');
+      restore.click();
+      const applied = await cherryCommand(repository, fixture.repositoryId, 'applyStash', 'Apply stash', 'Run apply stash');
+      assert(applied.state === 'succeeded', `Apply stash failed: ${applied.error?.message ?? applied.reason}`);
+      const appliedVerification = await invoke<{ verified: boolean }>('native_smoke_stash_verify', { repositoryId: fixture.repositoryId, scenario, stage: 'applied' });
+      assert(appliedVerification.verified, 'Apply must restore exact staged/unstaged/untracked bytes and retain the stash');
+      await refreshRepository();
+      await until('applied stash still listed', () => [...panel.querySelectorAll<HTMLButtonElement>('.stash-list button')].some(node => node.title === entry.oid));
+      checks.push('Native opt-in stash saved untracked files; DOM inspected tracked/index/untracked patches; explicit Restore staged state restored exact index/worktree/untracked contents and Apply retained the saved entry');
+    } else if (scenario === 'delete') {
+      assert(fixture.selectedStashOid, 'Deletion fixture must identify a non-top entry');
+      await selectNativeStash(panel, fixture.selectedStashOid);
+      await click('Delete stash', panel);
+      const preview = await until('non-top stash deletion preview', () => repository.querySelector<HTMLDialogElement>('dialog[open]'));
+      assert(preview.textContent?.includes(fixture.selectedStashOid), 'Delete preview must identify the selected exact stash OID');
+      const before = (await api.listStashes(fixture.repositoryId)).entries.map(entry => entry.oid);
+      await click('Cancel', preview);
+      await until('canceled stash preview closes', () => !preview.open);
+      assert(JSON.stringify((await api.listStashes(fixture.repositoryId)).entries.map(entry => entry.oid)) === JSON.stringify(before), 'Cancel must preserve every stash entry');
+      await button('Refresh', repository);
+      await selectNativeStash(panel, fixture.selectedStashOid);
+      const deleted = await cherryCommand(repository, fixture.repositoryId, 'deleteStash', 'Delete stash', 'Run delete stash');
+      assert(deleted.state === 'succeeded', `Delete stash failed: ${deleted.error?.message ?? deleted.reason}`);
+      const verified = await invoke<{ verified: boolean }>('native_smoke_stash_verify', { repositoryId: fixture.repositoryId, scenario, stage: 'deleted' });
+      assert(verified.verified, 'Non-top Delete must preserve neighboring entries and working/index contents with retained backup');
+      checks.push('Native non-top stash Delete preview identified exact entry; Cancel preserved all entries, reviewed Delete removed only the middle entry, retained backup and preserved working/index contents');
+    } else {
+      assert(fixture.stashOid, 'Conflict fixture must identify its stash');
+      await selectNativeStash(panel, fixture.stashOid);
+      const applied = await cherryCommand(repository, fixture.repositoryId, 'applyStash', 'Apply stash', 'Run apply stash');
+      assert(applied.state === 'failed', 'Conflicting Apply must report failure and retain saved stash');
+      await refreshRepository();
+      const notice = await region('Git operation');
+      assert(notice.textContent?.includes('Unresolved index conflicts') && notice.textContent.includes(fixture.trackedPath), 'Stash conflict guidance must describe actual index conflicts with unknown source');
+      assert(![...notice.querySelectorAll('button')].some(node => /Continue|Abort/.test(node.textContent ?? '')), 'Stash conflicts must not offer ordinary merge or cherry-pick continuation/abort');
+      const verified = await invoke<{ verified: boolean }>('native_smoke_stash_verify', { repositoryId: fixture.repositoryId, scenario, stage: 'conflicted' });
+      assert(verified.verified, 'Failed stash Apply must retain exact stash with actual Idle conflicted index state');
+      checks.push('Native conflicting stash Apply retained saved entry and actual conflicted index; renderer showed generic external-resolution guidance without false merge/cherry-pick Continue or Abort');
+    }
+  }
+  const fixture = await invoke<{ repositoryId: string; path: string; operationId: string }>('native_smoke_slow_stash');
+  await until('real stash creation running before reload', async () => {
+    const operation = (await api.getOperations()).find(operation => operation.operationId === fixture.operationId);
+    assert(!operation || operation.state === 'queued' || operation.state === 'running', 'Slow stash must remain in flight before reload');
+    return operation?.state === 'running';
+  });
+  const marker: ReloadMarker = { version: 1, ...fixture, checks: [...checks] };
+  sessionStorage.setItem(stashReloadKey, JSON.stringify(marker));
+  assert(sessionStorage.getItem(stashReloadKey), 'Stash reload checkpoint must persist');
+  await progressWrite;
+  window.location.reload();
+}
+async function finishStashReload(marker: ReloadMarker, checks: string[]) {
+  const fixture = await invoke<{ repositoryId: string; path: string; operationId: string }>('native_smoke_slow_stash');
+  assert(fixture.repositoryId === marker.repositoryId && fixture.operationId === marker.operationId && fixture.path === marker.path, 'Stash reload must reconnect to the original operation');
+  const completed = await until('original stash creation completes after reload', async () => (await api.getOperations()).find(operation => operation.operationId === fixture.operationId && !['queued', 'running'].includes(operation.state)), 120000);
+  assert(completed.state === 'succeeded', `Reloaded stash creation failed: ${completed.error?.message ?? completed.reason}`);
+  const verified = await invoke<{ verified: boolean }>('native_smoke_stash_verify', { repositoryId: fixture.repositoryId, scenario: 'slow', stage: 'created' });
+  assert(verified.verified, 'Reloaded stash must contain original exact index/worktree content');
+  const repository = await stashRepository(fixture.path);
+  await click('Stashes', repository);
+  const panel = await region('Stashes');
+  const entries = (await api.listStashes(fixture.repositoryId)).entries;
+  assert(entries.length === 1, 'Reloaded stash creation must create exactly one entry');
+  await until('reloaded stash list shows completed saved entry', () => [...panel.querySelectorAll<HTMLButtonElement>('.stash-list button')].some(node => node.title === entries[0].oid));
+  checks.push('Full native WebView reload during genuine running stash creation preserved the original backend operation; completed exact saved contents and one retained entry reconciled in the restarted renderer');
+}
+
 async function startRunningOperationReload(checks: string[]) {
   const fixture = await invoke<{ repositoryId: string; operationId: string; path: string }>('native_smoke_slow_commit');
   await until('slow commit actually running before full reload', async () => {
@@ -757,6 +879,16 @@ export async function runNativeSmoke(): Promise<void> {
       await invoke('native_smoke_report', { result: { passed: true, checks } satisfies SmokeResult });
       return;
     }
+    const stashCheckpoint = sessionStorage.getItem(stashReloadKey);
+    if (stashCheckpoint) {
+      const marker = JSON.parse(stashCheckpoint) as ReloadMarker;
+      assert(marker.version === 1 && Array.isArray(marker.checks), 'Stash reload checkpoint must be valid');
+      checks.push(...marker.checks);
+      await finishStashReload(marker, checks);
+      sessionStorage.removeItem(stashReloadKey);
+      await startRunningOperationReload(checks);
+      return;
+    }
     const cherryCheckpoint = sessionStorage.getItem(cherryReloadKey);
     if (cherryCheckpoint) {
       const marker = JSON.parse(cherryCheckpoint) as CherryReloadMarker;
@@ -764,6 +896,7 @@ export async function runNativeSmoke(): Promise<void> {
       checks.push(...marker.checks);
       await finishCherryPickReload(marker, checks);
       sessionStorage.removeItem(cherryReloadKey);
+      if ((await invoke<SmokeContext>('native_smoke_context')).stash) { await runStashSmoke(checks); return; }
       await startRunningOperationReload(checks);
       return;
     }
@@ -938,11 +1071,13 @@ export async function runNativeSmoke(): Promise<void> {
     if (context.historySearch) await runHistorySearchSmoke(checks);
     if (context.remoteCheckout) await runRemoteCheckoutSmoke(checks);
     if (context.cherryPick) { await runCherryPickSmoke(checks); return; }
+    if (context.stash) { await runStashSmoke(checks); return; }
     await startRunningOperationReload(checks);
     return; // The reloaded renderer resumes above and submits the final report.
   } catch (cause) {
     sessionStorage.removeItem(reloadKey);
     sessionStorage.removeItem(cherryReloadKey);
+    sessionStorage.removeItem(stashReloadKey);
     result = { passed: false, checks, error: errorMessage(cause), body: document.body.innerText.slice(0, 16000) };
   }
   await progressWrite;

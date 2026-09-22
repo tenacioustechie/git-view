@@ -103,7 +103,11 @@ type RepositoryAction =
   | { kind: 'merge' | 'squashMerge'; statusSnapshotId: SnapshotId; sourceRef: string }
   | { kind: 'continueMerge' | 'abortMerge'; statusSnapshotId: SnapshotId }
   | { kind: 'cherryPick'; statusSnapshotId: SnapshotId; sourceOid: Oid }
-  | { kind: 'continueCherryPick' | 'abortCherryPick' | 'skipCherryPick'; statusSnapshotId: SnapshotId };
+  | { kind: 'continueCherryPick' | 'abortCherryPick' | 'skipCherryPick'; statusSnapshotId: SnapshotId }
+  | { kind: 'createStash'; statusSnapshotId: SnapshotId; message: string; includeUntracked: boolean }
+  | { kind: 'applyStash'; statusSnapshotId: SnapshotId; stashSnapshotId: SnapshotId; entryId: string; restoreIndex: boolean }
+  | { kind: 'deleteStash'; statusSnapshotId: SnapshotId; stashSnapshotId: SnapshotId; entryId: string }
+  | { kind: 'finalizeStashDelete'; statusSnapshotId: SnapshotId; recoveryId: string };
 
 type RepositoryActionPlan =
   | { kind: 'eligible'; planId: string; expiresAt: string; summary: string; destination: string | null }
@@ -158,6 +162,8 @@ Errors such as missing Git, inaccessible repository, stale precondition, authent
 | `list_refs` | repository ID | Validated local/remote/tag references and HEAD |
 | `list_remotes` | repository ID | Display-safe remote IDs/names and resolved defaults |
 | `list_remote_branches` | repository ID | `RemoteBranchListing`; local candidates and mapping issues without fetching |
+| `list_stashes` | repository ID | `StashList`; exact occurrence IDs, list snapshot, deletion capability/recovery |
+| `get_stash_details` | repository ID, list snapshot ID, entry ID, section | `CommitDetails` with file/diff tokens for the saved section |
 | `list_rewrites` | repository ID | Durable Combine commits records with reconciled recovery eligibility |
 | `get_history` | repository ID, scope; or snapshot ID + cursor | `HistoryPage` |
 | `search_history` | repository ID, `{ field: 'message' \| 'author' \| 'oid', text }`, scope, optional snapshot ID/cursor | `HistoryPage` of matches, with original ordered parents |
@@ -177,6 +183,28 @@ display labels are never parsed to infer remote ownership. Checkout plans bind
 the selected source to its OID and revalidate status, configuration, and the
 destination name before mutation. A failed hook can follow a completed switch;
 the result includes actual-state diagnostics without automatic rollback.
+
+### Stash contracts (A3)
+
+`StashEntry` has `entryId`, `oid`, `message`, and `createdAt` strings, optional
+`branch` and `unavailableReason`, and `hasUntracked`. `StashList` has `snapshotId`,
+`entries`, optional `deleteUnavailableReason`, and optional `recovery`.
+`StashDeleteRecovery` has `recoveryId`, `message`, `canFinalize`, and `backupRef`.
+Nullable fields describe unknown context or unavailable actions explicitly.
+
+`get_stash_details` accepts section `worktree` (base to all saved tracked content),
+`index` (base to saved index), or `untracked` (empty tree to the optional third
+parent). Returned file tokens use the existing commit-context `get_diff` API.
+The renderer never sends a stash list number, arbitrary ref expression, or patch
+as mutation identity. Backend snapshots bind the common repository identity,
+the entire bounded stash ref/reflog state, and the exact selected occurrence;
+duplicate object IDs do not become interchangeable entries.
+
+Apply retains the saved entry, with `restoreIndex` separate from file restoration.
+Delete removes only the reviewed entry and retains an identified recovery backup.
+`finalizeStashDelete` explicitly resumes or finalizes only a reconciled recorded
+deletion; list/status reads do not repair it. Unsupported reference backends,
+platforms, or external state changes have explicit unavailable/recovery reasons.
 
 Discovery registers repository identities without reading status or changing Git
 state. Candidates are proposals; only explicit selection followed by

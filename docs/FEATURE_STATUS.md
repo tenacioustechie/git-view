@@ -1,6 +1,7 @@
 # Feature status
 
-Reviewed 22 September 2026, including remote tracking checkout and cherry-pick, against the
+Reviewed 22 September 2026, including remote tracking checkout, cherry-pick, and
+stash implementation with acceptance pending, against the
 [product plan](PRODUCT.md). This is the current completion inventory;
 [Build status](BUILD_STATUS.md) retains dated commands, results, and artifact evidence.
 Instructions for using completed workflows are in the [User guide](USER_GUIDE.md).
@@ -8,9 +9,15 @@ The [next-stage plan](NEXT_STAGE.md), scoped with the user on 21–22 September,
 orders remote tracking checkout, cherry-pick with conflict guidance, stash, and
 hunk staging, with rebase in the following stage. Remote tracking checkout is
 implemented; its current platform acceptance is recorded in Build status.
-Cherry-pick and shared conflict guidance are implemented in the working source,
-with native/platform acceptance and release packages pending. Stash and hunk
-staging remain planned.
+Cherry-pick and shared conflict guidance are also complete on the tested macOS
+and Windows platforms. Stash is under implementation with acceptance pending;
+hunk staging remains planned.
+
+The pending A3 slice includes named stash creation, inspection, Apply that retains
+the entry, separately reviewed Delete with a retained backup, and explicit
+interrupted-deletion recovery. Its renderer passes 96 tests, including 13 stash
+cases. Full backend/native/platform/package gates remain open; existing A2
+packages do not include these changes.
 
 ## Milestone interpretation
 
@@ -58,8 +65,8 @@ refer to the delivered runbook workflows on tested platforms.
 
 ## Verification and distribution outstanding
 
-Latest A1 results at `fe33bf3`: **67 frontend tests on each platform, 122 Rust
-tests on macOS / 116 on Windows, and 34 native workflow checks on each**.
+Latest A2 results at `fd637b8`: **83 frontend tests on each platform, 137 Rust
+tests on macOS / 131 on Windows, and 38 native workflow checks on each**.
 macOS arm64 app and Windows x64 NSIS packages were built and exercised. Historical
 performance measurements and exact commands remain in Build status.
 

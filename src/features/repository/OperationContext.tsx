@@ -6,7 +6,12 @@ export function OperationContext({ status, files, active, onPlan, onReview }: {
   status: RepositoryStatus; files: ChangedFile[] | null; active: boolean;
   onPlan: (action: RepositoryAction) => void; onReview: () => void;
 }) {
-  if (status.gitState === 'idle') return null;
+  if (status.gitState === 'idle') return status.counts.conflicted === 0 ? null : <section role="status" aria-label="Git operation" className="repository-notice operation-context">
+    <div className="operation-heading"><strong>Unresolved index conflicts</strong><button onClick={onReview}>Review working changes</button></div>
+    <p>Git reports conflicted index entries without an active merge or cherry-pick. This can follow a stash application or an external Git action; the source is not recorded here.</p>
+    <p>Resolve each file in your editor, Refresh, then Stage resolution. Editing file content alone does not resolve the index. Review the result and make a normal commit when ready. There is no ordinary merge Continue or Abort for this state.</p>
+    <ul>{files?.filter(file => file.conflicted).map(file => <li key={file.fileId}>{file.displayPath} · {conflictKinds[`${file.indexStatus ?? ''}${file.worktreeStatus ?? ''}`] ?? 'unresolved index conflict'}</li>)}</ul>
+  </section>;
   const context = status.operationContext ?? null;
   const mismatchedCherry = context?.kind === 'cherryPick' && !['cherryPick', 'other'].includes(status.gitState);
   const cherry = status.gitState === 'cherryPick' || (status.gitState === 'other' && context?.kind === 'cherryPick');

@@ -94,6 +94,26 @@ pub async fn list_remotes(
     state.engine.list_remotes(&repository_id).await
 }
 #[tauri::command]
+pub async fn list_stashes(
+    state: State<'_, AppState>,
+    repository_id: String,
+) -> AppResult<StashList> {
+    state.engine.list_stashes(&repository_id).await
+}
+#[tauri::command]
+pub async fn get_stash_details(
+    state: State<'_, AppState>,
+    repository_id: String,
+    list_snapshot_id: String,
+    entry_id: String,
+    section: StashSection,
+) -> AppResult<CommitDetails> {
+    state
+        .engine
+        .get_stash_details(&repository_id, &list_snapshot_id, &entry_id, section)
+        .await
+}
+#[tauri::command]
 pub async fn get_history(
     state: State<'_, AppState>,
     repository_id: String,

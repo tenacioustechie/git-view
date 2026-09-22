@@ -1,7 +1,8 @@
 # Git View user guide
 
-Reviewed 22 September 2026 for version 0.1.0, including remote tracking checkout
-and cherry-pick controls. Cherry-pick platform acceptance is still in progress.
+Reviewed 22 September 2026 for version 0.1.0, including remote tracking checkout,
+cherry-pick, and current stash controls. Checkout/cherry-pick are verified at
+source checkpoint `fd637b8` on macOS/Windows; stash acceptance is pending.
 See Build status for the current verification checkpoint.
 This guide describes implemented behavior. See [Feature status](FEATURE_STATUS.md)
 for the remaining roadmap and [Build status](BUILD_STATUS.md) for tested versions,
@@ -19,6 +20,7 @@ packages, and platform limitations.
 - [Fetch, pull, and push](#fetch-pull-and-push)
 - [Create and switch branches](#create-and-switch-branches)
 - [Cherry-pick a commit](#cherry-pick-a-commit)
+- [Save and restore work with stashes](#save-and-restore-work-with-stashes)
 - [Merge a branch](#merge-a-branch)
 - [Squash merge a branch](#squash-merge-a-branch)
 - [Combine existing commits and recover](#combine-existing-commits-and-recover)
@@ -358,6 +360,69 @@ some directory-rename situations require preserving or moving ignored content
 outside the worktree before retrying.
 Cherry-pick and its recovery actions do not recursively update submodule
 worktrees; manage submodule contents separately.
+
+## Save and restore work with stashes
+
+The **Stashes** button opens saved work for the current repository. Linked
+worktrees share this list. Stash controls are implemented in the current source;
+see [Build status](BUILD_STATUS.md) for their pending platform acceptance.
+
+To set work aside:
+
+1. Enter a nonblank **Stash message**.
+2. Leave **Include untracked files** unchecked to save only tracked staged and
+   unstaged changes, or check it to also save newly created files. Ignored files
+   are always excluded.
+3. Choose **Create stash**, review what will be saved and removed, then confirm.
+4. Inspect the refreshed working changes. Untracked files left out of the stash
+   remain on disk and can keep the repository dirty.
+
+Creation requires an existing commit, no unfinished Git operation or conflicts,
+and eligible changes. Submodule changes must be managed separately. Your stash
+message is retained during the session, independently of your commit draft.
+
+Select a saved entry to inspect its message, date, full commit ID, and originating
+branch when known. **Inspect saved changes** offers **All tracked changes**,
+**Saved staged changes**, and, when present, **Saved untracked files**. Select a
+file to read its bounded diff. A refresh that changes entry identity clears the
+selection; select and review the entry again before acting.
+
+To restore work, first make the destination clean, including untracked files and
+submodules. Select the entry, optionally check **Restore staged state**, choose
+**Apply stash**, review the current target and saved entry, then confirm. Apply
+always keeps the saved entry. Restoring staged state requests the saved index
+as well as working-file contents. With that checkbox unchecked, Git's default
+behavior still stages some newly added files; inspect the resulting index.
+
+An Apply error can leave some changes applied. Read the result and refresh before
+retrying; there is no automatic undo. If **Unresolved index conflicts** appears,
+resolve files in your external editor, return, **Refresh**, and choose **Stage
+resolution**. Once all conflicts are resolved, review and use the normal commit
+controls. Stash conflicts do not create an ordinary merge operation, so the app
+does not offer ordinary merge Continue or Abort for them. Unknown conflict
+origins are explicitly shown as unknown.
+
+**Delete stash** is a separate reviewed action. It removes only the selected
+saved entry and does not undo applied working changes. Canceling its preview
+keeps the entry. A private recovery backup retains the saved object after Delete;
+this is not permanent erasure of its contents. There is no Pop or bulk-clear
+control. A stale list must be refreshed and reviewed again.
+
+If **Interrupted stash deletion** appears, read its message and backup reference.
+**Review deletion recovery**, when available, previews completion of the recorded
+Delete. Confirming may finish removing the entry; it does not restore working
+files. The backup remains. If recovery is unavailable because external metadata
+differs, preserve the journal and backup and review the repository with Git
+instead of repeatedly retrying. Merely opening or refreshing the list does not
+repair it.
+
+The initial stash implementation supports Git's files ref storage, with at most
+1,000 entries and an 8 MiB stash reflog. Reftable storage is unsupported. Reviewed
+Delete uses platform-specific atomic replacement on macOS and Windows; it is
+unavailable on Linux. Applying stashes that change submodule gitlinks is excluded.
+Ignored-file collisions and potentially unsafe directory-renaming cases are
+blocked before Apply. Use **Close stashes** to return to the other repository
+controls.
 
 ## Merge a branch
 

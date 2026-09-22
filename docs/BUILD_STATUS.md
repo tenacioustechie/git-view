@@ -1,5 +1,81 @@
 # Build status
 
+## 2026-09-22: A3 stash implementation in progress
+
+A2 is complete at `fd637b8`. A3 shared contracts, command registration, renderer
+API, stash UI, and native fixture/verifier scaffolding are in place. The frontend
+suite passes **96 tests**, including 13 stash cases; typecheck/lint pass, and
+`cargo check --manifest-path src-tauri/Cargo.toml --locked --features native-smoke`
+passes. Backend interruption/concurrency tests remain underway; A3 has no passing
+platform gate yet. The macOS release app builds; package launch validation is
+pending. The full macOS Rust run passed 152 tests before three final adversarial
+stash tests were added; the focused stash suites now pass 18 tests, and strict
+native-feature Clippy passes. Fixtures cover
+unchecked untracked inclusion, opt-in creation and staged-state restoration,
+stash conflicts without ordinary merge controls, exact middle-entry Delete,
+and an actual delayed Create operation surviving a WebView reload.
+
+Disposable preparation probes confirmed that Apply can overwrite ignored paths
+or leave partial changes on failure, default Apply may leave new files staged,
+and nested submodule edits are not saved. Delete requires exact reflog occurrence
+identity rather than a list number or object ID alone. The design uses Git's ref
+lock, conditional atomic reflog replacement, and explicit journal/backup recovery;
+whole-reflog deletion can bypass that ref lock, so a missing destination must not
+be silently recreated. These are implementation requirements pending regression
+and platform validation, not evidence of delivered A3 functionality.
+
+A2 packages, manifest, and native reports were preserved under
+`artifacts/checkpoints/fd637b8` before preparing the next artifact collection.
+
+## 2026-09-22: A2 cherry-pick complete on tested platforms
+
+Delivered at `fd637b801dfae53b6f3efb74d37bf8ffd56fab89` on both build hosts.
+Reviewed single non-merge cherry-pick, Continue/Abort/empty Skip, persistent
+source/target conflict guidance, safe interrupted-marker cleanup, ignored-path
+protection, and nonrecursive recovery are implemented. Unknown or conflicting
+operation records remain inspectable and block unsafe mutations.
+
+| Check | macOS arm64 | Windows 11 x64 |
+| --- | --- | --- |
+| Frontend tests | 83 passed | 83 passed |
+| Rust tests | 137 passed | 131 passed |
+| Native DOM/IPC checks | 38 passed | 38 passed |
+| Typecheck, lint, formatting, strict all-target native-test Clippy | Passed | Passed |
+| Release package | `.app` built; packaged CLI/startup passed | NSIS built; installed CLI/native window passed |
+
+Commands: `pnpm test`, `pnpm typecheck`, `pnpm lint`, locked Cargo tests,
+`cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check`, strict
+all-target Clippy with `native-smoke`, native frontend/custom-protocol builds,
+`python3 scripts/native-smoke.py /tmp/git-view-native-a2-mac.json`,
+`pnpm tauri build --bundles app`, and `scripts/release-smoke.py` against the bundle.
+Windows used `scripts/windows-sync.py` and `scripts/windows-remote.py` with
+`windows-verify.ps1`, `windows-release.ps1`, and `windows-installer-smoke.ps1`,
+plus separate native-feature strict Clippy/formatting. Installed test location:
+`C:\codeme\git-view\.tools\installed-smoke-04e5eab129d34be0adca2ddb2951c4c5`.
+
+The 15 new backend tests cover source metadata/parent, conflicts, hooks/signing,
+initially/becomes-empty states, external changes, ignored file/directory hazards,
+submodule bytes, and interrupted/unknown context. Four new native workflows cover
+success, modify/delete Abort, empty Skip, and add/add resolution after a real
+WebView reload. Existing group, merge, both squash, discovery, search, and native
+performance checks passed. The existing opt-in backend timing test remains ignored.
+Documentation review checked 98 local file links/anchors and `git diff --check`.
+
+Collected unsigned packages, matching reports, and `artifacts/manifest.json`:
+
+| Artifact | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `artifacts/Git-View_0.1.0_macos-arm64.zip` | 3,533,278 | `9849a8e3f519fafe2c738f3ee067708fae78f7ff8813888ab38a1ce6a3dd2d29` |
+| `artifacts/Git-View_0.1.0_windows-x64-setup.exe` | 2,809,032 | `e77275313d76dbfb2eb6cd6f41acd1d25f461d0ccbf2a9f3ab71b1d841c37c44` |
+
+Windows native report:
+`C:\codeme\git-view\.tools\GitViewNativeSmoke-0ab37703d8a64e559dc878d8e26705c0.json`.
+A1 artifacts/reports were preserved at `artifacts/checkpoints/fe33bf3` before
+collection. Linux/Intel Mac, hosted CI, signing/notarization, real remote-service
+authentication, full accessibility/long-group navigation, and the native OS save
+picker remain unverified as listed in Feature status. No push or publication.
+A3 stash is next; A4 hunk staging remains planned.
+
 ## 2026-09-22: A2 cherry-pick and conflict guidance in progress
 
 A1 is complete at `fe33bf3`; A2 changes are under implementation and have not

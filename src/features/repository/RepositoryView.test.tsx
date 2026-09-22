@@ -159,7 +159,7 @@ describe('repository workflows (mocked IPC)', () => {
     render(<RepositoryView repository={repository} />);
     fireEvent.click(screen.getByRole('button', { name: 'Combine commits…' }));
     fireEvent.change(await screen.findByLabelText('Combined commit message'), { target: { value: 'Retain rejected combine message' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Preview combine commits' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Preview combine commits' }));
     expect(await screen.findByRole('alert')).toHaveProperty('textContent', expect.stringContaining('Branch changed'));
     expect(api.runAction).not.toHaveBeenCalled();
     expect((screen.getByLabelText('Combined commit message') as HTMLTextAreaElement).value).toBe('Retain rejected combine message');
@@ -172,7 +172,7 @@ describe('repository workflows (mocked IPC)', () => {
     render(<RepositoryView repository={repository} />);
     fireEvent.click(screen.getByRole('button', { name: 'Combine commits…' }));
     fireEvent.change(await screen.findByLabelText('Combined commit message'), { target: { value: 'Retain failed combine message' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Preview combine commits' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Preview combine commits' }));
     const preview = await screen.findByRole('dialog');
     expect(preview.textContent).toContain('may already be published');
     fireEvent.click(within(preview).getByRole('button', { name: 'Run combineCommits' }));

@@ -208,6 +208,40 @@ pub struct RemoteBranchListing {
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct StashEntry {
+    pub entry_id: String,
+    pub oid: String,
+    pub message: String,
+    pub created_at: String,
+    pub branch: Option<String>,
+    pub has_untracked: bool,
+    pub unavailable_reason: Option<String>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StashDeleteRecovery {
+    pub recovery_id: String,
+    pub message: String,
+    pub can_finalize: bool,
+    pub backup_ref: String,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StashList {
+    pub snapshot_id: String,
+    pub entries: Vec<StashEntry>,
+    pub delete_unavailable_reason: Option<String>,
+    pub recovery: Option<StashDeleteRecovery>,
+}
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum StashSection {
+    Worktree,
+    Index,
+    Untracked,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Remote {
     pub id: String,
     pub name: String,
@@ -355,6 +389,26 @@ pub enum RepositoryAction {
     SkipCherryPick {
         status_snapshot_id: String,
     },
+    CreateStash {
+        status_snapshot_id: String,
+        message: String,
+        include_untracked: bool,
+    },
+    ApplyStash {
+        status_snapshot_id: String,
+        stash_snapshot_id: String,
+        entry_id: String,
+        restore_index: bool,
+    },
+    DeleteStash {
+        status_snapshot_id: String,
+        stash_snapshot_id: String,
+        entry_id: String,
+    },
+    FinalizeStashDelete {
+        status_snapshot_id: String,
+        recovery_id: String,
+    },
     CombineCommits {
         status_snapshot_id: String,
         commit_oids: Vec<String>,
@@ -385,6 +439,10 @@ impl RepositoryAction {
             Self::ContinueCherryPick { .. } => "continueCherryPick",
             Self::AbortCherryPick { .. } => "abortCherryPick",
             Self::SkipCherryPick { .. } => "skipCherryPick",
+            Self::CreateStash { .. } => "createStash",
+            Self::ApplyStash { .. } => "applyStash",
+            Self::DeleteStash { .. } => "deleteStash",
+            Self::FinalizeStashDelete { .. } => "finalizeStashDelete",
             Self::CombineCommits { .. } => "combineCommits",
             Self::RecoverCombine { .. } => "recoverCombine",
         }

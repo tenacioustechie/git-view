@@ -132,7 +132,11 @@ impl GitEngine {
                 .into(),
         })
     }
-    async fn tree_paths(&self, repo: &Repository, oid: &str) -> AppResult<HashSet<Vec<u8>>> {
+    pub(crate) async fn tree_paths(
+        &self,
+        repo: &Repository,
+        oid: &str,
+    ) -> AppResult<HashSet<Vec<u8>>> {
         Ok(self
             .runner
             .read(
@@ -152,7 +156,7 @@ impl GitEngine {
             .map(<[u8]>::to_vec)
             .collect())
     }
-    async fn protect_materialized_paths(
+    pub(crate) async fn protect_materialized_paths(
         &self,
         repo: &Repository,
         paths: &HashSet<Vec<u8>>,
@@ -166,13 +170,13 @@ impl GitEngine {
             let relative = PathBuf::from(path_bytes(bytes));
             let full = repo.root.join(&relative);
             if !tracked.contains(bytes.as_slice()) && std::fs::symlink_metadata(&full).is_ok() {
-                return Err(AppError::new("local_path_collision",format!("Cherry-pick could overwrite an ignored or untracked local path: {}. Move that content outside the repository first.",relative.to_string_lossy())));
+                return Err(AppError::new("local_path_collision",format!("This action could overwrite an ignored or untracked local path: {}. Move that content outside the repository first.",relative.to_string_lossy())));
             }
             let mut parent = relative.parent();
             while let Some(path) = parent.filter(|p| !p.as_os_str().is_empty()) {
                 if let Ok(meta) = std::fs::symlink_metadata(repo.root.join(path)) {
                     if meta.file_type().is_symlink() || !meta.is_dir() {
-                        return Err(AppError::new("local_path_collision",format!("A cherry-pick destination has a file or symlink ancestor: {}. Review it before proceeding.",path.to_string_lossy())));
+                        return Err(AppError::new("local_path_collision",format!("An action destination has a file or symlink ancestor: {}. Review it before proceeding.",path.to_string_lossy())));
                     }
                 }
                 parent = path.parent();

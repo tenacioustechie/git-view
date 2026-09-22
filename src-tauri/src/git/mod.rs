@@ -8,6 +8,8 @@ mod remote_checkout;
 mod rewrite;
 mod rewrite_config;
 mod runner;
+mod stash;
+mod stash_atomic;
 mod status;
 use crate::contracts::*;
 use sha2::{Digest, Sha256};
@@ -60,6 +62,7 @@ pub(crate) struct State {
     pub locks: HashMap<PathBuf, Arc<Mutex<()>>>,
     pub snapshots: HashMap<String, Snapshot>,
     pub history: HashMap<String, HistorySnapshot>,
+    pub stashes: HashMap<String, stash::StashSnapshot>,
     pub fetch_times: HashMap<String, String>,
 }
 #[derive(Clone, Default)]
@@ -68,6 +71,8 @@ pub struct GitEngine {
     pub(crate) runner: runner::Runner,
     #[cfg(test)]
     pub(crate) rewrite_failure: Arc<std::sync::Mutex<Option<String>>>,
+    #[cfg(test)]
+    pub(crate) stash_failure: Arc<std::sync::Mutex<Option<String>>>,
 }
 #[derive(Clone)]
 pub struct PreparedAction {
@@ -86,6 +91,7 @@ pub struct PreparedAction {
     pub(crate) rewrite: Option<rewrite::PreparedRewrite>,
     pub(crate) remote_checkout: Option<remote_checkout::Checkout>,
     pub(crate) cherry: Option<cherry_pick::CherryPlan>,
+    pub(crate) stash: Option<stash::StashPlan>,
 }
 impl PreparedAction {
     /// Restrict a filtered batch fetch to the HEAD observed in its preview.

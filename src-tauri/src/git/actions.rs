@@ -38,6 +38,7 @@ impl GitEngine {
         let mut rewrite = None;
         let mut remote_checkout = None;
         let mut cherry = None;
+        let mut stash = None;
         let finish_squash = matches!(action, RepositoryAction::Commit { .. })
             && status.git_state == GitState::SquashMerge;
         let snapshot_id = match &action {
@@ -71,6 +72,18 @@ impl GitEngine {
             | RepositoryAction::ContinueCherryPick { status_snapshot_id }
             | RepositoryAction::AbortCherryPick { status_snapshot_id }
             | RepositoryAction::SkipCherryPick { status_snapshot_id }
+            | RepositoryAction::CreateStash {
+                status_snapshot_id, ..
+            }
+            | RepositoryAction::ApplyStash {
+                status_snapshot_id, ..
+            }
+            | RepositoryAction::DeleteStash {
+                status_snapshot_id, ..
+            }
+            | RepositoryAction::FinalizeStashDelete {
+                status_snapshot_id, ..
+            }
             | RepositoryAction::ContinueMerge { status_snapshot_id }
             | RepositoryAction::AbortMerge { status_snapshot_id }
             | RepositoryAction::CombineCommits {
@@ -578,6 +591,16 @@ impl GitEngine {
                 args = command;
                 summary = Some(description);
             }
+            RepositoryAction::CreateStash { .. }
+            | RepositoryAction::ApplyStash { .. }
+            | RepositoryAction::DeleteStash { .. }
+            | RepositoryAction::FinalizeStashDelete { .. } => {
+                let (prepared, command, description) =
+                    self.prepare_stash(&repo, status, &action).await?;
+                stash = Some(prepared);
+                args = command;
+                summary = Some(description);
+            }
             RepositoryAction::ContinueMerge { .. } => {
                 if status.git_state != GitState::Merge {
                     return Err(AppError::new(
@@ -603,7 +626,9 @@ impl GitEngine {
             }
         }
         let config_fingerprint = self.config_fingerprint(&repo).await?;
-        if (remote_checkout.is_some() || cherry.is_some()) && config_fingerprint != initial_config {
+        if (remote_checkout.is_some() || cherry.is_some() || stash.is_some())
+            && config_fingerprint != initial_config
+        {
             return Err(AppError::new(
                 "precondition_changed",
                 "Git configuration changed while preparing the action.",
@@ -623,6 +648,7 @@ impl GitEngine {
             rewrite,
             remote_checkout,
             cherry,
+            stash,
             action,
             args,
             input,
@@ -712,6 +738,9 @@ impl GitEngine {
         }
         if let Some(cherry) = &plan.cherry {
             return Box::pin(self.execute_cherry(plan, cherry, &canceled)).await;
+        }
+        if let Some(stash) = &plan.stash {
+            return Box::pin(self.execute_stash(plan, stash, &canceled)).await;
         }
         let _squash_activity = plan
             .squash_start
