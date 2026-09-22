@@ -2,13 +2,12 @@
 
 ## 2026-09-22: guided rebase macOS source gate; Windows pending
 
-The current worktree, based on A4 code checkpoint `9fe0fb8`, adds guided linear
+Source checkpoint `f46bf79` based on A4 code checkpoint `9fe0fb8` adds guided linear
 rebase onto an exact existing local or fetched remote branch, ordered preview,
 backup and per-worktree record, stopped-state context, external-editor conflict
-resolution, Continue, reviewed Skip, and Abort. This entry describes an
-uncommitted source worktree; record the exact checkpoint and Windows results
-separately after synchronization. The collected A4 packages below are older
-and do not contain rebase.
+resolution, Continue, reviewed Skip, and Abort. Windows results will be
+recorded separately after synchronization. The collected A4 packages below
+are older and do not contain rebase.
 
 macOS arm64 checks passed: `pnpm typecheck`, `pnpm lint`, `pnpm test` (114 tests),
 locked full `cargo test`, `cargo fmt --check` after formatting, strict all-target

@@ -11,8 +11,8 @@ hunk staging, with rebase in the following stage. Remote tracking checkout is
 implemented; its current platform acceptance is recorded in Build status.
 Cherry-pick and shared conflict guidance are also complete on the tested macOS
 and Windows platforms. Stash and supported complete text-hunk staging are also
-complete on those platforms. Guided linear rebase is implemented in the current
-source worktree with macOS acceptance; Windows acceptance and packages are pending.
+complete on those platforms. Guided linear rebase is implemented at source
+checkpoint `f46bf79` with macOS acceptance; Windows acceptance and packages are pending.
 
 ## Milestone interpretation
 
@@ -69,7 +69,7 @@ focused suite, native checks, and packages use the corrected checkpoint.
 Historical A3 evidence, performance measurements, and exact commands remain in
 Build status.
 
-The rebase source worktree passes 114 frontend tests, the full macOS Rust suite
+Rebase checkpoint `f46bf79` passes 114 frontend tests, the full macOS Rust suite
 (including eight focused real-Git rebase tests), strict Clippy, typecheck/lint,
 and a macOS native smoke with 50 checks including four rebase scenarios.
 These results do not validate the collected A4 packages or Windows; see the
