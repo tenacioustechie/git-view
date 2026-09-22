@@ -1,8 +1,57 @@
 # Build status
 
-## 2026-09-22: A4 hunk staging implementation in progress
+## 2026-09-22: A4 complete text-hunk staging delivered on tested platforms
 
-A4 macOS source checks pass in the current worktree over `7c0eef5`:
+Source checkpoint `9fe0fb8194723e9253c9e8782c443d6c3e4f2e0f` was synchronized
+to the designated Windows checkout without publishing. The A4 macOS and Windows
+gate passes. In **Working changes**, users can select a supported tracked text
+file and Stage hunk or Unstage hunk from the respective diff. Backend identities
+bind the reviewed complete block to the exact file/index/working/configuration
+snapshot. Git updates the index only; stale selections are rejected, and
+unexpected post-hook changes are reported for inspection. Whole-file controls
+remain available for supported files outside the hunk scope.
+
+| Gate | macOS arm64 | Windows 11 x64 |
+| --- | --- | --- |
+| Frontend | 111 passed; typecheck/lint passed | 111 passed; typecheck/lint passed |
+| Rust | 163 passed; one opt-in performance case ignored | 155 passed; one opt-in performance case ignored |
+| Formatting and strict Clippy | Passed | Passed |
+| Native desktop | 46/46 checks passed | 46/46 checks passed |
+| Release package | `.app` built; packaged CLI/startup passed | NSIS built; installed CLI/native window passed |
+
+Commands: `pnpm test`, `pnpm typecheck`, `pnpm lint`, locked Cargo tests,
+`cargo fmt --check`, strict all-target Clippy with `native-smoke`, the
+`VITE_NATIVE_SMOKE=1 pnpm build` frontend build, a custom-protocol native
+build, and `python3 scripts/native-smoke.py` with report path
+`/tmp/git-view-native-a4-mac-final.json` on macOS. Windows used
+`scripts/windows-sync.py`, `scripts/windows-remote.py scripts/windows-verify.ps1`,
+`scripts/windows-release.ps1`, and `scripts/windows-installer-smoke.ps1`.
+The focused macOS `git_hunks` suite and native checks were rerun after the
+Windows fixture correction. The final macOS release build and packaged
+help/version/invalid-path/repository/discovery startup checks passed.
+
+Passing reports: `artifacts/native-macos.json` and `artifacts/native-windows.json`
+(Windows original `C:\codeme\git-view\.tools\GitViewNativeSmoke-a1fe5870d527446f8631fdc330c42c4d.json`).
+The Windows installed test package is at
+`C:\codeme\git-view\.tools\installed-smoke-f0e062da82fc45e9970d441ed0c88885`.
+Both final packages are unsigned and were collected locally, not published:
+
+| Artifact | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `artifacts/Git-View_0.1.0_macos-arm64.zip` | 3,724,715 | `5a3f3d7185837447968f04c6c915c516d57d43391adf438f02fb400077ac3fa1` |
+| `artifacts/Git-View_0.1.0_windows-x64-setup.exe` | 2,952,956 | `8dc51e216e92393cc4b3b55efa04dd755020b517a0e4e21f02c5b43f831479fe` |
+
+`artifacts/manifest.json` records matching source revisions, checksums, and
+46 passing checks per platform. Prior A3 artifacts remain in
+`artifacts/checkpoints/7c0eef5`. Linux, Intel Mac, signing/notarization,
+remote-service authentication, and the outstanding accessibility checks remain
+unverified as listed in Feature status. The next planned feature stage is rebase;
+it requires a separate detailed design before implementation.
+
+### A4 implementation checkpoints
+
+At the initial A4 checkpoint, macOS source checks passed in the worktree over
+`7c0eef5`:
 `pnpm typecheck`, `pnpm lint`, `pnpm test` (111 passed), locked full Cargo tests
 (163 passed; one opt-in performance case ignored), `cargo fmt --check`, and
 strict all-target Clippy with `native-smoke`. `VITE_NATIVE_SMOKE=1 pnpm build`
@@ -10,8 +59,8 @@ and the custom-protocol native build pass. The native smoke report at
 `/tmp/git-view-native-a4-mac.json` passes **46/46 checks**, including complete
 first/second hunk stage and unstage, exact intermediate index/working bytes,
 staged diff review, retained draft, and a partial commit leaving the other
-edit visible. Windows and local release/package gates remain open; this worktree
-is not yet a tested source revision on Windows.
+edit visible. Windows and local release/package gates were still open at that
+checkpoint; the current completed gate is recorded above.
 
 The first Windows full run at `9ba61b0` passed 111 UI tests, typecheck/lint,
 then stopped at the A4 Unicode/line-ending fixture because Windows rejects
@@ -22,7 +71,7 @@ Windows full rerun remains required. The first Windows run is not a passing gate
 
 A3's full gates passed before A4 started. Shared typed hunk capabilities,
 backend/index safety, renderer actions, and native fixtures are implemented.
-The A4 platform/package gate is still in progress. A3 packages/reports are preserved at
+The A4 platform/package gate was still in progress then. A3 packages/reports are preserved at
 `artifacts/checkpoints/7c0eef5` and remain the current collected artifact set.
 
 ## 2026-09-22: A3 stash complete on tested platforms

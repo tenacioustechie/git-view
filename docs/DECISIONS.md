@@ -24,8 +24,8 @@ current completion and verification.
   context, a conflict list, and next-step guidance; resolve files externally.
   An integrated three-way editor is deferred.
 - The [implementation plan](NEXT_STAGE.md) records the confirmed product scope
-  and engineering assumptions. A1–A3 are delivered on the tested macOS/Windows
-  platforms, and A4 hunk staging is completing its platform/package gate.
+  and engineering assumptions. A1–A4 are delivered on the tested macOS/Windows
+  platforms. Rebase follows in a separately designed stage.
 
 ## Confirmed by the user
 

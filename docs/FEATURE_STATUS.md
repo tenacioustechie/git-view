@@ -1,7 +1,7 @@
 # Feature status
 
 Reviewed 22 September 2026, including remote tracking checkout, cherry-pick,
-stash, and the macOS-verified A4 hunk staging source, against the
+stash, and A4 hunk staging at source checkpoint `9fe0fb8`, against the
 [product plan](PRODUCT.md). This is the current completion inventory;
 [Build status](BUILD_STATUS.md) retains dated commands, results, and artifact evidence.
 Instructions for using completed workflows are in the [User guide](USER_GUIDE.md).
@@ -10,8 +10,8 @@ orders remote tracking checkout, cherry-pick with conflict guidance, stash, and
 hunk staging, with rebase in the following stage. Remote tracking checkout is
 implemented; its current platform acceptance is recorded in Build status.
 Cherry-pick and shared conflict guidance are also complete on the tested macOS
-and Windows platforms. Stash is also complete on those platforms. Hunk staging
-has passed macOS checks; Windows and A4 packages are pending.
+and Windows platforms. Stash and supported complete text-hunk staging are also
+complete on those platforms.
 
 ## Milestone interpretation
 
@@ -59,17 +59,14 @@ refer to the delivered runbook workflows on tested platforms.
 
 ## Verification and distribution outstanding
 
-Latest A3 acceptance/packages at `7c0eef5`: **98 frontend tests on each platform,
-155 Rust tests on macOS / 147 on Windows, and 43 native workflow checks on each**.
-Full Rust runs used `9fb0912`, followed by focused stash identity regression checks
-at `6403443`; `7c0eef5` adds only native-fixture portability and diagnostic changes.
-macOS arm64 app and Windows x64 NSIS packages were built and exercised. Historical
-performance measurements and exact commands remain in Build status.
-
-A4 source checks on macOS pass: 111 frontend tests, 163 Rust tests, strict
-Clippy, and 46 native workflow checks. The A4 Windows and package gates remain
-open; this is not a cross-platform package claim. See Build status for the
-current source checkpoint and exact commands.
+Latest A4 acceptance/packages use `9fe0fb8`: **111 frontend tests on each
+platform, 163 Rust tests on macOS / 155 on Windows, and 46 native workflow
+checks on each**. The macOS arm64 app and Windows x64 NSIS installer were built,
+launched, and collected with passing reports. The source change from `9ba61b0`
+to `9fe0fb8` corrects only a Windows test fixture filename; the final macOS
+focused suite, native checks, and packages use the corrected checkpoint.
+Historical A3 evidence, performance measurements, and exact commands remain in
+Build status.
 
 - Linux and Intel Mac execution, and the hosted GitHub workflow, remain unverified.
 - Stash requires files ref storage; reftable is unsupported. Safe stash Delete

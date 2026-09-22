@@ -1,12 +1,12 @@
 # Next feature stage — implementation plan
 
 Started 21 September 2026; product decisions finalized 22 September 2026.
-Status: **A1–A3 complete on macOS/Windows; A4 hunk staging passed macOS source
-and native checks, with Windows and package gates in progress**.
+Status: **A1–A4 complete on tested macOS/Windows; the following rebase stage
+requires its separate detailed design**.
 Implementation resumed after a computer crash on 22 September 2026. A1 passes
 its tests, native acceptance, release builds, and package checks at `fe33bf3`;
-A2 passes the same gates at `fd637b8`, and A3 at `7c0eef5`; see Build status for evidence. A4 is
-not yet delivered. Engineering choices below
+A2 passes the same gates at `fd637b8`, A3 at `7c0eef5`, and A4 at `9fe0fb8`;
+see Build status for evidence. Engineering choices below
 are implementation assumptions to verify with fixtures, not additional product
 questions or claims of completed functionality.
 
@@ -392,7 +392,7 @@ check while the user reviews structured text. Force canonical path prefixes;
 `diff.noprefix` must never redirect an action to another file. Normal index hooks
 remain active, followed by actual index/working-file verification. Unexpected
 hook effects are reported without rolling back user changes. These are design
-requirements, not passing A4 implementation evidence.
+requirements recorded before A4 acceptance, not passing evidence by themselves.
 
 ## Candidate track B: groups
 

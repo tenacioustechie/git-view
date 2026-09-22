@@ -1,8 +1,8 @@
 # Git View user guide
 
 Reviewed 22 September 2026 for version 0.1.0, including remote tracking checkout,
-cherry-pick, stash, and complete text-hunk controls. A4 hunk staging has passed
-macOS source and native checks; Windows and package checks are in progress.
+cherry-pick, stash, and complete text-hunk controls, verified at source checkpoint
+`9fe0fb8` on macOS and Windows.
 See Build status for the current verification checkpoint.
 This guide describes implemented behavior. See [Feature status](FEATURE_STATUS.md)
 for the remaining roadmap and [Build status](BUILD_STATUS.md) for tested versions,
@@ -255,9 +255,8 @@ app restarts. An ordinary merge uses **Continue merge**, described below.
 
 ### Stage or unstage one hunk
 
-Hunk staging is available in the current source and has passed macOS native
-acceptance. Windows and package checks are recorded in [Build status](BUILD_STATUS.md).
-The collected A3 packages provide whole-file staging only until A4 packages replace them.
+Hunk staging is available in the collected macOS and Windows A4 packages. Its
+native acceptance and package checks are recorded in [Build status](BUILD_STATUS.md).
 
 A **hunk** is a complete change block in a text diff. To include one block in
 the next commit:
