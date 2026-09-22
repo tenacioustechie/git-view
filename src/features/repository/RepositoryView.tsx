@@ -7,11 +7,13 @@ import { CombineCommits } from './CombineCommits';
 import { RemoteCheckout } from './RemoteCheckout';
 import { OperationContext } from './OperationContext';
 import { Stashes } from './Stashes';
+import { WorkingDiff } from './WorkingDiff';
 import './repository.css';
 
 const drafts = new Map<string, string>();
 const terminal = (operation: OperationResult) => !['queued', 'running'].includes(operation.state);
 const isCherryAction = (kind: string) => ['cherryPick', 'continueCherryPick', 'abortCherryPick', 'skipCherryPick'].includes(kind);
+const isHunkAction = (kind: string) => kind === 'stageHunk' || kind === 'unstageHunk';
 const isStashAction = (kind: string) => ['createStash', 'applyStash', 'deleteStash', 'finalizeStashDelete'].includes(kind);
 const actionLabels: Record<string, string> = { createStash: 'create stash', applyStash: 'apply stash', deleteStash: 'delete stash', finalizeStashDelete: 'finalize stash deletion', cherryPick: 'cherry-pick', continueCherryPick: 'continue cherry-pick', abortCherryPick: 'abort cherry-pick', skipCherryPick: 'skip empty cherry-pick' };
 const actionLabel = (kind: string) => actionLabels[kind] ?? kind;
@@ -38,7 +40,15 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
   const [selected, setSelected] = useState<string | null>(null);
   const [details, setDetails] = useState<CommitDetails | null>(null);
   const [diff, setDiff] = useState<DiffResult | null>(null);
-  const [diffRequest, setDiffRequest] = useState<DiffRequest | null>(null);
+  const [diffRequest, updateDiffRequest] = useState<DiffRequest | null>(null);
+  const [diffFileName, setDiffFileName] = useState('');
+  const diffGeneration = useRef(0);
+  const diffSelection = useRef<{ request: DiffRequest; displayPath: string } | null>(null);
+  const setDiffRequest = useCallback((request: DiffRequest | null, displayPath = '') => {
+    diffGeneration.current++;
+    diffSelection.current = request ? { request, displayPath } : null;
+    updateDiffRequest(request); setDiffFileName(displayPath); setDiff(null);
+  }, []);
   const [draft, setDraft] = useState(drafts.get(id) ?? '');
   const [planned, setPlanned] = useState<Planned | null>(null);
   const [busy, setBusy] = useState(false);
@@ -86,7 +96,8 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
     const epoch = ++generation.current;
     setLoading(true);
     setError(null);
-    setDiffRequest(null);
+    const selectedDiff = diffSelection.current;
+    diffGeneration.current++; updateDiffRequest(null); setDiff(null);
     try {
       const [nextStatus, nextChanges, nextRefs, nextRemotes, nextHistory] = await Promise.all([
         api.getStatus(id), api.getChanges(id), api.listRefs(id), api.listRemotes(id), search ? api.searchHistory(id, search, scope) : api.getHistory(id, scope),
@@ -94,10 +105,15 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
       if (epoch !== generation.current) return;
       setStatus(nextStatus); setChanges(nextChanges); setRefs(nextRefs); setRemotes(nextRemotes); setHistory(nextHistory);
       setRefreshVersion(version => version + 1);
+      if (diffSelection.current === selectedDiff) {
+        const context = selectedDiff?.request.context;
+        const file = context && context !== 'commit' ? nextChanges.files.find(item => item.displayPath === selectedDiff.displayPath && (context === 'staged' ? hasChange(item.indexStatus) : hasChange(item.worktreeStatus) || item.untracked || item.conflicted)) : null;
+        setDiffRequest(file && context ? { repositoryId: id, snapshotId: nextChanges.snapshotId, fileId: file.fileId, context } : null, file?.displayPath);
+      }
       setRemoteId(previous => nextRemotes.some(remote => remote.id === previous) ? previous : (nextRemotes.find(remote => remote.defaultFetch)?.id ?? nextRemotes[0]?.id ?? ''));
     } catch (cause) { if (epoch === generation.current) setError(errorMessage(cause)); }
     finally { if (epoch === generation.current) setLoading(false); }
-  }, [id, scope, search]);
+  }, [id, scope, search, setDiffRequest]);
   const currentRefresh = useRef(refresh);
   currentRefresh.current = refresh;
 
@@ -140,7 +156,7 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
           const old = seenOperations.current.get(operation.operationId);
           if (terminal(operation) && old !== undefined && old !== operation.state) {
             changed = true;
-            if (operation.state === 'failed' || ((operation.action === 'checkoutRemoteBranch' || isCherryAction(operation.action) || isStashAction(operation.action)) && operation.state !== 'succeeded')) failure = operation.error?.message ?? operation.reason ?? `Operation ${operation.state}. Inspect activity and current repository state.`;
+            if (operation.state === 'failed' || ((operation.action === 'checkoutRemoteBranch' || isCherryAction(operation.action) || isStashAction(operation.action) || isHunkAction(operation.action)) && operation.state !== 'succeeded')) failure = operation.error?.message ?? operation.reason ?? `Operation ${operation.state}. Inspect activity and current repository state.`;
           }
           seenOperations.current.set(operation.operationId, operation.state);
           if (terminal(operation) && submittedDrafts.current.has(operation.operationId)) {
@@ -174,8 +190,9 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
   };
   useEffect(() => {
     let disposed = false;
+    const epoch = diffGeneration.current;
     setDiff(null);
-    if (diffRequest) api.getDiff(diffRequest).then(result => { if (!disposed) setDiff(result); }).catch(cause => { if (!disposed) setDiff({ kind: 'unavailable', reason: errorMessage(cause) }); });
+    if (diffRequest) api.getDiff(diffRequest).then(result => { if (!disposed && epoch === diffGeneration.current) setDiff(result); }).catch(cause => { if (!disposed && epoch === diffGeneration.current) setDiff({ kind: 'unavailable', reason: errorMessage(cause) }); });
     return () => { disposed = true; };
   }, [diffRequest]);
 
@@ -195,9 +212,9 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
         else if (!terminal(operation)) submittedDrafts.current.set(operation.operationId, action.message);
       }
       if (terminal(operation)) await currentRefresh.current();
-      if (operation.state === 'failed' || ((action.kind === 'checkoutRemoteBranch' || isCherryAction(action.kind) || isStashAction(action.kind)) && terminal(operation) && operation.state !== 'succeeded')) setError(operation.error?.message ?? operation.reason ?? `Operation ${operation.state}. Inspect activity and current repository state.`);
+      if (operation.state === 'failed' || ((action.kind === 'checkoutRemoteBranch' || isCherryAction(action.kind) || isStashAction(action.kind) || isHunkAction(action.kind)) && terminal(operation) && operation.state !== 'succeeded')) setError(operation.error?.message ?? operation.reason ?? `Operation ${operation.state}. Inspect activity and current repository state.`);
     } catch (cause) {
-      if (action.kind === 'checkoutRemoteBranch' || isCherryAction(action.kind) || isStashAction(action.kind)) await currentRefresh.current();
+      if (action.kind === 'checkoutRemoteBranch' || isCherryAction(action.kind) || isStashAction(action.kind) || isHunkAction(action.kind)) await currentRefresh.current();
       setError(errorMessage(cause));
     }
     finally { executing.current = false; setBusy(false); }
@@ -207,17 +224,19 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
     planning.current = true;
     const epoch = generation.current;
     const detailEpoch = detailGeneration.current;
+    const diffEpoch = diffGeneration.current;
     setBusy(true); setError(null);
     try {
       const plan = await api.planAction(id, action);
-      if ((action.kind === 'checkoutRemoteBranch' || isCherryAction(action.kind) || isStashAction(action.kind)) && (epoch !== generation.current || ((action.kind === 'cherryPick' || isStashAction(action.kind)) && detailEpoch !== detailGeneration.current) || (isCurrent && !isCurrent()))) {
-        setError(`Repository view changed while preparing ${action.kind === 'checkoutRemoteBranch' ? 'checkout' : isStashAction(action.kind) ? 'stash action' : 'cherry-pick'}. Review the source and create a new preview.`);
+      if ((action.kind === 'checkoutRemoteBranch' || isCherryAction(action.kind) || isStashAction(action.kind) || isHunkAction(action.kind)) && (epoch !== generation.current || ((action.kind === 'cherryPick' || isStashAction(action.kind) || isHunkAction(action.kind)) && detailEpoch !== detailGeneration.current) || (isHunkAction(action.kind) && diffEpoch !== diffGeneration.current) || (isCurrent && !isCurrent()))) {
+        if (isHunkAction(action.kind)) await currentRefresh.current();
+        setError(`Repository view changed while preparing ${action.kind === 'checkoutRemoteBranch' ? 'checkout' : isStashAction(action.kind) ? 'stash action' : isHunkAction(action.kind) ? 'hunk action' : 'cherry-pick'}. Review the source and create a new preview.`);
         return;
       }
-      if (plan.kind === 'blocked') { if (isStashAction(action.kind)) await currentRefresh.current(); setError(plan.reason); }
+      if (plan.kind === 'blocked') { if (isStashAction(action.kind) || isHunkAction(action.kind)) await currentRefresh.current(); setError(plan.reason); }
       else if (preview) setPlanned({ plan, action, cherryMarkerOnly: action.kind === 'abortCherryPick' && status.gitState === 'other' && status.operationContext?.kind === 'cherryPick' });
       else await execute({ plan, action });
-    } catch (cause) { if (isStashAction(action.kind)) await currentRefresh.current(); setError(errorMessage(cause)); }
+    } catch (cause) { if (isStashAction(action.kind) || isHunkAction(action.kind)) await currentRefresh.current(); setError(errorMessage(cause)); }
     finally { planning.current = false; setBusy(false); }
   };
   const loadMore = async () => {
@@ -293,7 +312,7 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
             <pre className="commit-message">{details.message}</pre>
             <dl className="commit-metadata"><dt>Author</dt><dd>{details.author.name} &lt;{details.author.email}&gt; · {details.author.at}</dd><dt>Committer</dt><dd>{details.committer.name} &lt;{details.committer.email}&gt; · {details.committer.at}</dd><dt>Commit</dt><dd>{details.oid}</dd></dl>
             {details.parents.length > 0 ? <label>Compare with parent<select aria-label="Compare with parent" value={details.selectedParent ?? ''} onChange={event => { void inspect(details.oid, event.target.value); }}>{details.parents.map((parent, index) => <option key={parent} value={parent}>Parent {index + 1}: {parent}</option>)}</select></label> : <p>Root commit · compared with empty tree</p>}
-            <h3>Changed files ({details.files.length})</h3><ul className="file-list">{details.files.map(file => <li key={file.fileId}><button title={file.displayPath} onClick={() => setDiffRequest({ repositoryId: id, snapshotId: details.snapshotId, fileId: file.fileId, context: 'commit' })}>{file.changeKind} · {file.oldDisplayPath ? `${file.oldDisplayPath} → ` : ''}{file.displayPath}</button></li>)}</ul>
+            <h3>Changed files ({details.files.length})</h3><ul className="file-list">{details.files.map(file => <li key={file.fileId}><button title={file.displayPath} onClick={() => setDiffRequest({ repositoryId: id, snapshotId: details.snapshotId, fileId: file.fileId, context: 'commit' }, file.displayPath)}>{file.changeKind} · {file.oldDisplayPath ? `${file.oldDisplayPath} → ` : ''}{file.displayPath}</button></li>)}</ul>
           </>}
         </> : <>
           <h2>Working changes</h2>
@@ -301,7 +320,7 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
             {(['staged', 'unstaged', 'untracked', 'conflicted'] as const).map(section => {
               const files = changes.files.filter(file => section === 'conflicted' ? file.conflicted : !file.conflicted && (section === 'untracked' ? file.untracked : section === 'staged' ? hasChange(file.indexStatus) : hasChange(file.worktreeStatus) && !file.untracked));
               return <div key={section}><h3>{section[0].toUpperCase() + section.slice(1)} ({files.length})</h3><ul className="file-list">{files.map(file => <li key={file.fileId}>
-                <button title={file.displayPath} onClick={() => setDiffRequest({ repositoryId: id, snapshotId: changes.snapshotId, fileId: file.fileId, context: section === 'staged' ? 'staged' : 'unstaged' })}>{file.oldDisplayPath ? `${file.oldDisplayPath} → ` : ''}{file.displayPath}{file.submodule ? ' (submodule)' : ''}</button>
+                <button title={file.displayPath} onClick={() => setDiffRequest({ repositoryId: id, snapshotId: changes.snapshotId, fileId: file.fileId, context: section === 'staged' ? 'staged' : 'unstaged' }, file.displayPath)}>{file.oldDisplayPath ? `${file.oldDisplayPath} → ` : ''}{file.displayPath}{file.submodule ? ' (submodule)' : ''}</button>
                 <button title={cherryReviewRequired ? 'Resolve the recorded cherry-pick context before staging or unstaging files.' : undefined} disabled={active || cherryReviewRequired} onClick={() => { void act({ kind: section === 'staged' ? 'unstage' : 'stage', snapshotId: changes.snapshotId, fileIds: [file.fileId] }); }}>{section === 'staged' ? 'Unstage' : file.conflicted ? 'Stage resolution' : 'Stage'}</button>
               </li>)}</ul></div>;
             })}
@@ -315,7 +334,7 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
             </form>
           </>}
         </>}
-        {diffRequest && <section className="diff-panel" aria-label="File diff"><h3>Diff · {diffRequest.context}</h3>{!diff ? <p>Loading diff…</p> : diff.kind === 'text' ? <>{diff.truncated && <p role="status">Preview truncated: this is not the full patch.</p>}<pre className="unified-diff">{diff.text.split('\n').map((line, index) => <span key={index} className={line.startsWith('+') ? 'diff-add' : line.startsWith('-') ? 'diff-remove' : line.startsWith('@@') ? 'diff-hunk' : ''}>{line}{'\n'}</span>)}</pre>{!diff.text && <p>No text changes.</p>}</> : <p>{diff.kind === 'binary' ? diff.description : diff.reason}</p>}</section>}
+        {diffRequest && <WorkingDiff request={diffRequest} displayPath={diffFileName} diff={diff} active={active || loading} blockedReason={cherryReviewRequired ? 'Resolve the recorded cherry-pick context before staging or unstaging hunks.' : null} onAction={action => { void act(action); }} />}
       </section>
     </div>
     <details className="repository-activity"><summary>Activity · {operations.length ? `${operations[operations.length - 1].action}: ${operations[operations.length - 1].state}` : 'No operations this session'}</summary><ol>{operations.slice(-30).reverse().map(operation => <li key={operation.operationId}><strong>{operation.action}: {operation.state}</strong>{operation.reason && ` · ${operation.reason}`}{operation.error && <span role="alert"> · {operation.error.message}</span>}{operation.outcomeUncertain && ' · Outcome uncertain. Refresh and inspect the repository before retrying.'}{operation.outputTruncated && ' · Operation output truncated.'}</li>)}</ol></details>

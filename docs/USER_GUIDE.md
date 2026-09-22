@@ -1,8 +1,8 @@
 # Git View user guide
 
 Reviewed 22 September 2026 for version 0.1.0, including remote tracking checkout,
-cherry-pick, and current stash controls. Checkout/cherry-pick are verified at
-source checkpoint `fd637b8` on macOS/Windows; stash acceptance is pending.
+cherry-pick, stash, and complete text-hunk controls. A4 hunk staging has passed
+macOS source and native checks; Windows and package checks are in progress.
 See Build status for the current verification checkpoint.
 This guide describes implemented behavior. See [Feature status](FEATURE_STATUS.md)
 for the remaining roadmap and [Build status](BUILD_STATUS.md) for tested versions,
@@ -245,13 +245,49 @@ and reject legacy grafts.
 5. Choose **Commit staged changes (N)**.
 
 A file can have both staged and unstaged changes. Only staged content is
-committed; later unstaged edits remain. Staging is whole-file only. Normal commits
-require staged changes and no unresolved conflicts.
+committed; later unstaged edits remain. Normal commits require staged changes
+and no unresolved conflicts.
 
 Commit hooks and signing remain active. On failure, read the error, resolve the
 cause using your normal Git setup, and retry. Draft messages survive failure and
 navigation between repositories during the session, but are not saved across
 app restarts. An ordinary merge uses **Continue merge**, described below.
+
+### Stage or unstage one hunk
+
+Hunk staging is available in the current source and has passed macOS native
+acceptance. Windows and package checks are recorded in [Build status](BUILD_STATUS.md).
+The collected A3 packages provide whole-file staging only until A4 packages replace them.
+
+A **hunk** is a complete change block in a text diff. To include one block in
+the next commit:
+
+1. In **Working changes**, select a tracked file from **Unstaged**.
+2. Check the file path and **Diff · unstaged** heading. Inspect the numbered
+   blocks and choose **Stage hunk** beside the desired block.
+3. Wait for the refreshed changes. Select the file under **Staged** to review
+   exactly what will be committed; other edits remain under **Unstaged**.
+4. Enter your message and use **Commit staged changes (N)** normally.
+
+To remove one staged block from the next commit, select the file under **Staged**
+and choose **Unstage hunk** beside that block in **Diff · staged**. Other staged
+blocks remain. Hunk actions change the index; the app does not rewrite your working
+file. Existing whole-file **Stage** and **Unstage** controls remain available.
+Your commit draft is retained through hunk actions and failures.
+
+These actions apply to complete hunks in existing regular tracked text files
+with unchanged file mode. Supported cases include line insertions/deletions,
+emptying a file, LF/CRLF, Unicode paths, and a missing final newline. There is no
+individual-line selection. New/deleted files, renames, mode/type changes, binary
+files, symlinks, submodules, unresolved conflicts, special index flags, unsupported
+filters/encodings, and incomplete previews show an unavailable reason. Use the
+whole-file controls where appropriate. Each source blob and diff preview is
+limited to 2 MiB for this action.
+
+If another edit or Git action makes the displayed hunk stale, refresh and inspect
+the fresh diff before retrying. Never assume that a same-looking block still
+identifies the earlier change. Normal index hooks remain active; unexpected
+hook/external changes are reported for inspection without an automatic rollback.
 
 ## Fetch, pull, and push
 
@@ -364,8 +400,8 @@ worktrees; manage submodule contents separately.
 ## Save and restore work with stashes
 
 The **Stashes** button opens saved work for the current repository. Linked
-worktrees share this list. Stash controls are implemented in the current source;
-see [Build status](BUILD_STATUS.md) for their pending platform acceptance.
+worktrees share this list. See [Build status](BUILD_STATUS.md) for the verified
+source and packages.
 
 To set work aside:
 
@@ -522,7 +558,7 @@ acceptance remains outstanding. A group-filter focus shortcut is not implemented
 | Operation canceled or outcome uncertain | Refresh and inspect local/remote state before retrying; cancellation does not undo completed work. |
 | External project edit conflicts with a draft | Save the draft separately with **Save edits as**, or **Reload project** to use the disk version. |
 
-Not yet available: hunk/line staging, stash, side-by-side diffs, blame/file history,
+Not yet available: individual-line staging, side-by-side diffs, blame/file history,
 rebase, batch push, group branch switching, integrated conflict editing,
 multiple windows, group templates, and persisted recent-project/view settings.
 The broader backlog and verification gaps are tracked in [Feature status](FEATURE_STATUS.md).

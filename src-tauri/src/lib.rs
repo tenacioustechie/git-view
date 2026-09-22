@@ -199,6 +199,8 @@ pub fn run() {
         native_smoke::native_smoke_cherry_pick_verify,
         native_smoke::native_smoke_stash_case,
         native_smoke::native_smoke_stash_verify,
+        native_smoke::native_smoke_hunk_case,
+        native_smoke::native_smoke_hunk_verify,
         native_smoke::native_smoke_slow_stash,
         native_smoke::native_smoke_prepare_changes,
         native_smoke::native_smoke_fail_hook,

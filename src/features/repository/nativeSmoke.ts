@@ -4,7 +4,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { api, errorMessage } from '../../api/client';
 import type { OperationResult } from '../../api/types';
 
-interface SmokeContext { projectPath: string; cleanPath: string; dirtyPath: string; mergePath: string; m2?: boolean; m3?: boolean; performance?: boolean; discovery?: boolean; historySearch?: boolean; remoteCheckout?: boolean; cherryPick?: boolean; stash?: boolean }
+interface SmokeContext { projectPath: string; cleanPath: string; dirtyPath: string; mergePath: string; m2?: boolean; m3?: boolean; performance?: boolean; discovery?: boolean; historySearch?: boolean; remoteCheckout?: boolean; cherryPick?: boolean; stash?: boolean; hunks?: boolean }
 interface SmokeResult { passed: boolean; checks: string[]; error?: string; body?: string }
 interface ReloadMarker { version: 1; repositoryId: string; operationId: string; path: string; checks: string[] }
 const reloadKey = 'git-view.native-smoke.reload.v1';
@@ -832,6 +832,64 @@ async function finishStashReload(marker: ReloadMarker, checks: string[]) {
   checks.push('Full native WebView reload during genuine running stash creation preserved the original backend operation; completed exact saved contents and one retained entry reconciled in the restarted renderer');
 }
 
+interface HunkFixture { repositoryId: string; path: string; filePath: string; firstText: string; secondText: string; message: string; head: string }
+async function runHunkSmoke(checks: string[]) {
+  const fixture = await invoke<HunkFixture>('native_smoke_hunk_case');
+  const repository = await stashRepository(fixture.path);
+  const inspectFile = async (context: 'staged' | 'unstaged') => {
+    const file = await until(`${context} hunk fixture file`, () => {
+      const heading = [...repository.querySelectorAll<HTMLElement>('.repository-details h3')].find(node => node.textContent?.startsWith(`${context === 'staged' ? 'Staged' : 'Unstaged'} (`));
+      return [...(heading?.parentElement?.querySelectorAll<HTMLButtonElement>('.file-list button[title]') ?? [])].find(node => node.title === fixture.filePath);
+    });
+    file.click();
+    return until(`structured ${context} hunk diff`, () => {
+      const panel = repository.querySelector<HTMLElement>('[aria-label="File diff"]');
+      return panel?.querySelector('h3')?.textContent === `Diff · ${context}` && panel.querySelector('.diff-hunk-block') ? panel : null;
+    });
+  };
+  const mutate = async (context: 'staged' | 'unstaged', contents: string) => {
+    const panel = await inspectFile(context);
+    const action = context === 'staged' ? 'unstageHunk' : 'stageHunk';
+    const label = context === 'staged' ? 'Unstage hunk' : 'Stage hunk';
+    const count = () => [...repository.querySelectorAll('.repository-activity li strong')].filter(node => node.textContent === `${action}: succeeded`).length;
+    const previousCount = count();
+    const completed = await operation(action, fixture.repositoryId, async () => {
+      const block = await until(`complete hunk containing ${contents}`, () => [...panel.querySelectorAll<HTMLElement>('.diff-hunk-block')].find(node => node.querySelector('pre')?.textContent?.includes(contents)));
+      await click(label, block);
+    });
+    assert(completed.state === 'succeeded', `${label} failed: ${JSON.stringify(completed.error) ?? completed.reason}`);
+    await until(`renderer reconciles ${action}`, () => count() > previousCount);
+    await button('Refresh', repository);
+    await refreshRepository();
+  };
+  const verify = async (stage: string) => {
+    const result = await invoke<{ verified: boolean }>('native_smoke_hunk_verify', { repositoryId: fixture.repositoryId, stage });
+    assert(result.verified, `Partial staging fixture failed ${stage} content verification`);
+  };
+  const draft = await until('partial commit draft', () => repository.querySelector<HTMLTextAreaElement>('#commit-message'));
+  type(draft, fixture.message);
+  await mutate('unstaged', fixture.firstText);
+  await verify('stagedFirst');
+  const staged = await inspectFile('staged');
+  assert(staged.textContent?.includes(fixture.firstText) && !staged.textContent.includes(fixture.secondText), 'Staged diff must contain only the chosen first edit');
+  checks.push('Native Stage hunk used the selected complete block; exact first-only index and unchanged tracked/untracked working bytes verified, with staged-only diff inspection');
+  await mutate('unstaged', fixture.secondText);
+  await verify('stagedBoth');
+  await mutate('staged', fixture.secondText);
+  await verify('stagedFirst');
+  assert(repository.querySelector<HTMLTextAreaElement>('#commit-message')?.value === fixture.message, 'Hunk actions must retain the commit draft');
+  checks.push('Native second hunk staging then Unstage hunk preserved the other staged hunk; exact intermediate index and all working bytes verified and commit draft retained');
+  const committed = await operation('commit', fixture.repositoryId, () => click(/^Commit staged changes \(/, repository));
+  assert(committed.state === 'succeeded', `Partial commit failed: ${JSON.stringify(committed.error) ?? committed.reason}`);
+  await verify('committed');
+  await until('partial commit reconciled in renderer', () => [...repository.querySelectorAll('.repository-activity li strong')].some(node => node.textContent === 'commit: succeeded'));
+  await button('Refresh', repository);
+  await refreshRepository();
+  const remaining = await inspectFile('unstaged');
+  assert(remaining.textContent?.includes(fixture.secondText) && !remaining.textContent.includes(fixture.firstText), 'Remaining working diff must contain only the uncommitted second edit');
+  checks.push('Native partial commit contains only the first hunk with exact parent/message; second edit remains uncommitted and visible, unrelated index and every working-file byte preserved');
+}
+
 async function startRunningOperationReload(checks: string[]) {
   const fixture = await invoke<{ repositoryId: string; operationId: string; path: string }>('native_smoke_slow_commit');
   await until('slow commit actually running before full reload', async () => {
@@ -890,6 +948,7 @@ export async function runNativeSmoke(): Promise<void> {
       checks.push(...marker.checks);
       await finishStashReload(marker, checks);
       sessionStorage.removeItem(stashReloadKey);
+      if ((await invoke<SmokeContext>('native_smoke_context')).hunks) await runHunkSmoke(checks);
       await startRunningOperationReload(checks);
       return;
     }
@@ -901,6 +960,7 @@ export async function runNativeSmoke(): Promise<void> {
       await finishCherryPickReload(marker, checks);
       sessionStorage.removeItem(cherryReloadKey);
       if ((await invoke<SmokeContext>('native_smoke_context')).stash) { await runStashSmoke(checks); return; }
+      if ((await invoke<SmokeContext>('native_smoke_context')).hunks) await runHunkSmoke(checks);
       await startRunningOperationReload(checks);
       return;
     }
@@ -1076,6 +1136,7 @@ export async function runNativeSmoke(): Promise<void> {
     if (context.remoteCheckout) await runRemoteCheckoutSmoke(checks);
     if (context.cherryPick) { await runCherryPickSmoke(checks); return; }
     if (context.stash) { await runStashSmoke(checks); return; }
+    if (context.hunks) await runHunkSmoke(checks);
     await startRunningOperationReload(checks);
     return; // The reloaded renderer resumes above and submits the final report.
   } catch (cause) {

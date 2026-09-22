@@ -1,10 +1,11 @@
 # Next feature stage — implementation plan
 
 Started 21 September 2026; product decisions finalized 22 September 2026.
-Status: **A1–A2 complete on macOS/Windows; A3 stash is in progress**.
+Status: **A1–A3 complete on macOS/Windows; A4 hunk staging passed macOS source
+and native checks, with Windows and package gates in progress**.
 Implementation resumed after a computer crash on 22 September 2026. A1 passes
 its tests, native acceptance, release builds, and package checks at `fe33bf3`;
-A2 passes the same gates at `fd637b8`; see Build status for evidence. A3–A4 are
+A2 passes the same gates at `fd637b8`, and A3 at `7c0eef5`; see Build status for evidence. A4 is
 not yet delivered. Engineering choices below
 are implementation assumptions to verify with fixtures, not additional product
 questions or claims of completed functionality.
@@ -368,7 +369,7 @@ unsupported cases before implementing UI controls.
 
 #### A4 implementation preparation (22 September)
 
-Implementation remains gated on A3 acceptance/packages. The initial supported
+A3 acceptance/packages passed before A4 implementation began. The initial supported
 path is complete hunks in existing regular tracked UTF-8 text files with an
 unchanged executable mode. Include inserted/deleted lines, emptying an existing
 file, CRLF/LF, Unicode paths, missing final newline, and mixed index/worktree

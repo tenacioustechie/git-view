@@ -1,7 +1,7 @@
 # Feature status
 
-Reviewed 22 September 2026, including remote tracking checkout, cherry-pick, and
-stash implementation with acceptance pending, against the
+Reviewed 22 September 2026, including remote tracking checkout, cherry-pick,
+stash, and the macOS-verified A4 hunk staging source, against the
 [product plan](PRODUCT.md). This is the current completion inventory;
 [Build status](BUILD_STATUS.md) retains dated commands, results, and artifact evidence.
 Instructions for using completed workflows are in the [User guide](USER_GUIDE.md).
@@ -10,14 +10,8 @@ orders remote tracking checkout, cherry-pick with conflict guidance, stash, and
 hunk staging, with rebase in the following stage. Remote tracking checkout is
 implemented; its current platform acceptance is recorded in Build status.
 Cherry-pick and shared conflict guidance are also complete on the tested macOS
-and Windows platforms. Stash is under implementation with acceptance pending;
-hunk staging remains planned.
-
-The pending A3 slice includes named stash creation, inspection, Apply that retains
-the entry, separately reviewed Delete with a retained backup, and explicit
-interrupted-deletion recovery. Its renderer passes 98 tests, including 15 stash
-cases. Full backend/native/platform/package gates remain open; existing A2
-packages do not include these changes.
+and Windows platforms. Stash is also complete on those platforms. Hunk staging
+has passed macOS checks; Windows and A4 packages are pending.
 
 ## Milestone interpretation
 
@@ -39,7 +33,7 @@ refer to the delivered runbook workflows on tested platforms.
 | Launch | Repository/nested-path CLI, JSON project CLI, discovery CLI, help/version, local wrappers, one-window forwarding with navigation guards | Installed PATH integration, further installation polish, additional windows, group templates |
 | History | Virtualized paged graph, parent continuity, refs, branch/tag scopes, message/body and author/email search, full/prefix commit-ID search, snapshot paging | Advanced revision-query UI |
 | Details | Full messages/identities/parents, parent-specific changed files, unified diffs, binary/truncation states | Side-by-side diffs, richer file navigation, blame and file history |
-| Working changes | Staged/unstaged/untracked/conflicted states, whole-file stage/unstage, staged-only commit, session draft retention, hook/signing failure handling | Hunk staging, stash, line staging |
+| Working changes | Staged/unstaged/untracked/conflicted states, whole-file stage/unstage, supported complete text-hunk stage/unstage, staged-only commit, session draft retention, hook/signing failure handling; named stash creation/inspection, retained Apply, reviewed exact-entry Delete and recovery | Individual-line staging; expanded hunk support for excluded file types |
 | Remotes | Fetch, clean-only fast-forward pull, explicit normal single-repository push, optional upstream setup | Explicit batch push; hosting integrations only if requested |
 | Branches | Local create/switch with previews, explicit remote tracking checkout, ordinary merge, squash merge from local or remote refs, reviewed single non-merge cherry-pick | Rebase; multi-commit and merge-commit cherry-pick excluded from A2 |
 | Groups | Versioned JSON, create/edit/save/save-as, labels, locate/remove/add, external-edit protection, state/branch/name filters, selection, batch fetch/pull, per-member outcomes/cancel/retry | Explicit group branch switching and further large-group tuning |
@@ -65,12 +59,22 @@ refer to the delivered runbook workflows on tested platforms.
 
 ## Verification and distribution outstanding
 
-Latest A2 results at `fd637b8`: **83 frontend tests on each platform, 137 Rust
-tests on macOS / 131 on Windows, and 38 native workflow checks on each**.
+Latest A3 acceptance/packages at `7c0eef5`: **98 frontend tests on each platform,
+155 Rust tests on macOS / 147 on Windows, and 43 native workflow checks on each**.
+Full Rust runs used `9fb0912`, followed by focused stash identity regression checks
+at `6403443`; `7c0eef5` adds only native-fixture portability and diagnostic changes.
 macOS arm64 app and Windows x64 NSIS packages were built and exercised. Historical
 performance measurements and exact commands remain in Build status.
 
+A4 source checks on macOS pass: 111 frontend tests, 163 Rust tests, strict
+Clippy, and 46 native workflow checks. The A4 Windows and package gates remain
+open; this is not a cross-platform package claim. See Build status for the
+current source checkpoint and exact commands.
+
 - Linux and Intel Mac execution, and the hosted GitHub workflow, remain unverified.
+- Stash requires files ref storage; reftable is unsupported. Safe stash Delete
+  is implemented only on macOS and Windows. Changed submodules/gitlinks and
+  stashes beyond 1,000 entries or an 8 MiB reflog are excluded from this slice.
 - Local packages are unsigned; macOS notarization and public release delivery
   are not configured/completed.
 - The [GitHub workflow](../.github/workflows/build.yml) has only manual

@@ -44,6 +44,12 @@
 .commit-form textarea { resize:vertical; }
 .unified-diff { font-size:12px; line-height:1.6; overflow:auto; background:var(--bg); padding:12px; border:1px solid var(--border); }
 .unified-diff span { display:inline; }
+.diff-file-path { overflow-wrap:anywhere; }
+.diff-hunk-block { margin-block:12px; border:1px solid var(--border); }
+.diff-hunk-toolbar { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:8px; }
+.diff-hunk-toolbar strong { font-family:monospace; font-size:12px; overflow-wrap:anywhere; }
+.diff-hunk-toolbar button { flex-shrink:0; }
+.diff-hunk-block .unified-diff { margin:0; border:0; border-top:1px solid var(--border); }
 .diff-add { background:color-mix(in srgb,#32a870 18%,transparent); }
 .diff-remove { background:color-mix(in srgb,#df5565 18%,transparent); }
 .diff-hunk { color:var(--accent); }

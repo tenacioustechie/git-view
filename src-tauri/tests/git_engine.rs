@@ -890,7 +890,7 @@ async fn lockfile_is_retained_and_large_preview_is_bounded() {
         })
         .await
         .unwrap();
-    assert!(matches!(diff,DiffResult::Text{text,truncated:true} if text.len()==2*1024*1024));
+    assert!(matches!(diff,DiffResult::Text{text,truncated:true,..} if text.len()==2*1024*1024));
 }
 
 #[tokio::test]

@@ -1,5 +1,75 @@
 # Build status
 
+## 2026-09-22: A4 hunk staging implementation in progress
+
+A4 macOS source checks pass in the current worktree over `7c0eef5`:
+`pnpm typecheck`, `pnpm lint`, `pnpm test` (111 passed), locked full Cargo tests
+(163 passed; one opt-in performance case ignored), `cargo fmt --check`, and
+strict all-target Clippy with `native-smoke`. `VITE_NATIVE_SMOKE=1 pnpm build`
+and the custom-protocol native build pass. The native smoke report at
+`/tmp/git-view-native-a4-mac.json` passes **46/46 checks**, including complete
+first/second hunk stage and unstage, exact intermediate index/working bytes,
+staged diff review, retained draft, and a partial commit leaving the other
+edit visible. Windows and local release/package gates remain open; this worktree
+is not yet a tested source revision on Windows.
+
+A3's full gates passed before A4 started. Shared typed hunk capabilities,
+backend/index safety, renderer actions, and native fixtures are implemented.
+The A4 platform/package gate is still in progress. A3 packages/reports are preserved at
+`artifacts/checkpoints/7c0eef5` and remain the current collected artifact set.
+
+## 2026-09-22: A3 stash complete on tested platforms
+
+Acceptance and local packages are at `7c0eef5dee315cb582ad7f1a634933ad7ab19658`
+on macOS and the designated Windows checkout. Named Create, saved-section
+inspection, retained Apply with explicit index restoration, exact-occurrence
+Delete with backup, and reviewed interrupted-deletion recovery are delivered.
+
+| Check | macOS arm64 | Windows 11 x64 |
+| --- | --- | --- |
+| Frontend tests | 98 passed | 98 passed |
+| Rust tests | 155 passed | 147 passed |
+| Native DOM/IPC checks | 43 passed | 43 passed |
+| Typecheck, lint, formatting, strict native-feature all-target Clippy | Passed | Passed |
+| Package | `.app` built; packaged CLI/startup passed | NSIS built; installed CLI/native window passed |
+
+Full Rust runs used `9fb0912`. Exact-entry identity changed afterward at
+`6403443`, with its linked-worktree/duplicate/stale regression rerun on macOS and
+the complete stash integration suite rerun on Windows. Final `7c0eef5` changes
+only the native fixture's hook path and error diagnostics plus documentation;
+both full native suites and release/package gates passed there. The existing
+opt-in backend timing test remains ignored. The 18 new macOS backend tests
+(16 applicable on Windows) include durable interruption phases, SHA-256 recovery,
+prepared hooks, packed refs, native whole-reflog deletion, duplicate entries,
+linked worktrees, ignored content, staged-state restoration, and submodule guards.
+
+Commands include `pnpm test`, `pnpm typecheck`, `pnpm lint`, locked Cargo tests,
+formatting, strict all-target Clippy with `native-smoke`, native frontend and
+custom-protocol builds, `scripts/native-smoke.py`, `pnpm tauri build --bundles app`,
+and `scripts/release-smoke.py`. Windows used `scripts/windows-sync.py`,
+`windows-verify.ps1`, the focused `git_stash` integration suite,
+`windows-native-verify.ps1`, `windows-release.ps1`, and
+`windows-installer-smoke.ps1`. The five new native stash workflows pass alongside
+all prior group, merge, both squash, discovery, search, and performance checks.
+Documentation review checked 100 local links/anchors and `git diff --check`.
+
+Collected unsigned packages and matching reports in `artifacts/manifest.json`:
+
+| Artifact | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `artifacts/Git-View_0.1.0_macos-arm64.zip` | 3,671,080 | `4f17194f4da3cd3974f6c9b023f617a55ad4aa439b294d4d15233617f164d6c2` |
+| `artifacts/Git-View_0.1.0_windows-x64-setup.exe` | 2,896,867 | `c5ffb482483d90bae9724b47527b4635e2830e169cc7874c22ea66fe6808328a` |
+
+Native reports: `/tmp/git-view-native-a3-mac.json` and
+`C:\codeme\git-view\.tools\GitViewNativeSmoke-eb1dc12ebde94fa1a5f7b7a2dc01429a.json`.
+Installed Windows test package:
+`C:\codeme\git-view\.tools\installed-smoke-142b28b2dfaa41d38463509d88ec2289`.
+A2 artifacts remain archived at `artifacts/checkpoints/fd637b8`.
+Stash requires files ref storage; safe Delete is macOS/Windows-only. The guide
+records limits, submodule exclusions, partial Apply failure, and retained backups.
+Remaining platform/accessibility/authentication/signing gaps remain in Feature
+status. Nothing was pushed or published. A4 hunk staging is next.
+
 ## 2026-09-22: A3 stash implementation in progress
 
 Windows final native follow-up at `6403443` passes 41 checks, including the four

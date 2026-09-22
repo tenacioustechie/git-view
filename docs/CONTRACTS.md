@@ -93,6 +93,7 @@ interface CommitDetails {
 
 type RepositoryAction =
   | { kind: 'stage' | 'unstage'; snapshotId: SnapshotId; fileIds: FileId[] }
+  | { kind: 'stageHunk' | 'unstageHunk'; diffSnapshotId: SnapshotId; fileId: FileId; hunkId: string }
   | { kind: 'commit'; statusSnapshotId: SnapshotId; message: string }
   | { kind: 'fetch'; remoteId: string }
   | { kind: 'pull'; statusSnapshotId: SnapshotId }
@@ -113,8 +114,16 @@ type RepositoryActionPlan =
   | { kind: 'eligible'; planId: string; expiresAt: string; summary: string; destination: string | null }
   | { kind: 'blocked'; reason: string; error: AppError | null };
 
+interface DiffHunk {
+  hunkId: string; header: string;
+  oldStart: number; oldLines: number; newStart: number; newLines: number;
+  text: string; // complete @@ block, including header
+}
+type HunkActions =
+  | { kind: 'available'; diffSnapshotId: SnapshotId; context: 'staged' | 'unstaged'; preamble: string; hunks: DiffHunk[] }
+  | { kind: 'unavailable'; reason: string };
 type DiffResult =
-  | { kind: 'text'; text: string; truncated: boolean }
+  | { kind: 'text'; text: string; truncated: boolean; hunkActions?: HunkActions }
   | { kind: 'binary'; description: string }
   | { kind: 'unavailable'; reason: string };
 
@@ -205,6 +214,15 @@ Delete removes only the reviewed entry and retains an identified recovery backup
 `finalizeStashDelete` explicitly resumes or finalizes only a reconciled recorded
 deletion; list/status reads do not repair it. Unsupported reference backends,
 platforms, or external state changes have explicit unavailable/recovery reasons.
+
+Working text diffs optionally return `hunkActions`. Historical/stash inspection
+does not issue mutation tokens. Hunk ranges follow Git's one-based/zero-count
+conventions and are display metadata only. Actions submit an exact diff snapshot,
+file, and hunk identity; backend-owned path/bytes/configuration determine the
+candidate index content. A stale source, context, attribute, configuration, or
+index requires refresh. Hunk snapshots are bounded to 16 and each source blob or
+displayed diff to 2 MiB. Unsupported types/configurations have explicit reasons;
+truncated text must never expose executable hunk actions.
 
 Discovery registers repository identities without reading status or changing Git
 state. Candidates are proposals; only explicit selection followed by

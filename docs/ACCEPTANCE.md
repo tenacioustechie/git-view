@@ -90,6 +90,19 @@ distinguished from automating the operating-system save picker itself.
 
 ## UI tests and native smoke
 
+A4 must split two separated changes into exact index content, then unstage one
+while preserving another, and commit only the selected block. Assert complete
+index blobs and unchanged working bytes, including other files and untracked
+content. Cover repeated/context-identical hunks, insertion/deletion/empty files,
+LF/raw and normalized CRLF, Unicode/tab paths, missing final newline, SHA-256,
+mixed staging, and stale file/index/HEAD/config/attributes. Unsupported file
+types/flags/conversions and bounded/truncated previews must not expose executable
+tokens. A hostile `diff.noprefix` configuration must never target another file
+with identical content; actual index-hook effects must be preserved and reported.
+Native UI uses the working diff's actual hunk buttons, reviews both contexts,
+stages two blocks, unstages one, and commits the retained block with the other
+edit still on disk. Preserve drafts and reject delayed stale diff/plan responses.
+
 The A3 stash gate verifies separate saved index/worktree bytes, default untracked
 exclusion and explicit inclusion, ignored-file preservation, no-change handling,
 default Apply versus Restore staged state, and retained entries on success or

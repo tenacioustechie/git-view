@@ -2,6 +2,7 @@ mod actions;
 mod cherry_pick;
 mod discovery;
 mod history;
+mod hunks;
 mod merge;
 mod ref_guard;
 mod remote_checkout;
@@ -62,6 +63,7 @@ pub(crate) struct State {
     pub locks: HashMap<PathBuf, Arc<Mutex<()>>>,
     pub snapshots: HashMap<String, Snapshot>,
     pub history: HashMap<String, HistorySnapshot>,
+    pub hunks: std::collections::VecDeque<(String, Arc<hunks::HunkSnapshot>)>,
     pub stashes: HashMap<String, stash::StashSnapshot>,
     pub fetch_times: HashMap<String, String>,
 }
@@ -92,6 +94,7 @@ pub struct PreparedAction {
     pub(crate) remote_checkout: Option<remote_checkout::Checkout>,
     pub(crate) cherry: Option<cherry_pick::CherryPlan>,
     pub(crate) stash: Option<stash::StashPlan>,
+    pub(crate) hunk: Option<hunks::HunkPlan>,
 }
 impl PreparedAction {
     /// Restrict a filtered batch fetch to the HEAD observed in its preview.

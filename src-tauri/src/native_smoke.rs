@@ -66,6 +66,7 @@ pub struct Context {
     pub remote_checkout: bool,
     pub cherry_pick: bool,
     pub stash: bool,
+    pub hunks: bool,
 }
 pub struct Fixture {
     pub context: Context,
@@ -78,6 +79,7 @@ pub struct Fixture {
     pub cherry_picks: std::sync::Mutex<std::collections::HashMap<String, serde_json::Value>>,
     pub stashes: std::sync::Mutex<std::collections::HashMap<String, serde_json::Value>>,
     pub slow_stash: tokio::sync::Mutex<Option<serde_json::Value>>,
+    pub hunks: tokio::sync::Mutex<Option<serde_json::Value>>,
 }
 fn git(path: &Path, args: &[&str]) -> String {
     let output = Command::new("git")
@@ -178,6 +180,7 @@ pub fn setup(report: PathBuf) -> Fixture {
             remote_checkout: true,
             cherry_pick: true,
             stash: true,
+            hunks: true,
         },
         report,
         _root: root,
@@ -188,6 +191,7 @@ pub fn setup(report: PathBuf) -> Fixture {
         cherry_picks: Default::default(),
         stashes: Default::default(),
         slow_stash: Default::default(),
+        hunks: Default::default(),
     }
 }
 
@@ -1380,4 +1384,129 @@ pub async fn native_smoke_slow_stash(state: State<'_, AppState>) -> AppResult<se
         scan_depth: None,
     });
     Ok(response)
+}
+
+fn hunk_contents(first: bool, second: bool) -> String {
+    (1..=36)
+        .map(|line| match line {
+            3 if first => "first hunk change\n".into(),
+            30 if second => "second hunk change\n".into(),
+            _ => format!("line {line:02}\n"),
+        })
+        .collect()
+}
+
+fn hunk_blob(path: &Path, revision: &str) -> Vec<u8> {
+    let output = Command::new("git")
+        .current_dir(path)
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env(
+            "GIT_CONFIG_GLOBAL",
+            if cfg!(windows) { "NUL" } else { "/dev/null" },
+        )
+        .args(["--no-replace-objects", "show", revision])
+        .output()
+        .expect("fixture blob read");
+    assert!(
+        output.status.success(),
+        "fixture blob {revision}: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    output.stdout
+}
+
+#[tauri::command]
+pub async fn native_smoke_hunk_case(state: State<'_, AppState>) -> AppResult<serde_json::Value> {
+    let f = fixture(&state)?;
+    let mut cached = f.hunks.lock().await;
+    if cached.is_none() {
+        let path = f._root.path().join("partial-hunks");
+        std::fs::create_dir(&path).unwrap();
+        git(&path, &["init", "--template=", "-b", "main"]);
+        configure(&path);
+        std::fs::write(path.join("partial.txt"), hunk_contents(false, false)).unwrap();
+        std::fs::write(path.join("other.txt"), "other base\n").unwrap();
+        commit(&path, "Hunk base");
+        let head = git(&path, &["rev-parse", "HEAD"]);
+        std::fs::write(path.join("partial.txt"), hunk_contents(true, true)).unwrap();
+        std::fs::write(path.join("other.txt"), "other private working bytes\n").unwrap();
+        std::fs::write(path.join("private-note.txt"), "private untracked bytes\n").unwrap();
+        let repository = state.engine.open_repository(&path).await?;
+        *cached = Some(serde_json::json!({
+            "repositoryId": repository.repository_id, "path": repository.display_path,
+            "filePath": "partial.txt", "firstText": "first hunk change",
+            "secondText": "second hunk change", "message": "Native partial hunk commit",
+            "head": head,
+        }));
+    }
+    let response = cached.as_ref().unwrap().clone();
+    state.launches.push(LaunchRequest {
+        request_id: uuid::Uuid::new_v4().to_string(),
+        kind: "repository".into(),
+        path: Some(response["path"].as_str().unwrap().into()),
+        error: None,
+        scan_depth: None,
+    });
+    Ok(response)
+}
+
+#[tauri::command]
+pub async fn native_smoke_hunk_verify(
+    state: State<'_, AppState>,
+    repository_id: String,
+    stage: String,
+) -> AppResult<serde_json::Value> {
+    let record = fixture(&state)?
+        .hunks
+        .lock()
+        .await
+        .clone()
+        .ok_or_else(|| AppError::new("fixture", "Hunk fixture is not initialized"))?;
+    if record["repositoryId"] != repository_id {
+        return Err(AppError::new("fixture", "Wrong hunk repository"));
+    }
+    let path = Path::new(record["path"].as_str().unwrap());
+    let status = state.engine.get_status(&repository_id).await?;
+    let first = stage != "unstaged";
+    let second = stage == "stagedBoth";
+    if !matches!(
+        stage.as_str(),
+        "stagedFirst" | "stagedBoth" | "unstaged" | "committed"
+    ) {
+        return Err(AppError::new("fixture", "Unknown hunk verification stage"));
+    }
+    let mut verified = std::fs::read_to_string(path.join("partial.txt")).unwrap()
+        == hunk_contents(true, true)
+        && hunk_blob(path, ":partial.txt") == hunk_contents(first, second).as_bytes()
+        && std::fs::read_to_string(path.join("other.txt")).unwrap()
+            == "other private working bytes\n"
+        && hunk_blob(path, ":other.txt") == b"other base\n"
+        && std::fs::read_to_string(path.join("private-note.txt")).unwrap()
+            == "private untracked bytes\n"
+        && status.git_state == GitState::Idle
+        && status.counts.conflicted == 0
+        && status.counts.untracked == 1
+        && git(path, &["symbolic-ref", "--short", "HEAD"]) == "main";
+    if stage == "committed" {
+        verified &= git(path, &["rev-parse", "HEAD^"]) == record["head"].as_str().unwrap()
+            && hunk_blob(path, "HEAD:partial.txt") == hunk_contents(true, false).as_bytes()
+            && git(path, &["show", "-s", "--format=%B", "HEAD"])
+                == record["message"].as_str().unwrap()
+            && git(
+                path,
+                &["diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD"],
+            ) == "partial.txt"
+            && status.counts.staged == 0
+            && status.counts.unstaged == 2;
+    } else {
+        verified &= git(path, &["rev-parse", "HEAD"]) == record["head"].as_str().unwrap()
+            && status.counts.staged == if stage == "unstaged" { 0 } else { 1 };
+    }
+    if !verified {
+        return Err(AppError::new(
+            "fixture",
+            "Hunk action changed unexpected index, working-file, or commit content",
+        ));
+    }
+    Ok(serde_json::json!({"verified": true}))
 }

@@ -704,8 +704,11 @@ impl GitEngine {
             .ok_or_else(|| {
                 AppError::new("stale_snapshot", "File is outside the selected snapshot.")
             })?;
+        let mut hunk_basis = None;
         let mut args = runner::args(&[
             "--literal-pathspecs",
+            "-c",
+            "diff.suppressBlankEmpty=false",
             "diff",
             "--no-ext-diff",
             "--no-textconv",
@@ -781,8 +784,32 @@ impl GitEngine {
                         text: String::from_utf8_lossy(&bytes[..bytes.len().min(DIFF_LIMIT)])
                             .into_owned(),
                         truncated: bytes.len() > DIFF_LIMIT,
+                        hunk_actions: Some(HunkActions::Unavailable {
+                            reason: "Use whole-file staging for untracked files.".into(),
+                        }),
                     });
                 }
+                args.insert(0, "--no-replace-objects".into());
+                let context = if request.context == "staged" {
+                    HunkContext::Staged
+                } else {
+                    HunkContext::Unstaged
+                };
+                hunk_basis = Some(self.hunk_basis(&repo, &snapshot, file, context).await);
+                args.extend(runner::args(&[
+                    "--patch",
+                    "--no-renames",
+                    "--no-relative",
+                    "--src-prefix=a/",
+                    "--dst-prefix=b/",
+                    "--diff-algorithm=myers",
+                    "--no-indent-heuristic",
+                    "--unified=3",
+                    "--inter-hunk-context=0",
+                    "--output-indicator-new=+",
+                    "--output-indicator-old=-",
+                    "--output-indicator-context= ",
+                ]));
                 if request.context == "staged" {
                     args.push("--cached".into());
                 }
@@ -813,9 +840,31 @@ impl GitEngine {
                 description: "Git reports a binary file change.".into(),
             })
         } else {
+            let hunk_actions = if let Some(basis) = hunk_basis {
+                Some(match basis {
+                    Ok(basis) => {
+                        match self.issue_hunks(&repo, basis, output.stdout.clone()).await {
+                            Ok(actions) => actions,
+                            Err(error) if error.code == "precondition_changed" => {
+                                return Err(error)
+                            }
+                            Err(error) => HunkActions::Unavailable {
+                                reason: error.message,
+                            },
+                        }
+                    }
+                    Err(error) if error.code == "precondition_changed" => return Err(error),
+                    Err(error) => HunkActions::Unavailable {
+                        reason: error.message,
+                    },
+                })
+            } else {
+                None
+            };
             Ok(DiffResult::Text {
                 text: String::from_utf8_lossy(&output.stdout).into_owned(),
                 truncated: false,
+                hunk_actions,
             })
         }
     }

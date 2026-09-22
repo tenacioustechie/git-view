@@ -87,6 +87,7 @@ export interface CommitDetails {
 
 export type RepositoryAction =
   | { kind: 'stage' | 'unstage'; snapshotId: SnapshotId; fileIds: FileId[] }
+  | { kind: 'stageHunk' | 'unstageHunk'; diffSnapshotId: SnapshotId; fileId: FileId; hunkId: string }
   | { kind: 'commit'; statusSnapshotId: SnapshotId; message: string }
   | { kind: 'fetch'; remoteId: string }
   | { kind: 'pull'; statusSnapshotId: SnapshotId }
@@ -109,8 +110,16 @@ export type RepositoryActionPlan =
   | { kind: 'eligible'; planId: string; expiresAt: string; summary: string; destination: string | null }
   | { kind: 'blocked'; reason: string; error: AppError | null };
 
+export interface DiffHunk {
+  hunkId: string; header: string;
+  oldStart: number; oldLines: number; newStart: number; newLines: number;
+  text: string;
+}
+export type HunkActions =
+  | { kind: 'available'; diffSnapshotId: SnapshotId; context: 'staged' | 'unstaged'; preamble: string; hunks: DiffHunk[] }
+  | { kind: 'unavailable'; reason: string };
 export type DiffResult =
-  | { kind: 'text'; text: string; truncated: boolean }
+  | { kind: 'text'; text: string; truncated: boolean; hunkActions?: HunkActions }
   | { kind: 'binary'; description: string }
   | { kind: 'unavailable'; reason: string };
 

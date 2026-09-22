@@ -1,6 +1,31 @@
 # Decisions and open questions
 
-Prepared: 2026-09-18, Australia/Melbourne. Proposed overnight window: evening of 18 September into 19 September. The start time, duration, and implementation kickoff are not yet set.
+Initial planning record: 2026-09-18, Australia/Melbourne. The overnight timing and
+environment notes below are historical, not the current implementation status.
+See [Feature status](FEATURE_STATUS.md) and [Build status](BUILD_STATUS.md) for
+current completion and verification.
+
+## Next-stage decisions — 21–22 September 2026
+
+- Confirmed order, expanded after the workflow discussion: remote tracking
+  checkout → cherry-pick → stash → hunk staging.
+- Confirmed delivery: small feature slices, each tested and usable before the next.
+- Confirmed usage: up to 15 repositories per group, shared branch names, and
+  `main` as the usual default branch. This does not authorize implicit branch switching.
+- Everyday tasks include push, pull, merge, and cherry-pick; the user uses both
+  terminal and visual tools for simple operations. Clarification: complex merges,
+  rebase, and unclear state drive the need for a visual tool. No specific failure
+  of the existing push/pull/merge implementation was reported.
+- Confirmed stash scope: Apply keeps the stash; Delete is a separate reviewed
+  action. Include untracked files is initially unchecked; ignored files stay excluded.
+- Confirmed 22 September: rebase belongs to the following stage, after the four
+  slices above.
+- Confirmed 22 September: first improve complex conflicts with branch/commit
+  context, a conflict list, and next-step guidance; resolve files externally.
+  An integrated three-way editor is deferred.
+- The [implementation plan](NEXT_STAGE.md) records the confirmed product scope
+  and engineering assumptions. A1–A3 are delivered on the tested macOS/Windows
+  platforms, and A4 hunk staging is completing its platform/package gate.
 
 ## Confirmed by the user
 
@@ -23,7 +48,11 @@ Prepared: 2026-09-18, Australia/Melbourne. Proposed overnight window: evening of
 | --- | --- | --- |
 | What should tonight deliver: working core, broad coverage, or polished prototype? | A working core with real Git operations | Reorder milestones; do not label untested operations complete |
 | Does pull on a branch include switching branches? | Only repositories already on that exact local branch | Add a separate previewed batch switch action; do not hide it inside pull |
-| How many repositories and what additional workflows matter? | Typical 5–30, exercise 100; existing worktrees supported; external conflict editing | Larger groups, submodule management, or a conflict editor materially increase scope |
+
+The original group-size question was answered on 21 September: up to 15
+repositories with shared branch names and `main` as the usual default. Current
+workflow priorities are recorded above; the remaining table preserves original
+overnight questions and is not a new request to answer them again.
 
 These are planning assumptions. Update this table and dependent docs when the user answers. Absence of an answer is not permission to install software, start a scheduled run, or publish a release.
 

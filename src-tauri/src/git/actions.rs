@@ -39,6 +39,7 @@ impl GitEngine {
         let mut remote_checkout = None;
         let mut cherry = None;
         let mut stash = None;
+        let mut hunk = None;
         let finish_squash = matches!(action, RepositoryAction::Commit { .. })
             && status.git_state == GitState::SquashMerge;
         let snapshot_id = match &action {
@@ -92,7 +93,9 @@ impl GitEngine {
             | RepositoryAction::RecoverCombine {
                 status_snapshot_id, ..
             } => Some(status_snapshot_id),
-            RepositoryAction::Fetch { .. } => None,
+            RepositoryAction::Fetch { .. }
+            | RepositoryAction::StageHunk { .. }
+            | RepositoryAction::UnstageHunk { .. } => None,
         };
         if let Some(snapshot_id) = snapshot_id {
             let snapshot = self.snapshot(repository_id, snapshot_id).await?;
@@ -104,6 +107,12 @@ impl GitEngine {
             }
         }
         match &action {
+            RepositoryAction::StageHunk { .. } | RepositoryAction::UnstageHunk { .. } => {
+                let (prepared, description) = self.prepare_hunk(&repo, &action).await?;
+                hunk = Some(prepared);
+                summary = Some(description);
+                args = vec![];
+            }
             RepositoryAction::Fetch { remote_id } => {
                 let remotes = self.list_remotes(repository_id).await?;
                 let remote = remotes
@@ -626,7 +635,7 @@ impl GitEngine {
             }
         }
         let config_fingerprint = self.config_fingerprint(&repo).await?;
-        if (remote_checkout.is_some() || cherry.is_some() || stash.is_some())
+        if (remote_checkout.is_some() || cherry.is_some() || stash.is_some() || hunk.is_some())
             && config_fingerprint != initial_config
         {
             return Err(AppError::new(
@@ -649,6 +658,7 @@ impl GitEngine {
             remote_checkout,
             cherry,
             stash,
+            hunk,
             action,
             args,
             input,
@@ -738,6 +748,9 @@ impl GitEngine {
         }
         if let Some(cherry) = &plan.cherry {
             return Box::pin(self.execute_cherry(plan, cherry, &canceled)).await;
+        }
+        if let Some(hunk) = &plan.hunk {
+            return Box::pin(self.execute_hunk(plan, hunk, &canceled)).await;
         }
         if let Some(stash) = &plan.stash {
             return Box::pin(self.execute_stash(plan, stash, &canceled)).await;

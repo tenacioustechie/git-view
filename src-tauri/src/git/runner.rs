@@ -105,7 +105,9 @@ impl Runner {
             command
                 .env("GIT_CONFIG_GLOBAL", null)
                 .env("GIT_CONFIG_SYSTEM", null)
-                .env("GIT_CONFIG_NOSYSTEM", "1");
+                .env("GIT_CONFIG_NOSYSTEM", "1")
+                .env("GIT_ATTR_NOSYSTEM", "1")
+                .env_remove("GIT_ATTR_SOURCE");
             for key in [
                 "GIT_TEMPLATE_DIR",
                 "GIT_EXEC_PATH",

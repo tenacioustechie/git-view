@@ -39,6 +39,7 @@ Get changed paths from NUL-delimited metadata rather than patch headers. Use ind
 | --- | --- |
 | Stage files | Stage exactly selected full files, including deletion/rename semantics; never silently stage the whole repository |
 | Unstage files | Restore selected index entries from HEAD; support unborn repos by removing only index entries while preserving working files |
+| Stage/unstage hunk (A4) | Backend-issued complete text block, exact index/worktree/config/attribute snapshot, index-only mutation, stale rejection and post-hook result inspection |
 | Commit | Nonblank message; staged content for normal commit; message through stdin; retain draft on failure, refresh actual index/worktree, no automatic rollback; normal hooks/signing |
 | Fetch | Explicit remote selection; default upstream remote, else `origin`, else the sole remote; otherwise request a choice; no automatic prune or recursive submodule fetch |
 | Pull | Attached branch, upstream, clean status, no ongoing operation; explicit fast-forward-only, rebase disabled, autostash disabled |
@@ -104,6 +105,40 @@ staged resolution edits; no automatic reset or rollback is performed.
 reason, and backend capabilities for cherry-pick, ordinary merge, and squash
 review. Conflict completion follows Git index state, not a search for text
 markers. Missing original context is displayed as unknown.
+
+## Complete text hunks
+
+A4 extends working text diffs with bounded, backend-issued hunk identities.
+Display headers/ranges are not execution input. Bind each reviewed block to its
+canonical repository/worktree, raw path, diff context, exact index blob/mode,
+index evidence, raw working bytes, HEAD/operation context, effective attributes,
+and configuration. Require idle Git state and a supported regular tracked file;
+whole-file conflict resolution remains a separate existing operation.
+
+The canonical text diff has fixed `a/` and `b/` prefixes, complete hunks, and no
+external diff, text conversion, relative-path redirection, or rename guessing.
+Construct the selected candidate index blob from the exact reviewed byte range;
+Unstage reverses that block against the reviewed staged content. Internal binary
+transport carries the original full blob identity so Git's native index-locked
+application rejects a changed preimage rather than relocating text to similar
+context. Its generator uses an isolated temporary repository with user config,
+hooks, templates, and conversions excluded. Actual target index mutation keeps
+normal hooks. See [Git apply](https://git-scm.com/docs/git-apply/2.51.0).
+
+Verify resulting index entries and unchanged working bytes after application.
+Unexpected hooks/external changes are uncertain outcomes; do not undo them.
+Never execute renderer-supplied patch text. Keep at most 16 hunk snapshots and
+bound each source blob/displayed diff to 2 MiB, without duplicating candidate
+blobs for every hunk.
+
+Initial support includes line insertions/deletions, emptying existing files,
+LF/CRLF, Unicode paths, missing final newline, repeated-context blocks, and mixed
+staged/unstaged edits. New/deleted files, renames/copies, mode/type changes,
+symlinks, submodules, binary or invalid-UTF-8 content, conflicts, special index
+flags, unsupported filters/encoding/ident conversions, and incomplete previews
+have explicit unavailable reasons. Historical and stash diffs remain read-only.
+See Build status for the implementation gate; this policy is not acceptance
+evidence by itself.
 
 ## Stashes
 

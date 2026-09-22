@@ -310,9 +310,56 @@ pub struct DiffRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum DiffResult {
-    Text { text: String, truncated: bool },
-    Binary { description: String },
-    Unavailable { reason: String },
+    Text {
+        text: String,
+        truncated: bool,
+        #[serde(
+            rename = "hunkActions",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        hunk_actions: Option<HunkActions>,
+    },
+    Binary {
+        description: String,
+    },
+    Unavailable {
+        reason: String,
+    },
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+pub enum HunkActions {
+    Available {
+        diff_snapshot_id: String,
+        context: HunkContext,
+        preamble: String,
+        hunks: Vec<DiffHunk>,
+    },
+    Unavailable {
+        reason: String,
+    },
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum HunkContext {
+    Staged,
+    Unstaged,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiffHunk {
+    pub hunk_id: String,
+    pub header: String,
+    pub old_start: u32,
+    pub old_lines: u32,
+    pub new_start: u32,
+    pub new_lines: u32,
+    pub text: String,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(
@@ -329,6 +376,16 @@ pub enum RepositoryAction {
     Unstage {
         snapshot_id: String,
         file_ids: Vec<String>,
+    },
+    StageHunk {
+        diff_snapshot_id: String,
+        file_id: String,
+        hunk_id: String,
+    },
+    UnstageHunk {
+        diff_snapshot_id: String,
+        file_id: String,
+        hunk_id: String,
     },
     Commit {
         status_snapshot_id: String,
@@ -424,6 +481,8 @@ impl RepositoryAction {
         match self {
             Self::Stage { .. } => "stage",
             Self::Unstage { .. } => "unstage",
+            Self::StageHunk { .. } => "stageHunk",
+            Self::UnstageHunk { .. } => "unstageHunk",
             Self::Commit { .. } => "commit",
             Self::Fetch { .. } => "fetch",
             Self::Pull { .. } => "pull",
