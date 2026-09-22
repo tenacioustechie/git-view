@@ -879,7 +879,7 @@ impl GitEngine {
                         &["--no-replace-objects", "cat-file", "-e", &row.oid],
                     )
                     .await?;
-                let summary=format!("Delete only stash “{}” ({}) from the reviewed list. Working files and index remain untouched. A recovery backup ref under refs/git-view/stash-deletions is retained even after success; this is not secure erasure.",row.entry.message,row.oid);
+                let summary=format!("Delete only stash “{}” ({}, recorded {}) from the reviewed list. Working files and index remain untouched. A recovery backup ref under refs/git-view/stash-deletions is retained even after success; this is not secure erasure.",row.entry.message,row.oid,row.entry.created_at);
                 Ok((StashPlan::Delete { snapshot, index }, vec![], summary))
             }
             RepositoryAction::FinalizeStashDelete { recovery_id, .. } => {
