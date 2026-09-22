@@ -366,6 +366,33 @@ This slice requires structured diff/hunk contracts; the current bounded diff
 text preview is not sufficient as an action token. Specify those contracts and
 unsupported cases before implementing UI controls.
 
+#### A4 implementation preparation (22 September)
+
+Implementation remains gated on A3 acceptance/packages. The initial supported
+path is complete hunks in existing regular tracked UTF-8 text files with an
+unchanged executable mode. Include inserted/deleted lines, emptying an existing
+file, CRLF/LF, Unicode paths, missing final newline, and mixed index/worktree
+changes. New/deleted files, renames/copies, symlinks, submodules, mode/type changes,
+untracked files, unresolved conflicts, intent-to-add/sparse/assume-unchanged
+entries, custom filters/encoding/ident conversions, binary data, and incomplete
+previews use explicit unavailable reasons and existing whole-file controls.
+
+The working text diff will expose an optional `hunkActions` capability with a
+backend diff snapshot ID, staged/unstaged context, preamble, and complete hunk
+blocks. Each block has an opaque ID, header, old/new line ranges, and display text.
+Actions submit only the diff snapshot, file ID, and hunk ID. Historical and saved
+stash previews remain inspection-only. Unchanged working content is verified;
+no renderer-supplied patch, path, or line range becomes an execution input.
+
+Preparation probes found that an ordinary text patch can relocate to matching
+context, so execution must bind the complete index blob as well as hunk identity.
+An internal full-index binary transport patch can provide Git's locked old-blob
+check while the user reviews structured text. Force canonical path prefixes;
+`diff.noprefix` must never redirect an action to another file. Normal index hooks
+remain active, followed by actual index/working-file verification. Unexpected
+hook effects are reported without rolling back user changes. These are design
+requirements, not passing A4 implementation evidence.
+
 ## Candidate track B: groups
 
 | Slice | Proposed behavior | Acceptance focus / decision needed |

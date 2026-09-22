@@ -2,6 +2,22 @@
 
 ## 2026-09-22: A3 stash implementation in progress
 
+Windows final native follow-up at `6403443` passes 41 checks, including the four
+normal stash workflows. Its delayed-Create reload fixture used a verbatim
+Windows path as `core.hooksPath`; a disposable probe reproduced Git exit 128 for
+that path and success for a repository-relative path. The native-only fixture
+now uses `.git/reload-stash-hooks` and includes full backend error diagnostics.
+This requires the remaining native rerun; it does not change production actions.
+
+macOS acceptance at `6403443`: **98 frontend tests and 43 native DOM/IPC checks
+pass**, including all five new stash workflows. The release `.app` builds and
+packaged help/version/invalid-argument plus repository/discovery startup checks
+pass. `cargo fmt`, strict native-feature Clippy, 100 local documentation
+links/anchors, and `git diff --check` pass. Windows passed the full **147-test**
+Rust suite at `9fb0912`; the stable-entry identity follow-up at `6403443` still
+needs its Windows focused/backend and native/package gates. Current collected
+artifacts remain A2 until both A3 packages and reports are ready.
+
 Integration follow-up at `9fb0912`: the full macOS Rust suite passes **155 tests**.
 The first Windows run exposed a read-only replacement-file flush (`os error 5`);
 the corrected writable-handle implementation passes all 24 Windows library tests,

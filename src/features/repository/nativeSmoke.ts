@@ -820,7 +820,7 @@ async function finishStashReload(marker: ReloadMarker, checks: string[]) {
   const fixture = await invoke<{ repositoryId: string; path: string; operationId: string }>('native_smoke_slow_stash');
   assert(fixture.repositoryId === marker.repositoryId && fixture.operationId === marker.operationId && fixture.path === marker.path, 'Stash reload must reconnect to the original operation');
   const completed = await until('original stash creation completes after reload', async () => (await api.getOperations()).find(operation => operation.operationId === fixture.operationId && !['queued', 'running'].includes(operation.state)), 120000);
-  assert(completed.state === 'succeeded', `Reloaded stash creation failed: ${completed.error?.message ?? completed.reason}`);
+  assert(completed.state === 'succeeded', `Reloaded stash creation failed: ${completed.error ? JSON.stringify(completed.error) : completed.reason}`);
   const verified = await invoke<{ verified: boolean }>('native_smoke_stash_verify', { repositoryId: fixture.repositoryId, scenario: 'slow', stage: 'created' });
   assert(verified.verified, 'Reloaded stash must contain original exact index/worktree content');
   const repository = await stashRepository(fixture.path);

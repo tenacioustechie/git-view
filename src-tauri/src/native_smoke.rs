@@ -1343,7 +1343,13 @@ pub async fn native_smoke_slow_stash(state: State<'_, AppState>) -> AppResult<se
             use std::os::unix::fs::PermissionsExt;
             std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
         }
-        git(path, &["config", "core.hooksPath", hooks.to_str().unwrap()]);
+        // The registered path may carry Windows' verbatim \\?\ prefix, which
+        // Git for Windows cannot launch as a hook path. Keep this fixture's
+        // hook configuration relative to the repository, as ordinary Git does.
+        git(
+            path,
+            &["config", "core.hooksPath", ".git/reload-stash-hooks"],
+        );
         let repository_id = record["repositoryId"].as_str().unwrap();
         let status = state.engine.get_status(repository_id).await?;
         let plan = state

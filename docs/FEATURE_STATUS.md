@@ -15,7 +15,7 @@ hunk staging remains planned.
 
 The pending A3 slice includes named stash creation, inspection, Apply that retains
 the entry, separately reviewed Delete with a retained backup, and explicit
-interrupted-deletion recovery. Its renderer passes 96 tests, including 13 stash
+interrupted-deletion recovery. Its renderer passes 98 tests, including 15 stash
 cases. Full backend/native/platform/package gates remain open; existing A2
 packages do not include these changes.
 
