@@ -1,24 +1,49 @@
 # Build status
 
-## 2026-09-22: guided rebase macOS source gate; Windows pending
+## 2026-09-23: guided linear rebase complete on tested platforms
 
-Source checkpoint `f46bf79` based on A4 code checkpoint `9fe0fb8` adds guided linear
+Source checkpoint `d9af4e65d99647280409f0f78c76aeeaac31df18`, based on A4
+checkpoint `9fe0fb8`, adds guided linear
 rebase onto an exact existing local or fetched remote branch, ordered preview,
 backup and per-worktree record, stopped-state context, external-editor conflict
-resolution, Continue, reviewed Skip, and Abort. Windows results will be
-recorded separately after synchronization. The collected A4 packages below
-are older and do not contain rebase.
+resolution, Continue, reviewed Skip, and Abort. The macOS arm64 and Windows 11
+x64 verification, native desktop, release build, and package launch/install
+gates pass on this exact checkpoint.
 
-macOS arm64 checks passed: `pnpm typecheck`, `pnpm lint`, `pnpm test` (114 tests),
-locked full `cargo test`, `cargo fmt --check` after formatting, strict all-target
-Clippy with `native-smoke`, `VITE_NATIVE_SMOKE=1 pnpm build`, and a custom-protocol
-native build. Eight focused real-Git rebase tests cover clean replay, stopped
-conflict and reload, Continue, Skip, Abort, empty commit, hook rejection,
-metadata drift, stale target/dirty state, and merge-commit rejection. The native
-desktop report `/tmp/git-view-native-rebase-mac.json` passed **50/50 checks**,
-including clean replay and conflict Continue/Skip/Abort through the real UI/IPC
-with final ref, backup, and file assertions. Release packages and Windows
-checks are still pending for this source change.
+| Gate | macOS arm64 | Windows 11 x64 |
+| --- | --- | --- |
+| Frontend | 114 passed; typecheck/lint passed | 114 passed; typecheck/lint passed |
+| Rust | 171 passed; one opt-in performance case ignored | 162 passed; one opt-in performance case ignored |
+| Formatting and strict Clippy | Passed | Passed |
+| Native desktop | 50/50 checks passed | 50/50 checks passed |
+| Release package | `.app` built; packaged CLI/startup passed | NSIS built; installed CLI/native window passed |
+
+Eight macOS / seven Windows focused real-Git rebase tests cover clean replay,
+stopped conflict and reload, Continue, Skip, Abort, empty commit, metadata drift,
+stale target/dirty state, and merge-commit rejection; macOS additionally checks
+pre-rebase hook rejection. Both native reports exercise clean replay and conflict
+Continue/Skip/Abort through the visible UI and real IPC, then assert final refs,
+backup, and file bytes. Reports are `artifacts/native-macos.json` and
+`artifacts/native-windows.json` (Windows original
+`C:\codeme\git-view\.tools\GitViewNativeSmoke-befb5b289e3f4a09895f00eacb75c4e4.json`).
+The Windows installed test package is retained at
+`C:\codeme\git-view\.tools\installed-smoke-fc494b3671974c9a9906de8fc0acd36e`.
+
+Commands included `pnpm typecheck`, `pnpm lint`, `pnpm test`, locked full Cargo
+tests, `cargo fmt --check`, strict all-target Clippy, the native-smoke frontend
+and custom-protocol builds, and `python3 scripts/native-smoke.py` on macOS.
+Windows used `windows-sync.py`, `windows-verify.ps1`, `windows-release.ps1`, and
+`windows-installer-smoke.ps1`. The unsigned packages were collected locally and
+were not published:
+
+| Artifact | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `artifacts/Git-View_0.1.0_macos-arm64.zip` | 3,792,351 | `3b0278f3fb6cd784db8fcbe73b91e565d2364e0704557d37f7cd7bcfa5c50467` |
+| `artifacts/Git-View_0.1.0_windows-x64-setup.exe` | 2,993,364 | `51d708b3f38c76436f8fe40566482ed5710e18263390c92ea44e5489ad96fc5e` |
+
+`artifacts/manifest.json` records matching source revisions, checksums, and 50
+passing checks per platform. Linux, Intel Mac, signing/notarization, hosted CI,
+and the standing accessibility gaps remain unverified as listed in Feature status.
 
 ## 2026-09-22: rebase design preparation
 

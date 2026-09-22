@@ -1,9 +1,8 @@
 # Git View user guide
 
-Reviewed 22 September 2026 for version 0.1.0, including the rebase controls at
-source checkpoint `f46bf79`. The collected macOS and Windows packages remain at
-the A4 checkpoint `9fe0fb8` until the rebase platform gate is recorded in
-[Build status](BUILD_STATUS.md).
+Reviewed 23 September 2026 for version 0.1.0, including the rebase controls at
+source checkpoint `d9af4e6`, verified and packaged on macOS arm64 and Windows
+11 x64. See [Build status](BUILD_STATUS.md) for exact evidence and checksums.
 This guide describes implemented behavior. See [Feature status](FEATURE_STATUS.md)
 for the remaining roadmap and [Build status](BUILD_STATUS.md) for tested versions,
 packages, and platform limitations.

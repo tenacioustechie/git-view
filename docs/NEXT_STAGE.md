@@ -1,9 +1,9 @@
 # Next feature stage — implementation plan
 
 Started 21 September 2026; product decisions finalized 22 September 2026.
-Status: **A1–A4 complete on tested macOS/Windows; the following rebase stage
-has a [detailed design](REBASE_DESIGN.md) and source implementation with a
-passing macOS gate. Windows acceptance and packages remain pending**.
+Status: **A1–A4 and the following guided linear rebase stage are complete on
+tested macOS/Windows at `d9af4e6`; see the [detailed design](REBASE_DESIGN.md)
+and Build status**.
 Implementation resumed after a computer crash on 22 September 2026. A1 passes
 its tests, native acceptance, release builds, and package checks at `fe33bf3`;
 A2 passes the same gates at `fd637b8`, A3 at `7c0eef5`, and A4 at `9fe0fb8`;

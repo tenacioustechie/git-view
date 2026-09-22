@@ -1,7 +1,7 @@
 # Feature status
 
-Reviewed 22 September 2026, including remote tracking checkout, cherry-pick,
-stash, and A4 hunk staging at source checkpoint `9fe0fb8`, against the
+Reviewed 23 September 2026, including guided linear rebase at source checkpoint
+`d9af4e6` and the earlier A1–A4 workflows, against the
 [product plan](PRODUCT.md). This is the current completion inventory;
 [Build status](BUILD_STATUS.md) retains dated commands, results, and artifact evidence.
 Instructions for using completed workflows are in the [User guide](USER_GUIDE.md).
@@ -11,8 +11,8 @@ hunk staging, with rebase in the following stage. Remote tracking checkout is
 implemented; its current platform acceptance is recorded in Build status.
 Cherry-pick and shared conflict guidance are also complete on the tested macOS
 and Windows platforms. Stash and supported complete text-hunk staging are also
-complete on those platforms. Guided linear rebase is implemented at source
-checkpoint `f46bf79` with macOS acceptance; Windows acceptance and packages are pending.
+complete on those platforms. Guided linear rebase is also complete on the tested
+macOS and Windows platforms, with current packages recorded in Build status.
 
 ## Milestone interpretation
 
@@ -36,11 +36,11 @@ refer to the delivered runbook workflows on tested platforms.
 | Details | Full messages/identities/parents, parent-specific changed files, unified diffs, binary/truncation states | Side-by-side diffs, richer file navigation, blame and file history |
 | Working changes | Staged/unstaged/untracked/conflicted states, whole-file stage/unstage, supported complete text-hunk stage/unstage, staged-only commit, session draft retention, hook/signing failure handling; named stash creation/inspection, retained Apply, reviewed exact-entry Delete and recovery | Individual-line staging; expanded hunk support for excluded file types |
 | Remotes | Fetch, clean-only fast-forward pull, explicit normal single-repository push, optional upstream setup | Explicit batch push; hosting integrations only if requested |
-| Branches | Local create/switch with previews, explicit remote tracking checkout, ordinary merge, squash merge from local or remote refs, reviewed single non-merge cherry-pick; guided linear rebase onto an existing local or fetched remote branch with Continue, reviewed Skip, Abort, backup and stopped-state guidance (macOS accepted; Windows pending) | Merge-preserving or arbitrary interactive rebase; multi-commit and merge-commit cherry-pick excluded from A2 |
+| Branches | Local create/switch with previews, explicit remote tracking checkout, ordinary merge, squash merge from local or remote refs, reviewed single non-merge cherry-pick; guided linear rebase onto an existing local or fetched remote branch with Continue, reviewed Skip, Abort, backup and stopped-state guidance | Merge-preserving or arbitrary interactive rebase; multi-commit and merge-commit cherry-pick excluded from A2 |
 | Groups | Versioned JSON, create/edit/save/save-as, labels, locate/remove/add, external-edit protection, state/branch/name filters, selection, batch fetch/pull, per-member outcomes/cancel/retry | Explicit group branch switching and further large-group tuning |
 | Discovery | Bounded depth-controlled scanning, ordinary/linked worktree detection, reviewed new-project creation and draft additions, duplicate exclusion, partial-result warnings | No further discovery feature required by the current plan; nested/skipped paths require explicit addition |
 | Existing-commit squash | Consecutive linear tip selection, editable message, exact-tree replacement, backup refs, journal, guarded recovery including later file edits | No missing feature in the agreed initial Combine commits scope; arbitrary selections are outside this implementation |
-| Conflicts | Shared source/target and index-conflict guidance, external-editor resolution, stage resolution, ordinary merge and cherry-pick continue/abort, explicit empty cherry-pick Skip, interrupted-marker review, persistent squash review state | Integrated three-way conflict editor |
+| Conflicts | Shared source/target and index-conflict guidance, external-editor resolution, stage resolution, ordinary merge/cherry-pick/rebase continuation and recovery, explicit reviewed Skip, interrupted-marker review, persistent squash review state | Integrated three-way conflict editor |
 
 ## Interaction and persistence still outstanding
 
@@ -60,20 +60,11 @@ refer to the delivered runbook workflows on tested platforms.
 
 ## Verification and distribution outstanding
 
-Latest A4 acceptance/packages use `9fe0fb8`: **111 frontend tests on each
-platform, 163 Rust tests on macOS / 155 on Windows, and 46 native workflow
-checks on each**. The macOS arm64 app and Windows x64 NSIS installer were built,
-launched, and collected with passing reports. The source change from `9ba61b0`
-to `9fe0fb8` corrects only a Windows test fixture filename; the final macOS
-focused suite, native checks, and packages use the corrected checkpoint.
-Historical A3 evidence, performance measurements, and exact commands remain in
-Build status.
-
-Rebase checkpoint `f46bf79` passes 114 frontend tests, the full macOS Rust suite
-(including eight focused real-Git rebase tests), strict Clippy, typecheck/lint,
-and a macOS native smoke with 50 checks including four rebase scenarios.
-These results do not validate the collected A4 packages or Windows; see the
-newer [Build status](BUILD_STATUS.md) entry for exact commands and source scope.
+Latest acceptance/packages use rebase checkpoint `d9af4e6`: **114 frontend
+tests on each platform, 171 Rust tests on macOS / 162 on Windows, and 50 native
+workflow checks on each**. The unsigned macOS arm64 app and Windows x64 NSIS
+installer were built, launched/installed, and collected with passing reports.
+Exact commands, checksums, and historical A1–A4 evidence remain in Build status.
 
 - Linux and Intel Mac execution, and the hosted GitHub workflow, remain unverified.
 - Stash requires files ref storage; reftable is unsupported. Safe stash Delete
