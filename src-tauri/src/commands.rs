@@ -80,6 +80,13 @@ pub async fn list_refs(
     state.engine.list_refs(&repository_id).await
 }
 #[tauri::command]
+pub async fn list_remote_branches(
+    state: State<'_, AppState>,
+    repository_id: String,
+) -> AppResult<RemoteBranchListing> {
+    state.engine.list_remote_branches(&repository_id).await
+}
+#[tauri::command]
 pub async fn list_remotes(
     state: State<'_, AppState>,
     repository_id: String,

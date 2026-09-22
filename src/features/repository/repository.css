@@ -54,6 +54,9 @@
 .merge-notice p { margin:5px 0; font-size:13px; }
 .merge-notice-actions { display:flex; gap:8px; flex-shrink:0; }
 .merge-controls small { display:block; margin:8px 0; }
+.remote-checkout p,.remote-checkout dl { font-size:12px; overflow-wrap:anywhere; }
+.remote-checkout dt { color:var(--muted); margin-top:7px; }
+.remote-checkout dd { margin:2px 0 0; }
 .combine-heading { display:flex; justify-content:space-between; align-items:center; gap:8px; }
 .combine-panel p { font-size:13px; }
 .combine-panel code { overflow-wrap:anywhere; font-size:12px; }

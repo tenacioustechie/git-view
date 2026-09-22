@@ -162,6 +162,28 @@ pub struct GitRef {
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct RemoteCheckoutTarget {
+    pub remote_id: String,
+    pub remote_name: String,
+    pub source_ref: String,
+    pub source_oid: String,
+    pub upstream_ref: String,
+    pub suggested_name: String,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteBranchIssue {
+    pub source_ref: String,
+    pub reason: String,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteBranchListing {
+    pub targets: Vec<RemoteCheckoutTarget>,
+    pub issues: Vec<RemoteBranchIssue>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Remote {
     pub id: String,
     pub name: String,
@@ -276,6 +298,12 @@ pub enum RepositoryAction {
         status_snapshot_id: String,
         local_ref: String,
     },
+    CheckoutRemoteBranch {
+        status_snapshot_id: String,
+        remote_id: String,
+        source_ref: String,
+        name: String,
+    },
     Merge {
         status_snapshot_id: String,
         source_ref: String,
@@ -311,6 +339,7 @@ impl RepositoryAction {
             Self::Push { .. } => "push",
             Self::CreateBranch { .. } => "createBranch",
             Self::SwitchBranch { .. } => "switchBranch",
+            Self::CheckoutRemoteBranch { .. } => "checkoutRemoteBranch",
             Self::Merge { .. } => "merge",
             Self::SquashMerge { .. } => "squashMerge",
             Self::ContinueMerge { .. } => "continueMerge",

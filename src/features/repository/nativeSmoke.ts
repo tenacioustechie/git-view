@@ -4,7 +4,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { api, errorMessage } from '../../api/client';
 import type { OperationResult } from '../../api/types';
 
-interface SmokeContext { projectPath: string; cleanPath: string; dirtyPath: string; mergePath: string; m2?: boolean; m3?: boolean; performance?: boolean; discovery?: boolean; historySearch?: boolean }
+interface SmokeContext { projectPath: string; cleanPath: string; dirtyPath: string; mergePath: string; m2?: boolean; m3?: boolean; performance?: boolean; discovery?: boolean; historySearch?: boolean; remoteCheckout?: boolean }
 interface SmokeResult { passed: boolean; checks: string[]; error?: string; body?: string }
 interface ReloadMarker { version: 1; repositoryId: string; operationId: string; path: string; checks: string[] }
 const reloadKey = 'git-view.native-smoke.reload.v1';
@@ -540,6 +540,68 @@ async function runHistorySearchSmoke(checks: string[]) {
   checks.push('Native author, full-message body and abbreviated OID searches returned exact commits; no-match state was explicit and Clear restored ordinary history DAG');
 }
 
+async function runRemoteCheckoutSmoke(checks: string[]) {
+  for (const scenario of ['success', 'dirty', 'collision'] as const) {
+    const fixture = await invoke<{ repositoryId: string; path: string; remoteId: string; sourceRef: string; sourceOid: string; upstreamRef: string; localName: string }>('native_smoke_remote_checkout_case', { scenario });
+    const repository = await until(`remote checkout ${scenario} fixture selected`, () => {
+      const screen = document.querySelector<HTMLElement>('.repository-screen');
+      return screen?.querySelector('.repository-title strong')?.getAttribute('title') === fixture.path ? screen : null;
+    });
+    const initial = await api.getStatus(fixture.repositoryId);
+    const scope = await until('remote history scope available', () => [...repository.querySelectorAll<HTMLButtonElement>('.repository-refs button')].find(node => node.title === fixture.sourceRef));
+    scope.click();
+    await until('remote scope selected', () => scope.classList.contains('selected'));
+    assert(JSON.stringify((await api.getStatus(fixture.repositoryId)).head) === JSON.stringify(initial.head), 'Selecting remote history scope must leave actual HEAD unchanged');
+    const summary = await until('remote checkout summary', () => [...repository.querySelectorAll<HTMLElement>('summary')].find(node => node.textContent === 'Check out remote branch'));
+    summary.click();
+    const panel = await region('Remote branch checkout');
+    const select = await until('remote checkout candidate loaded', () => {
+      const element = panel.querySelector<HTMLSelectElement>('[aria-label="Remote branch"]');
+      return element && !element.disabled && [...element.options].some(option => option.value === JSON.stringify([fixture.remoteId, fixture.sourceRef])) ? element : null;
+    });
+    select.value = JSON.stringify([fixture.remoteId, fixture.sourceRef]);
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    const name = panel.querySelector<HTMLInputElement>('[aria-label="Local branch name"]');
+    assert(name, 'Checkout must expose an editable local name');
+    type(name, fixture.localName);
+    await until('checkout draft name entered', () => name.value === fixture.localName && panel.textContent?.includes(fixture.sourceOid));
+    if (scenario === 'success') {
+      await click('Preview checkout', panel);
+      const preview = await until('remote checkout preview visible', () => repository.querySelector<HTMLDialogElement>('dialog[open]'));
+      assert(preview.textContent?.includes(fixture.sourceRef) && preview.textContent.includes(fixture.sourceOid) && preview.textContent.includes(fixture.upstreamRef), 'Checkout preview must show exact source ref, commit and upstream');
+      await click('Cancel', preview);
+      await until('canceled checkout preview closes', () => !preview.open);
+      assert(JSON.stringify((await api.getStatus(fixture.repositoryId)).head) === JSON.stringify(initial.head), 'Canceling checkout preview must not change HEAD');
+      assert(name.value === fixture.localName, 'Canceling preview must retain custom local branch name');
+      await click('Preview checkout', panel);
+      const confirmedPreview = await until('second remote checkout preview visible', () => repository.querySelector<HTMLDialogElement>('dialog[open]'));
+      await button('Create and switch', confirmedPreview);
+      const result = await operation('checkoutRemoteBranch', fixture.repositoryId, () => click('Create and switch', confirmedPreview));
+      assert(result.state === 'succeeded', `Remote tracking checkout failed: ${result.error?.message ?? result.reason}`);
+      const actual = await api.getStatus(fixture.repositoryId);
+      assert(actual.head.kind === 'branch' && actual.head.name === fixture.localName && actual.head.oid === fixture.sourceOid && actual.upstream, 'Checkout must create the requested branch at the exact source commit with an actual upstream');
+      await until('checkout actual branch and upstream refreshed', () => {
+        const text = repository.querySelector('.repository-title small')?.textContent ?? '';
+        return text.includes(fixture.localName) && text.includes(actual.upstream!.ref);
+      });
+    } else {
+      await until('blocked checkout reason', () => panel.textContent?.includes(scenario === 'dirty' ? 'clean index and working tree' : 'already exists at'));
+      const preview = [...panel.querySelectorAll<HTMLButtonElement>('button')].find(node => node.textContent === 'Preview checkout');
+      assert(preview?.disabled, `${scenario} checkout must remain disabled`);
+      if (scenario === 'collision') {
+        await click('Review existing local branch', panel);
+        await until('separate local-switch review selects existing branch', () => [...repository.querySelectorAll<HTMLSelectElement>('select')].some(node =>
+          node.closest('label')?.textContent?.startsWith('Local branch') && !node.hasAttribute('aria-label') && node.value === `refs/heads/${fixture.localName}` && visible(node)));
+      }
+    }
+    const verified = await invoke<{ verified: boolean }>('native_smoke_remote_checkout_verify', { repositoryId: fixture.repositoryId, scenario, localName: fixture.localName });
+    assert(verified.verified, `Native remote checkout ${scenario} Git assertions must pass`);
+    checks.push(scenario === 'success'
+      ? 'Native remote checkout: read-only remote scope, explicit remote/source/upstream preview, custom-name cancel retention, Create and switch, and actual HEAD/upstream/content verification'
+      : `Native remote checkout ${scenario}: visible block reason prevented creation; ${scenario === 'collision' ? 'separate existing-local switch review; ' : ''}actual refs/config/working content preserved`);
+  }
+}
+
 async function startRunningOperationReload(checks: string[]) {
   const fixture = await invoke<{ repositoryId: string; operationId: string; path: string }>('native_smoke_slow_commit');
   await until('slow commit actually running before full reload', async () => {
@@ -760,6 +822,7 @@ export async function runNativeSmoke(): Promise<void> {
     if (context.performance) await runPerformanceSmoke(checks);
     if (context.discovery) await runDiscoverySmoke(checks);
     if (context.historySearch) await runHistorySearchSmoke(checks);
+    if (context.remoteCheckout) await runRemoteCheckoutSmoke(checks);
     await startRunningOperationReload(checks);
     return; // The reloaded renderer resumes above and submits the final report.
   } catch (cause) {

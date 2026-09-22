@@ -3,6 +3,7 @@ mod discovery;
 mod history;
 mod merge;
 mod ref_guard;
+mod remote_checkout;
 mod rewrite;
 mod rewrite_config;
 mod runner;
@@ -82,6 +83,7 @@ pub struct PreparedAction {
     pub(crate) squash_start: Option<merge::SquashJournal>,
     pub(crate) finish_squash: bool,
     pub(crate) rewrite: Option<rewrite::PreparedRewrite>,
+    pub(crate) remote_checkout: Option<remote_checkout::Checkout>,
 }
 impl PreparedAction {
     /// Restrict a filtered batch fetch to the HEAD observed in its preview.

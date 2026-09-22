@@ -63,6 +63,7 @@ pub struct Context {
     pub performance: bool,
     pub discovery: bool,
     pub history_search: bool,
+    pub remote_checkout: bool,
 }
 pub struct Fixture {
     pub context: Context,
@@ -71,6 +72,7 @@ pub struct Fixture {
     pub cases: std::sync::Mutex<std::collections::HashMap<String, PathBuf>>,
     pub rewrites: std::sync::Mutex<std::collections::HashMap<String, serde_json::Value>>,
     pub slow_commit: tokio::sync::Mutex<Option<serde_json::Value>>,
+    pub remote_checkouts: std::sync::Mutex<std::collections::HashMap<String, serde_json::Value>>,
 }
 fn git(path: &Path, args: &[&str]) -> String {
     let output = Command::new("git")
@@ -168,13 +170,195 @@ pub fn setup(report: PathBuf) -> Fixture {
             performance: true,
             discovery: true,
             history_search: true,
+            remote_checkout: true,
         },
         report,
         _root: root,
         cases: Default::default(),
         rewrites: Default::default(),
         slow_commit: Default::default(),
+        remote_checkouts: Default::default(),
     }
+}
+
+#[tauri::command]
+pub async fn native_smoke_remote_checkout_case(
+    state: State<'_, AppState>,
+    scenario: String,
+) -> AppResult<serde_json::Value> {
+    if !matches!(scenario.as_str(), "success" | "dirty" | "collision") {
+        return Err(AppError::new("fixture", "Unknown remote checkout scenario"));
+    }
+    let f = fixture(&state)?;
+    let root = f._root.path().join(format!("remote-checkout-{scenario}"));
+    std::fs::create_dir(&root).map_err(|e| AppError::new("fixture", e.to_string()))?;
+    let seed = root.join("seed");
+    std::fs::create_dir(&seed).unwrap();
+    git(&seed, &["init", "--template=", "-b", "main"]);
+    configure(&seed);
+    std::fs::write(seed.join("checkout.txt"), "base\n").unwrap();
+    commit(&seed, "Checkout main");
+    let original_head = git(&seed, &["rev-parse", "HEAD"]);
+    git(&seed, &["switch", "-c", "feature/topic"]);
+    std::fs::write(seed.join("checkout.txt"), "origin feature\n").unwrap();
+    commit(&seed, "Origin topic");
+    let origin_oid = git(&seed, &["rev-parse", "HEAD"]);
+    let origin = root.join("origin.git");
+    git(
+        &root,
+        &[
+            "clone",
+            "--bare",
+            seed.to_str().unwrap(),
+            origin.to_str().unwrap(),
+        ],
+    );
+    std::fs::write(seed.join("checkout.txt"), "review feature\n").unwrap();
+    commit(&seed, "Review topic");
+    let source_oid = git(&seed, &["rev-parse", "HEAD"]);
+    let remote = root.join("review.git");
+    git(
+        &root,
+        &[
+            "clone",
+            "--bare",
+            seed.to_str().unwrap(),
+            remote.to_str().unwrap(),
+        ],
+    );
+    let path = root.join("checkout");
+    git(
+        &root,
+        &[
+            "clone",
+            "--branch",
+            "main",
+            origin.to_str().unwrap(),
+            path.to_str().unwrap(),
+        ],
+    );
+    configure(&path);
+    git(
+        &path,
+        &["remote", "add", "review", remote.to_str().unwrap()],
+    );
+    git(&path, &["fetch", "review"]);
+    if scenario == "dirty" {
+        std::fs::write(path.join("keep.txt"), "untracked work\n").unwrap();
+    } else if scenario == "collision" {
+        git(&path, &["branch", "custom/topic"]);
+        git(
+            &path,
+            &["branch", "--set-upstream-to=origin/main", "custom/topic"],
+        );
+    }
+    let opened = state.engine.open_repository(&path).await?;
+    let result = serde_json::json!({
+        "repositoryId": opened.repository_id, "path": opened.display_path,
+        "remoteId": "review", "sourceRef": "refs/remotes/review/feature/topic",
+        "sourceOid": source_oid, "upstreamRef": "refs/heads/feature/topic",
+        "suggestedName": "feature/topic", "localName": "custom/topic"
+    });
+    f.remote_checkouts.lock().unwrap().insert(
+        opened.repository_id.clone(),
+        serde_json::json!({
+            "scenario": scenario, "path": opened.display_path, "originalHead": original_head,
+            "sourceOid": source_oid, "originOid": origin_oid,
+            "originPath": origin, "remotePath": remote
+        }),
+    );
+    state.launches.push(LaunchRequest {
+        request_id: uuid::Uuid::new_v4().to_string(),
+        kind: "repository".into(),
+        path: Some(opened.display_path),
+        error: None,
+        scan_depth: None,
+    });
+    Ok(result)
+}
+
+#[tauri::command]
+pub async fn native_smoke_remote_checkout_verify(
+    state: State<'_, AppState>,
+    repository_id: String,
+    scenario: String,
+    local_name: String,
+) -> AppResult<serde_json::Value> {
+    let f = fixture(&state)?;
+    let record = f
+        .remote_checkouts
+        .lock()
+        .unwrap()
+        .get(&repository_id)
+        .cloned()
+        .ok_or_else(|| AppError::new("fixture", "Unknown checkout fixture"))?;
+    if record["scenario"] != scenario || local_name != "custom/topic" {
+        return Err(AppError::new(
+            "fixture",
+            "Checkout fixture arguments differ",
+        ));
+    }
+    let path = Path::new(record["path"].as_str().unwrap());
+    let expected_head = if scenario == "success" {
+        "sourceOid"
+    } else {
+        "originalHead"
+    };
+    let branch = if scenario == "success" {
+        "custom/topic"
+    } else {
+        "main"
+    };
+    let content = if scenario == "success" {
+        "review feature\n"
+    } else {
+        "base\n"
+    };
+    let mut verified = git(path, &["rev-parse", "HEAD"]) == record[expected_head].as_str().unwrap()
+        && git(path, &["rev-parse", "refs/heads/main"]) == record["originalHead"].as_str().unwrap()
+        && git(path, &["symbolic-ref", "--short", "HEAD"]) == branch
+        && std::fs::read_to_string(path.join("checkout.txt")).unwrap() == content
+        && git(path, &["diff", "--cached"]).is_empty()
+        && git(path, &["diff"]).is_empty()
+        && git(
+            Path::new(record["originPath"].as_str().unwrap()),
+            &["rev-parse", "refs/heads/feature/topic"],
+        ) == record["originOid"].as_str().unwrap()
+        && git(
+            Path::new(record["remotePath"].as_str().unwrap()),
+            &["rev-parse", "refs/heads/feature/topic"],
+        ) == record["sourceOid"].as_str().unwrap();
+    if scenario == "success" {
+        verified &= git(path, &["config", "--get", "branch.custom/topic.remote"]) == "review"
+            && git(path, &["config", "--get", "branch.custom/topic.merge"])
+                == "refs/heads/feature/topic";
+    } else if scenario == "collision" {
+        verified &= git(path, &["rev-parse", "refs/heads/custom/topic"])
+            == record["originalHead"].as_str().unwrap()
+            && git(path, &["config", "--get", "branch.custom/topic.remote"]) == "origin"
+            && git(path, &["config", "--get", "branch.custom/topic.merge"]) == "refs/heads/main";
+    } else {
+        verified &= std::fs::read_to_string(path.join("keep.txt")).unwrap() == "untracked work\n"
+            && !git(path, &["config", "--name-only", "--list"])
+                .lines()
+                .any(|key| key.starts_with("branch.custom/topic."))
+            && git(
+                path,
+                &[
+                    "for-each-ref",
+                    "--format=%(refname)",
+                    "refs/heads/custom/topic",
+                ],
+            )
+            .is_empty();
+    }
+    if !verified {
+        return Err(AppError::new(
+            "fixture",
+            "Remote checkout changed unexpected state",
+        ));
+    }
+    Ok(serde_json::json!({ "verified": true }))
 }
 
 #[tauri::command]

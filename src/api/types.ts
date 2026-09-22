@@ -79,6 +79,7 @@ export type RepositoryAction =
   | { kind: 'push'; statusSnapshotId: SnapshotId; remoteId: string; destinationRef: string; setUpstream: boolean }
   | { kind: 'createBranch'; statusSnapshotId: SnapshotId; name: string; startOid: Oid; switchAfterCreate: boolean }
   | { kind: 'switchBranch'; statusSnapshotId: SnapshotId; localRef: string }
+  | { kind: 'checkoutRemoteBranch'; statusSnapshotId: SnapshotId; remoteId: string; sourceRef: string; name: string }
   | { kind: 'merge' | 'squashMerge'; statusSnapshotId: SnapshotId; sourceRef: string }
   | { kind: 'continueMerge' | 'abortMerge'; statusSnapshotId: SnapshotId }
   | { kind: 'combineCommits'; statusSnapshotId: SnapshotId; commitOids: string[]; message: string }
@@ -123,6 +124,9 @@ export interface RepositoryOpen { repositoryId: string; displayPath: string; sta
 export interface Changes { snapshotId: string; files: ChangedFile[] }
 export interface GitRef { fullName: string; label: string; oid: string; kind: 'local' | 'remote' | 'tag' | 'head' }
 export interface Remote { id: string; name: string; defaultFetch: boolean; defaultPush: boolean; destinationRef: string | null }
+export interface RemoteCheckoutTarget { remoteId: string; remoteName: string; sourceRef: string; sourceOid: string; upstreamRef: string; suggestedName: string }
+export interface RemoteBranchIssue { sourceRef: string; reason: string }
+export interface RemoteBranchListing { targets: RemoteCheckoutTarget[]; issues: RemoteBranchIssue[] }
 export interface ProjectContent { version: 1; name: string; repositories: { path: string; label?: string }[] }
 export interface Project { projectId: string; revision: string; displayPath: string; name: string; content: ProjectContent; members: RepositoryRow[]; stale: boolean; error: AppError | null }
 export interface BatchRequest { projectId: string; revision: string; memberIds: string[]; action: 'fetch' | 'pull'; branchFilter: string | null }

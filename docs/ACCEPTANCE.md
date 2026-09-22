@@ -56,6 +56,15 @@ Verify search leaves index and application rewrite journals unchanged.
 
 ## Project and CLI tests
 
+Remote tracking checkout adds real-repository fixtures for custom/exact/wildcard
+fetch mappings, multiple remotes, ambiguous/negative mappings, symbolic refs,
+existing names/config/namespaces and linked worktrees, stale source/config/status,
+ignored-file preservation, source locking, hook failures/changes, and cancellation.
+Native checks select a source shared by two differently-valued remotes, cancel a
+preview, check out a custom local name with exact upstream, preserve main and
+remote tips, and reject dirty/collision cases without changing files or tracking
+configuration. History scope selection must remain read-only.
+
 - Valid schema/example, empty project, duplicate names, missing members, unknown keys, unsupported version, corrupt JSON, nonblank strings, and file-size/member-count limits.
 - Relative paths resolve from the project file; direct repository arguments resolve from invoking cwd. Test absolute paths, Windows drives, spaces, and Unicode on real target systems.
 - Duplicate aliases share execution identity; separate worktrees remain separate.

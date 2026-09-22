@@ -15,6 +15,7 @@ impl GitEngine {
         action: RepositoryAction,
     ) -> AppResult<PreparedAction> {
         let repo = self.repository(repository_id).await?;
+        let initial_config = self.config_fingerprint(&repo).await?;
         let observed = self.observe(&repo).await?;
         let status = observed.status.as_ref().unwrap();
         let args;
@@ -24,6 +25,7 @@ impl GitEngine {
         let mut summary = None;
         let mut squash_start = None;
         let mut rewrite = None;
+        let mut remote_checkout = None;
         let finish_squash = matches!(action, RepositoryAction::Commit { .. })
             && status.git_state == GitState::SquashMerge;
         let snapshot_id = match &action {
@@ -40,6 +42,9 @@ impl GitEngine {
                 status_snapshot_id, ..
             }
             | RepositoryAction::SwitchBranch {
+                status_snapshot_id, ..
+            }
+            | RepositoryAction::CheckoutRemoteBranch {
                 status_snapshot_id, ..
             }
             | RepositoryAction::Merge {
@@ -277,6 +282,34 @@ impl GitEngine {
                     runner::args(&["branch", "--", name, &oid])
                 };
                 destination = Some(format!("{name} at {oid}"));
+            }
+            RepositoryAction::CheckoutRemoteBranch {
+                remote_id,
+                source_ref,
+                name,
+                ..
+            } => {
+                self.require_clean(status)?;
+                let checkout = self
+                    .prepare_remote_checkout(&repo, remote_id, source_ref, name)
+                    .await?;
+                args = runner::args(&[
+                    "--no-replace-objects",
+                    "switch",
+                    "--no-guess",
+                    "--no-recurse-submodules",
+                    "--no-overwrite-ignore",
+                    "--track=direct",
+                    "-c",
+                    name,
+                    source_ref,
+                ]);
+                summary = Some(format!("Create and switch to local branch {name} from {} at {}. Track remote {} branch {}. Current HEAD: {:?}.", source_ref, checkout.target.source_oid, checkout.target.remote_name, checkout.target.upstream_ref, status.head));
+                destination = Some(format!(
+                    "{name} → {} {}",
+                    checkout.target.remote_name, checkout.target.upstream_ref
+                ));
+                remote_checkout = Some(checkout);
             }
             RepositoryAction::SwitchBranch { local_ref, .. } => {
                 self.require_clean(status)?;
@@ -537,18 +570,26 @@ impl GitEngine {
                 summary=Some("Abort the ordinary merge. Git will try to restore its pre-merge state; uncommitted resolution edits may be discarded.".into());
             }
         }
+        let config_fingerprint = self.config_fingerprint(&repo).await?;
+        if remote_checkout.is_some() && config_fingerprint != initial_config {
+            return Err(AppError::new(
+                "precondition_changed",
+                "Git configuration changed while preparing checkout.",
+            ));
+        }
         Ok(PreparedAction {
             summary: summary
                 .unwrap_or_else(|| format!("{} in {}", action.kind(), repo.root.to_string_lossy())),
             destination,
             repository: repo.clone(),
             fingerprint: snapshot_id.map(|_| observed.fingerprint),
-            config_fingerprint: self.config_fingerprint(&repo).await?,
+            config_fingerprint,
             target_ref,
             head_guard: None,
             squash_start,
             finish_squash,
             rewrite,
+            remote_checkout,
             action,
             args,
             input,
@@ -632,6 +673,9 @@ impl GitEngine {
         check_canceled()?;
         if let Some(rewrite) = &plan.rewrite {
             return Box::pin(self.execute_rewrite(&plan.repository, rewrite, &canceled)).await;
+        }
+        if let Some(checkout) = &plan.remote_checkout {
+            return Box::pin(self.execute_remote_checkout(plan, checkout, &canceled)).await;
         }
         let _squash_activity = plan
             .squash_start

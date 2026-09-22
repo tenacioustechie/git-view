@@ -1,0 +1,161 @@
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { api } from '../../api/client';
+import type { RemoteCheckoutTarget, RepositoryOpen } from '../../api/types';
+import { fixtures } from '../../test/fixtures';
+import { RepositoryView } from './RepositoryView';
+
+vi.mock('../../api/client', () => ({ errorMessage: (error: unknown) => error instanceof Error ? error.message : String(error), api: Object.fromEntries(['getStatus', 'getChanges', 'listRefs', 'listRemotes', 'listRemoteBranches', 'getHistory', 'searchHistory', 'getOperations', 'planAction', 'runAction', 'listRewrites'].map(name => [name, vi.fn()])) }));
+const origin: RemoteCheckoutTarget = { remoteId: 'opaque-origin', remoteName: 'origin', sourceRef: 'refs/remotes/origin/feature/topic', sourceOid: 'a'.repeat(40), upstreamRef: 'refs/heads/feature/topic', suggestedName: 'feature/topic' };
+const other: RemoteCheckoutTarget = { ...origin, remoteId: 'opaque-other', remoteName: 'other', sourceRef: 'refs/custom/other-topic', sourceOid: 'b'.repeat(40) };
+let repository: RepositoryOpen;
+let sequence = 0;
+beforeEach(() => {
+  vi.resetAllMocks();
+  repository = { repositoryId: `checkout-${sequence++}`, displayPath: '/fixture/checkout', status: { ...fixtures.clean } };
+  repository.status.repositoryId = repository.repositoryId;
+  vi.mocked(api.getStatus).mockResolvedValue(repository.status);
+  vi.mocked(api.getChanges).mockResolvedValue({ snapshotId: 'changes', files: [] });
+  vi.mocked(api.listRefs).mockResolvedValue([{ fullName: origin.sourceRef, label: 'origin/feature/topic', oid: origin.sourceOid, kind: 'remote' }]);
+  vi.mocked(api.listRemotes).mockResolvedValue([]);
+  vi.mocked(api.listRemoteBranches).mockResolvedValue({ targets: [origin, other], issues: [] });
+  vi.mocked(api.getHistory).mockResolvedValue(fixtures.history);
+  vi.mocked(api.getOperations).mockResolvedValue([]);
+  vi.mocked(api.listRewrites).mockResolvedValue([]);
+  vi.mocked(api.planAction).mockResolvedValue({ kind: 'eligible', planId: 'checkout-plan', expiresAt: '', summary: `Current HEAD main; source ${other.sourceRef} ${other.sourceOid}; remote other; upstream ${other.upstreamRef}; create local custom/topic`, destination: other.upstreamRef });
+  vi.mocked(api.runAction).mockResolvedValue({ ...fixtures.failedAction, action: 'checkoutRemoteBranch', repositoryId: repository.repositoryId });
+  HTMLDialogElement.prototype.showModal = function () { this.open = true; };
+  HTMLDialogElement.prototype.close = function () { this.open = false; };
+});
+afterEach(cleanup);
+async function openCheckout() {
+  await screen.findByRole('button', { name: 'origin/feature/topic' });
+  const details = screen.getByText('Check out remote branch').closest('details')!;
+  details.open = true; fireEvent(details, new Event('toggle'));
+  await screen.findByRole('option', { name: `origin · ${origin.sourceRef}` });
+  return screen.getByLabelText('Remote branch checkout');
+}
+function select(branch = origin) { fireEvent.change(screen.getByLabelText('Remote branch'), { target: { value: JSON.stringify([branch.remoteId, branch.sourceRef]) } }); }
+
+describe('remote tracking checkout (mocked IPC)', () => {
+  it('keeps scope read-only, selects exact remote, retains edited name and cancels without mutation', async () => {
+    render(<RepositoryView repository={repository} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'origin/feature/topic' }));
+    expect(api.planAction).not.toHaveBeenCalled();
+    expect(api.listRemoteBranches).not.toHaveBeenCalled();
+    await openCheckout(); select();
+    const name = screen.getByLabelText('Local branch name') as HTMLInputElement;
+    expect(name.value).toBe('feature/topic');
+    fireEvent.change(name, { target: { value: 'custom/topic' } }); select(other);
+    expect(name.value).toBe('custom/topic');
+    fireEvent.click(screen.getByRole('button', { name: 'Preview checkout' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(api.planAction).toHaveBeenCalledWith(repository.repositoryId, { kind: 'checkoutRemoteBranch', statusSnapshotId: repository.status.snapshotId, remoteId: other.remoteId, sourceRef: other.sourceRef, name: 'custom/topic' });
+    expect(dialog.textContent).toContain(other.sourceOid);
+    expect(dialog.textContent).toContain(other.upstreamRef);
+    expect(within(dialog).getByRole('button', { name: 'Create and switch' })).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    expect(api.runAction).not.toHaveBeenCalled();
+    expect(name.value).toBe('custom/topic');
+  });
+  it('directs a local collision to separately reviewed local switching and preserves its existing tip', async () => {
+    vi.mocked(api.listRefs).mockResolvedValue([{ fullName: origin.sourceRef, label: 'origin/feature/topic', oid: origin.sourceOid, kind: 'remote' }, { fullName: 'refs/heads/feature/topic', label: 'feature/topic', oid: 'c'.repeat(40), kind: 'local' }]);
+    render(<RepositoryView repository={repository} />);
+    await openCheckout(); select();
+    expect((screen.getByRole('button', { name: 'Preview checkout' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText(/already exists at/).textContent).toContain('c'.repeat(40));
+    fireEvent.click(screen.getByRole('button', { name: 'Review existing local branch' }));
+    expect((screen.getByLabelText('Local branch') as HTMLSelectElement).value).toBe('refs/heads/feature/topic');
+    expect(api.planAction).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Preview switch' }));
+    await waitFor(() => expect(api.planAction).toHaveBeenCalledWith(repository.repositoryId, { kind: 'switchBranch', statusSnapshotId: repository.status.snapshotId, localRef: 'refs/heads/feature/topic' }));
+  });
+  it.each(['dirty', 'merge', 'squashMerge'] as const)('disables checkout with a visible reason during %s state', async mode => {
+    repository.status = { ...repository.status, dirty: mode === 'dirty', gitState: mode === 'dirty' ? 'idle' : mode };
+    vi.mocked(api.getStatus).mockResolvedValue(repository.status);
+    render(<RepositoryView repository={repository} />);
+    const panel = await openCheckout(); select();
+    expect((screen.getByRole('button', { name: 'Preview checkout' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(panel.textContent).toContain(mode === 'dirty' ? 'clean index and working tree' : `Finish the ${mode === 'squashMerge' ? 'squash merge review' : mode} operation`);
+    expect(api.planAction).not.toHaveBeenCalled();
+  });
+  it('refreshes actual state after execution rejection while retaining branch name and commit draft', async () => {
+    vi.mocked(api.runAction).mockRejectedValue(new Error('Post-checkout hook failed; inspect actual state'));
+    render(<RepositoryView repository={repository} />);
+    await openCheckout(); select(other);
+    fireEvent.change(screen.getByLabelText('Local branch name'), { target: { value: 'custom/topic' } });
+    fireEvent.change(screen.getByLabelText('Commit message'), { target: { value: 'Retain this commit draft' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Preview checkout' }));
+    const confirm = await screen.findByRole('button', { name: 'Create and switch' });
+    vi.mocked(api.getStatus).mockResolvedValue({ ...repository.status, head: { kind: 'branch', name: 'custom/topic', oid: other.sourceOid }, upstream: { remote: 'other', ref: other.sourceRef, ahead: 0, behind: 0 } });
+    fireEvent.click(confirm); fireEvent.click(confirm);
+    await screen.findByText('Post-checkout hook failed; inspect actual state');
+    expect(api.runAction).toHaveBeenCalledTimes(1);
+    expect(api.getStatus).toHaveBeenCalledTimes(2);
+    expect(screen.getByText(/custom\/topic · Clean/).textContent).toContain(other.sourceRef);
+    expect((screen.getByLabelText('Commit message') as HTMLTextAreaElement).value).toBe('Retain this commit draft');
+    expect((screen.getByLabelText('Local branch name') as HTMLInputElement).value).toBe('custom/topic');
+  });
+  it('prevents duplicate previews and keeps the typed name after backend branch-name rejection', async () => {
+    let finish!: (value: Awaited<ReturnType<typeof api.planAction>>) => void;
+    vi.mocked(api.planAction).mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+    render(<RepositoryView repository={repository} />);
+    await openCheckout(); select();
+    const name = screen.getByLabelText('Local branch name') as HTMLInputElement;
+    fireEvent.change(name, { target: { value: 'invalid name' } });
+    const preview = screen.getByRole('button', { name: 'Preview checkout' });
+    fireEvent.click(preview); fireEvent.click(preview);
+    expect(api.planAction).toHaveBeenCalledTimes(1);
+    expect(name.disabled).toBe(true);
+    expect((screen.getByLabelText('Remote branch') as HTMLSelectElement).disabled).toBe(true);
+    await act(async () => finish({ kind: 'blocked', reason: 'Invalid local branch name', error: null }));
+    expect(await screen.findByRole('alert')).toHaveProperty('textContent', expect.stringContaining('Invalid local branch name'));
+    expect(name.value).toBe('invalid name');
+    expect(api.runAction).not.toHaveBeenCalled();
+  });
+  it('rejects a late candidate response after refresh and reports unsupported mappings', async () => {
+    let complete!: (value: Awaited<ReturnType<typeof api.listRemoteBranches>>) => void;
+    vi.mocked(api.listRemoteBranches).mockImplementationOnce(() => new Promise(resolve => { complete = resolve; })).mockResolvedValue({ targets: [other], issues: [{ sourceRef: origin.sourceRef, reason: 'Ambiguous configured fetch mapping' }] });
+    render(<RepositoryView repository={repository} />);
+    await screen.findByRole('button', { name: 'origin/feature/topic' });
+    const details = screen.getByText('Check out remote branch').closest('details')!;
+    details.open = true; fireEvent(details, new Event('toggle'));
+    await waitFor(() => expect(api.listRemoteBranches).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+    await screen.findByText(/Ambiguous configured fetch mapping/);
+    await act(async () => complete({ targets: [origin], issues: [] }));
+    expect(screen.queryByRole('option', { name: `origin · ${origin.sourceRef}` })).toBeNull();
+    expect(screen.getByRole('option', { name: `other · ${other.sourceRef}` })).toBeTruthy();
+  });
+  it('discards a checkout preview that resolves after a repository refresh', async () => {
+    let finish!: (value: Awaited<ReturnType<typeof api.planAction>>) => void;
+    vi.mocked(api.planAction).mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+    render(<RepositoryView repository={repository} />);
+    await openCheckout(); select();
+    fireEvent.click(screen.getByRole('button', { name: 'Preview checkout' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+    await waitFor(() => expect(api.getStatus).toHaveBeenCalledTimes(2));
+    await act(async () => finish({ kind: 'eligible', planId: 'obsolete', expiresAt: '', summary: 'Old source commit', destination: '' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.getByRole('alert').textContent).toContain('create a new preview');
+    expect(api.runAction).not.toHaveBeenCalled();
+  });
+  it('refreshes the latest search after a late skipped checkout and exposes its reason', async () => {
+    let finish!: (value: Awaited<ReturnType<typeof api.runAction>>) => void;
+    vi.mocked(api.runAction).mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+    vi.mocked(api.searchHistory).mockResolvedValue({ ...fixtures.history, commits: [] });
+    render(<RepositoryView repository={repository} />);
+    await openCheckout(); select();
+    fireEvent.click(screen.getByRole('button', { name: 'Preview checkout' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Create and switch' }));
+    fireEvent.change(screen.getByLabelText('History search query'), { target: { value: 'new scope query' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Search history' }));
+    await screen.findByText('No commits match this search.');
+    const ordinaryCalls = vi.mocked(api.getHistory).mock.calls.length;
+    await act(async () => finish({ ...fixtures.failedAction, repositoryId: repository.repositoryId, action: 'checkoutRemoteBranch', state: 'skipped', reason: 'Source changed; review again', error: null }));
+    expect(screen.getByRole('alert').textContent).toContain('Source changed; review again');
+    expect(api.getHistory).toHaveBeenCalledTimes(ordinaryCalls);
+    expect(api.searchHistory).toHaveBeenCalledTimes(2);
+    expect(screen.getByText('No commits match this search.')).toBeTruthy();
+  });
+});

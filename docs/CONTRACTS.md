@@ -84,6 +84,7 @@ type RepositoryAction =
   | { kind: 'push'; statusSnapshotId: SnapshotId; remoteId: string; destinationRef: string; setUpstream: boolean }
   | { kind: 'createBranch'; statusSnapshotId: SnapshotId; name: string; startOid: Oid; switchAfterCreate: boolean }
   | { kind: 'switchBranch'; statusSnapshotId: SnapshotId; localRef: string }
+  | { kind: 'checkoutRemoteBranch'; statusSnapshotId: SnapshotId; remoteId: string; sourceRef: string; name: string }
   | { kind: 'merge' | 'squashMerge'; statusSnapshotId: SnapshotId; sourceRef: string }
   | { kind: 'continueMerge' | 'abortMerge'; statusSnapshotId: SnapshotId };
 
@@ -139,6 +140,7 @@ Errors such as missing Git, inaccessible repository, stale precondition, authent
 | `get_changes` | repository ID | Snapshot ID and `ChangedFile[]` |
 | `list_refs` | repository ID | Validated local/remote/tag references and HEAD |
 | `list_remotes` | repository ID | Display-safe remote IDs/names and resolved defaults |
+| `list_remote_branches` | repository ID | `RemoteBranchListing`; local candidates and mapping issues without fetching |
 | `list_rewrites` | repository ID | Durable Combine commits records with reconciled recovery eligibility |
 | `get_history` | repository ID, scope; or snapshot ID + cursor | `HistoryPage` |
 | `search_history` | repository ID, `{ field: 'message' \| 'author' \| 'oid', text }`, scope, optional snapshot ID/cursor | `HistoryPage` of matches, with original ordered parents |
@@ -149,6 +151,15 @@ Errors such as missing Git, inaccessible repository, stale precondition, authent
 | `run_repository_action` | plan ID | Operation ID, current state; revalidate then execute |
 
 Returned file tokens are scoped to their diff/status context. Requesting a commit diff validates that the file and chosen parent belong to that commit query. Invalid/stale snapshots return explicit errors. Commit identity is stable; status identity changes with refreshed observations.
+
+`RemoteBranchListing` contains `targets` and `issues`. Each target has string
+fields `remoteId`, `remoteName`, `sourceRef` (full local tracking ref), `sourceOid`,
+`upstreamRef` (remote `refs/heads/...`), and `suggestedName`. Each issue has
+`sourceRef` and `reason`. The backend resolves configured fetch mappings;
+display labels are never parsed to infer remote ownership. Checkout plans bind
+the selected source to its OID and revalidate status, configuration, and the
+destination name before mutation. A failed hook can follow a completed switch;
+the result includes actual-state diagnostics without automatic rollback.
 
 Discovery registers repository identities without reading status or changing Git
 state. Candidates are proposals; only explicit selection followed by

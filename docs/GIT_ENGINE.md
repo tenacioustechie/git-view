@@ -41,6 +41,7 @@ Get changed paths from NUL-delimited metadata rather than patch headers. Use ind
 | Pull | Attached branch, upstream, clean status, no ongoing operation; explicit fast-forward-only, rebase disabled, autostash disabled |
 | Push | Show resolved remote and destination ref; push current branch to that one ref explicitly; explicitly disable follow-tags and recursive submodule push; no mirror/force; first push chooses remote/ref and optional upstream |
 | Create/switch branch | Validate name and resolve target; initial policy requires clean status and no ongoing operation; backend rechecks HEAD |
+| Remote tracking checkout | Resolve explicit fetch mapping, require clean idle state and unused local name/config namespace, pin reviewed source during execution, create/switch with direct tracking, preserve ignored files, inspect actual post-hook state |
 | Merge (M2) | Clean starting state; show source and current target; use normal merge, allow fast-forward, avoid editor wait; support conflicts and hook failures |
 | Squash-merge (M2) | Clean starting state; merge source with `--squash`; leave changes staged for review and an explicit normal commit |
 
