@@ -1,9 +1,10 @@
 # Next feature stage — implementation plan
 
 Started 21 September 2026; product decisions finalized 22 September 2026.
-Status: **A1 implemented; native/platform delivery verification in progress**.
-Implementation resumed after a computer crash on 22 September 2026. A2–A4 have
-not started; the A1 completion gate must pass first. Detailed engineering choices below
+Status: **A1 complete on macOS/Windows; A2 cherry-pick is in progress**.
+Implementation resumed after a computer crash on 22 September 2026. A1 passes
+its tests, native acceptance, release builds, and package checks at `fe33bf3`;
+see Build status for evidence. A2–A4 are not yet delivered. Engineering choices below
 are implementation assumptions to verify with fixtures, not additional product
 questions or claims of completed functionality.
 

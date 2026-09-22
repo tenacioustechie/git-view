@@ -211,6 +211,11 @@ impl GitEngine {
             "AUTO_MERGE",
             "CHERRY_PICK_HEAD",
             "REVERT_HEAD",
+            "sequencer/head",
+            "sequencer/todo",
+            "sequencer/abort-safety",
+            "sequencer/opts",
+            "git-view-cherry-pick.json",
         ] {
             evidence.extend_from_slice(name.as_bytes());
             evidence.push(0);
@@ -264,7 +269,7 @@ impl GitEngine {
             counts.untracked += usize::from(file.wire.untracked);
             counts.conflicted += usize::from(file.wire.conflicted);
         }
-        let status = RepositoryStatus {
+        let mut status = RepositoryStatus {
             repository_id: repo.id.clone(),
             snapshot_id: String::new(),
             observed_at: now(),
@@ -277,7 +282,14 @@ impl GitEngine {
             upstream,
             last_successful_fetch_at: self.state.lock().await.fetch_times.get(&repo.id).cloned(),
             active_operation_id: None,
+            operation_context: None,
         };
+        self.operation_context(repo, &mut status).await?;
+        evidence.extend_from_slice(
+            serde_json::to_string(&status.operation_context)
+                .unwrap()
+                .as_bytes(),
+        );
         Ok(Snapshot {
             repository_id: repo.id.clone(),
             fingerprint: digest(&evidence),

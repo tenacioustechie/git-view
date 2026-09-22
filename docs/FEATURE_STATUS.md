@@ -1,14 +1,16 @@
 # Feature status
 
-Reviewed 22 September 2026, including remote tracking checkout, against the
+Reviewed 22 September 2026, including remote tracking checkout and cherry-pick, against the
 [product plan](PRODUCT.md). This is the current completion inventory;
 [Build status](BUILD_STATUS.md) retains dated commands, results, and artifact evidence.
 Instructions for using completed workflows are in the [User guide](USER_GUIDE.md).
 The [next-stage plan](NEXT_STAGE.md), scoped with the user on 21–22 September,
 orders remote tracking checkout, cherry-pick with conflict guidance, stash, and
 hunk staging, with rebase in the following stage. Remote tracking checkout is
-implemented; its current platform acceptance is recorded in Build status. Later
-slices remain planned.
+implemented; its current platform acceptance is recorded in Build status.
+Cherry-pick and shared conflict guidance are implemented in the working source,
+with native/platform acceptance and release packages pending. Stash and hunk
+staging remain planned.
 
 ## Milestone interpretation
 
@@ -32,11 +34,11 @@ refer to the delivered runbook workflows on tested platforms.
 | Details | Full messages/identities/parents, parent-specific changed files, unified diffs, binary/truncation states | Side-by-side diffs, richer file navigation, blame and file history |
 | Working changes | Staged/unstaged/untracked/conflicted states, whole-file stage/unstage, staged-only commit, session draft retention, hook/signing failure handling | Hunk staging, stash, line staging |
 | Remotes | Fetch, clean-only fast-forward pull, explicit normal single-repository push, optional upstream setup | Explicit batch push; hosting integrations only if requested |
-| Branches | Local create/switch with previews, explicit remote tracking checkout, ordinary merge, squash merge from local or remote refs | Rebase, cherry-pick |
+| Branches | Local create/switch with previews, explicit remote tracking checkout, ordinary merge, squash merge from local or remote refs, reviewed single non-merge cherry-pick | Rebase; multi-commit and merge-commit cherry-pick excluded from A2 |
 | Groups | Versioned JSON, create/edit/save/save-as, labels, locate/remove/add, external-edit protection, state/branch/name filters, selection, batch fetch/pull, per-member outcomes/cancel/retry | Explicit group branch switching and further large-group tuning |
 | Discovery | Bounded depth-controlled scanning, ordinary/linked worktree detection, reviewed new-project creation and draft additions, duplicate exclusion, partial-result warnings | No further discovery feature required by the current plan; nested/skipped paths require explicit addition |
 | Existing-commit squash | Consecutive linear tip selection, editable message, exact-tree replacement, backup refs, journal, guarded recovery including later file edits | No missing feature in the agreed initial Combine commits scope; arbitrary selections are outside this implementation |
-| Conflicts | Detection, external-editor resolution, stage resolution, ordinary merge continue/abort, persistent squash review state | Integrated three-way conflict editor |
+| Conflicts | Shared source/target and index-conflict guidance, external-editor resolution, stage resolution, ordinary merge and cherry-pick continue/abort, explicit empty cherry-pick Skip, interrupted-marker review, persistent squash review state | Integrated three-way conflict editor |
 
 ## Interaction and persistence still outstanding
 
@@ -56,11 +58,10 @@ refer to the delivered runbook workflows on tested platforms.
 
 ## Verification and distribution outstanding
 
-Latest recorded local results: **57 frontend tests on each platform, 107 Rust
-tests on macOS / 101 on Windows, and 31 native workflow checks on each**, plus
-separate performance measurements. macOS arm64 app and Windows x64 NSIS packages
-were built and exercised. These are existing recorded results; the documentation
-review did not rerun application tests.
+Latest A1 results at `fe33bf3`: **67 frontend tests on each platform, 122 Rust
+tests on macOS / 116 on Windows, and 34 native workflow checks on each**.
+macOS arm64 app and Windows x64 NSIS packages were built and exercised. Historical
+performance measurements and exact commands remain in Build status.
 
 - Linux and Intel Mac execution, and the hosted GitHub workflow, remain unverified.
 - Local packages are unsigned; macOS notarization and public release delivery

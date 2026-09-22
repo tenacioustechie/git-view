@@ -5,12 +5,16 @@ import { HistoryGraph } from '../../graph/HistoryGraph';
 import { layoutPage } from '../../graph/layout';
 import { CombineCommits } from './CombineCommits';
 import { RemoteCheckout } from './RemoteCheckout';
+import { OperationContext } from './OperationContext';
 import './repository.css';
 
 const drafts = new Map<string, string>();
 const terminal = (operation: OperationResult) => !['queued', 'running'].includes(operation.state);
+const isCherryAction = (kind: string) => ['cherryPick', 'continueCherryPick', 'abortCherryPick', 'skipCherryPick'].includes(kind);
+const actionLabels: Record<string, string> = { cherryPick: 'cherry-pick', continueCherryPick: 'continue cherry-pick', abortCherryPick: 'abort cherry-pick', skipCherryPick: 'skip empty cherry-pick' };
+const actionLabel = (kind: string) => actionLabels[kind] ?? kind;
 const hasChange = (status: string | null) => Boolean(status?.trim() && status !== '.' && status !== '?');
-type Planned = { plan: Extract<RepositoryActionPlan, { kind: 'eligible' }>; action: RepositoryAction };
+type Planned = { plan: Extract<RepositoryActionPlan, { kind: 'eligible' }>; action: RepositoryAction; cherryMarkerOnly?: boolean };
 export function RepositoryView(props: { repository: RepositoryOpen; onBack?: () => void }) {
   return <RepositoryScreen key={props.repository.repositoryId} {...props} />;
 }
@@ -55,7 +59,8 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
   const switchControls = useRef<HTMLDetailsElement>(null);
   const executing = useRef(false);
   const planning = useRef(false);
-  const active = busy || operations.some(operation => !terminal(operation));
+  const active = busy || Boolean(status.activeOperationId) || operations.some(operation => !terminal(operation));
+  const cherryReviewRequired = status.operationContext?.kind === 'cherryPick' && status.operationContext.stopReason === 'unknown';
   const graph = useMemo(() => search
     ? (history?.commits ?? []).map(commit => ({ commit, lane: 0, width: 0, segments: [], pending: [] }))
     : layoutPage(history?.commits ?? []).rows, [history, search]);
@@ -132,7 +137,7 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
           const old = seenOperations.current.get(operation.operationId);
           if (terminal(operation) && old !== undefined && old !== operation.state) {
             changed = true;
-            if (operation.state === 'failed' || (operation.action === 'checkoutRemoteBranch' && operation.state !== 'succeeded')) failure = operation.error?.message ?? operation.reason ?? `Operation ${operation.state}. Inspect activity and current repository state.`;
+            if (operation.state === 'failed' || ((operation.action === 'checkoutRemoteBranch' || isCherryAction(operation.action)) && operation.state !== 'succeeded')) failure = operation.error?.message ?? operation.reason ?? `Operation ${operation.state}. Inspect activity and current repository state.`;
           }
           seenOperations.current.set(operation.operationId, operation.state);
           if (terminal(operation) && submittedDrafts.current.has(operation.operationId)) {
@@ -177,7 +182,7 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
     setBusy(true); setPlanned(null); setError(null);
     try {
       const operation = await api.runAction(plan.planId);
-      if (action.kind === 'squashMerge' || action.kind === 'merge') {
+      if (action.kind === 'squashMerge' || action.kind === 'merge' || isCherryAction(action.kind)) {
         detailGeneration.current++; setSelected(null); setDetails(null); setDiffRequest(null);
       }
       seenOperations.current.set(operation.operationId, operation.state);
@@ -187,9 +192,9 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
         else if (!terminal(operation)) submittedDrafts.current.set(operation.operationId, action.message);
       }
       if (terminal(operation)) await currentRefresh.current();
-      if (operation.state === 'failed' || (action.kind === 'checkoutRemoteBranch' && terminal(operation) && operation.state !== 'succeeded')) setError(operation.error?.message ?? operation.reason ?? `Operation ${operation.state}. Inspect activity and current repository state.`);
+      if (operation.state === 'failed' || ((action.kind === 'checkoutRemoteBranch' || isCherryAction(action.kind)) && terminal(operation) && operation.state !== 'succeeded')) setError(operation.error?.message ?? operation.reason ?? `Operation ${operation.state}. Inspect activity and current repository state.`);
     } catch (cause) {
-      if (action.kind === 'checkoutRemoteBranch') await currentRefresh.current();
+      if (action.kind === 'checkoutRemoteBranch' || isCherryAction(action.kind)) await currentRefresh.current();
       setError(errorMessage(cause));
     }
     finally { executing.current = false; setBusy(false); }
@@ -198,15 +203,16 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
     if (planning.current) return;
     planning.current = true;
     const epoch = generation.current;
+    const detailEpoch = detailGeneration.current;
     setBusy(true); setError(null);
     try {
       const plan = await api.planAction(id, action);
-      if (action.kind === 'checkoutRemoteBranch' && epoch !== generation.current) {
-        setError('Repository view changed while preparing checkout. Review the source and create a new preview.');
+      if ((action.kind === 'checkoutRemoteBranch' || isCherryAction(action.kind)) && (epoch !== generation.current || (action.kind === 'cherryPick' && detailEpoch !== detailGeneration.current))) {
+        setError(`Repository view changed while preparing ${action.kind === 'checkoutRemoteBranch' ? 'checkout' : 'cherry-pick'}. Review the source and create a new preview.`);
         return;
       }
       if (plan.kind === 'blocked') setError(plan.reason);
-      else if (preview) setPlanned({ plan, action });
+      else if (preview) setPlanned({ plan, action, cherryMarkerOnly: action.kind === 'abortCherryPick' && status.gitState === 'other' && status.operationContext?.kind === 'cherryPick' });
       else await execute({ plan, action });
     } catch (cause) { setError(errorMessage(cause)); }
     finally { planning.current = false; setBusy(false); }
@@ -234,31 +240,24 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
       <button title="Refresh (⌘R / Ctrl+R)" disabled={loading} onClick={() => { void refresh(); }}>{loading ? 'Refreshing…' : 'Refresh'}</button>
       <label>Remote <select aria-label="Remote" value={remoteId} onChange={event => setRemoteId(event.target.value)}><option value="">None</option>{remotes.map(remote => <option key={remote.id} value={remote.id}>{remote.name}</option>)}</select></label>
       <button disabled={active || !remoteId} onClick={() => { void act({ kind: 'fetch', remoteId }, true); }}>Fetch</button>
-      <button disabled={active} onClick={() => { void act({ kind: 'pull', statusSnapshotId: status.snapshotId }, true); }}>Pull</button>
+      <button disabled={active || cherryReviewRequired} onClick={() => { void act({ kind: 'pull', statusSnapshotId: status.snapshotId }, true); }}>Pull</button>
       <button onClick={() => { setShowCombine(true); setDiffRequest(null); }}>Combine commits…</button>
       <details className="push-controls"><summary>Push…</summary><div>
         <label>Destination ref<input value={destination} onChange={event => setDestination(event.target.value)} placeholder="refs/heads/main" /></label>
         <label><input type="checkbox" checked={setUpstream} onChange={event => setSetUpstream(event.target.checked)} /> Set upstream</label>
-        <button disabled={active || !remoteId || !destination} onClick={() => { void act({ kind: 'push', statusSnapshotId: status.snapshotId, remoteId, destinationRef: destination, setUpstream }, true); }}>Preview push</button>
+        <button disabled={active || cherryReviewRequired || !remoteId || !destination} onClick={() => { void act({ kind: 'push', statusSnapshotId: status.snapshotId, remoteId, destinationRef: destination, setUpstream }, true); }}>Preview push</button>
       </div></details>
     </header>
     {error && <div role="alert" className="repository-error">{error}<button onClick={() => setError(null)} aria-label="Dismiss error">×</button></div>}
-    {status.gitState === 'merge' ? <div role="status" className="repository-notice merge-notice">
-      <div><strong>Merge in progress</strong><p>{status.counts.conflicted > 0 ? 'Resolve each conflicted file in your editor, refresh, then stage its resolution.' : 'Review the staged merge result, then continue to create the merge commit.'}</p></div>
-      <div className="merge-notice-actions"><button onClick={working}>Review working changes</button><button disabled={active || status.counts.conflicted > 0} onClick={() => { void act({ kind: 'continueMerge', statusSnapshotId: status.snapshotId }, true); }}>Continue merge</button><button disabled={active} onClick={() => { void act({ kind: 'abortMerge', statusSnapshotId: status.snapshotId }, true); }}>Abort merge</button></div>
-    </div> : status.gitState === 'squashMerge' ? <div role="status" className="repository-notice merge-notice">
-      <div><strong>Squash merge review</strong><p>{status.counts.conflicted > 0 ? 'Resolve conflicts in your editor, refresh, and stage each resolution. Then review and commit the result below.' : 'Review the staged changes and enter a message below to create one normal commit.'} Squash merge does not create MERGE_HEAD. There is no ordinary merge to continue or abort; keep any wanted changes and use Git externally for manual cleanup.</p>
-        {status.squashMerge && <small>Source: {status.squashMerge.sourceRef} ({status.squashMerge.sourceOid.slice(0, 8)}) · Original HEAD: {status.squashMerge.originalHead}</small>}
-      </div><button onClick={working}>Review working changes</button>
-    </div> : status.gitState !== 'idle' && <div role="status" className="repository-notice">{status.gitState} in progress. Resolve conflicts in your editor, then refresh. Incompatible actions will be blocked.</div>}
+    <OperationContext status={status} files={changes?.files ?? null} active={active} onPlan={action => { void act(action, true); }} onReview={working} />
     {status.submoduleDirty && <div className="repository-notice">A submodule has working changes. Open the submodule separately to review it.</div>}
     <div className="repository-panels">
       <aside className="repository-refs">
         <h2>History scope</h2><button className={scope === null ? 'selected' : ''} onClick={() => changeScope(null)}>All branches and tags</button>
         {(['local', 'remote', 'tag'] as const).map(kind => <div key={kind}><h3>{kind === 'local' ? 'Local branches' : kind === 'remote' ? 'Remote branches' : 'Tags'}</h3>{refs.filter(ref => ref.kind === kind).map(ref => <button title={ref.fullName} key={ref.fullName} className={scope === ref.fullName ? 'selected' : ''} onClick={() => changeScope(ref.fullName)}>{ref.label}</button>)}</div>)}
-        <details ref={switchControls}><summary>Switch branch</summary><label>Local branch<select value={branchTarget} onChange={event => setBranchTarget(event.target.value)}><option value="">Choose branch</option>{refs.filter(ref => ref.kind === 'local').map(ref => <option key={ref.fullName} value={ref.fullName}>{ref.label}</option>)}</select></label><button disabled={active || !branchTarget} onClick={() => { void act({ kind: 'switchBranch', statusSnapshotId: status.snapshotId, localRef: branchTarget }, true); }}>Preview switch</button></details>
+        <details ref={switchControls}><summary>Switch branch</summary><label>Local branch<select value={branchTarget} onChange={event => setBranchTarget(event.target.value)}><option value="">Choose branch</option>{refs.filter(ref => ref.kind === 'local').map(ref => <option key={ref.fullName} value={ref.fullName}>{ref.label}</option>)}</select></label><button title={status.gitState !== 'idle' ? 'Finish the current Git operation before switching branches.' : undefined} disabled={active || status.gitState !== 'idle' || !branchTarget} onClick={() => { void act({ kind: 'switchBranch', statusSnapshotId: status.snapshotId, localRef: branchTarget }, true); }}>Preview switch</button></details>
         <RemoteCheckout repositoryId={id} status={status} refs={refs} active={active} refreshVersion={refreshVersion} onPlan={action => { void act(action, true); }} onSwitch={localRef => { setBranchTarget(localRef); if (switchControls.current) { switchControls.current.open = true; switchControls.current.querySelector('select')?.focus(); } }} />
-        <details><summary>Create branch</summary><label>Name<input value={branchName} onChange={event => setBranchName(event.target.value)} /></label><label><input type="checkbox" checked={switchNew} onChange={event => setSwitchNew(event.target.checked)} /> Switch after creating</label><button disabled={active || !branchName || status.head.kind === 'unborn'} onClick={() => { if (status.head.kind !== 'unborn') void act({ kind: 'createBranch', statusSnapshotId: status.snapshotId, name: branchName, startOid: selected ?? status.head.oid, switchAfterCreate: switchNew }, true); }}>Preview create</button><small>Starts at {selected ? selected.slice(0, 8) : 'HEAD'}.</small></details>
+        <details><summary>Create branch</summary><label>Name<input value={branchName} onChange={event => setBranchName(event.target.value)} /></label><label><input type="checkbox" checked={switchNew} onChange={event => setSwitchNew(event.target.checked)} /> Switch after creating</label><button title={status.gitState !== 'idle' ? 'Finish the current Git operation before creating a branch.' : undefined} disabled={active || status.gitState !== 'idle' || !branchName || status.head.kind === 'unborn'} onClick={() => { if (status.head.kind !== 'unborn') void act({ kind: 'createBranch', statusSnapshotId: status.snapshotId, name: branchName, startOid: selected ?? status.head.oid, switchAfterCreate: switchNew }, true); }}>Preview create</button><small>Starts at {selected ? selected.slice(0, 8) : 'HEAD'}.</small></details>
         <details className="merge-controls"><summary>Merge branches</summary>
           <label>Source branch<select aria-label="Merge source branch" value={mergeSource} onChange={event => setMergeSource(event.target.value)}><option value="">Choose source</option>{refs.filter(ref => (ref.kind === 'local' || ref.kind === 'remote') && (status.head.kind !== 'branch' || ref.fullName !== `refs/heads/${status.head.name}`)).map(ref => <option key={ref.fullName} value={ref.fullName}>{ref.label}</option>)}</select></label>
           <small>Target: {headLabel}. Start with a clean working tree.</small>
@@ -281,6 +280,11 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
         {showCombine ? <CombineCommits repositoryId={id} status={status} active={active} refreshVersion={refreshVersion} onPlan={action => { void act(action, true); }} onClose={working} /> : selected ? <>
           <h2>Commit {selected.slice(0, 8)}</h2>
           {!details ? <p>Loading commit…</p> : <>
+            <section className="cherry-pick-selection" aria-label="Cherry-pick selected commit">
+              <p>Current target: {headLabel}{status.head.kind !== 'unborn' && ` at ${status.head.oid}`}. History scope does not change this target.</p>
+              <p>{details.parents.length > 1 ? 'Merge commits are not supported by this single-commit cherry-pick workflow.' : status.head.kind !== 'branch' ? 'Switch to an existing local branch before cherry-picking.' : status.gitState !== 'idle' ? 'Finish the current Git operation before cherry-picking.' : status.dirty || status.submoduleDirty ? 'Cherry-pick requires a clean index and working tree, including untracked files and submodules.' : active ? 'Wait for the current repository operation to finish.' : 'Apply this commit’s changes to the current branch, preserving its message and author.'}</p>
+              <button disabled={active || details.parents.length > 1 || status.head.kind !== 'branch' || status.gitState !== 'idle' || status.dirty || status.submoduleDirty} onClick={() => { void act({ kind: 'cherryPick', statusSnapshotId: status.snapshotId, sourceOid: details.oid }, true); }}>Cherry-pick commit</button>
+            </section>
             <pre className="commit-message">{details.message}</pre>
             <dl className="commit-metadata"><dt>Author</dt><dd>{details.author.name} &lt;{details.author.email}&gt; · {details.author.at}</dd><dt>Committer</dt><dd>{details.committer.name} &lt;{details.committer.email}&gt; · {details.committer.at}</dd><dt>Commit</dt><dd>{details.oid}</dd></dl>
             {details.parents.length > 0 ? <label>Compare with parent<select aria-label="Compare with parent" value={details.selectedParent ?? ''} onChange={event => { void inspect(details.oid, event.target.value); }}>{details.parents.map((parent, index) => <option key={parent} value={parent}>Parent {index + 1}: {parent}</option>)}</select></label> : <p>Root commit · compared with empty tree</p>}
@@ -293,7 +297,7 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
               const files = changes.files.filter(file => section === 'conflicted' ? file.conflicted : !file.conflicted && (section === 'untracked' ? file.untracked : section === 'staged' ? hasChange(file.indexStatus) : hasChange(file.worktreeStatus) && !file.untracked));
               return <div key={section}><h3>{section[0].toUpperCase() + section.slice(1)} ({files.length})</h3><ul className="file-list">{files.map(file => <li key={file.fileId}>
                 <button title={file.displayPath} onClick={() => setDiffRequest({ repositoryId: id, snapshotId: changes.snapshotId, fileId: file.fileId, context: section === 'staged' ? 'staged' : 'unstaged' })}>{file.oldDisplayPath ? `${file.oldDisplayPath} → ` : ''}{file.displayPath}{file.submodule ? ' (submodule)' : ''}</button>
-                <button disabled={active} onClick={() => { void act({ kind: section === 'staged' ? 'unstage' : 'stage', snapshotId: changes.snapshotId, fileIds: [file.fileId] }); }}>{section === 'staged' ? 'Unstage' : file.conflicted ? 'Stage resolution' : 'Stage'}</button>
+                <button title={cherryReviewRequired ? 'Resolve the recorded cherry-pick context before staging or unstaging files.' : undefined} disabled={active || cherryReviewRequired} onClick={() => { void act({ kind: section === 'staged' ? 'unstage' : 'stage', snapshotId: changes.snapshotId, fileIds: [file.fileId] }); }}>{section === 'staged' ? 'Unstage' : file.conflicted ? 'Stage resolution' : 'Stage'}</button>
               </li>)}</ul></div>;
             })}
             {!changes.files.length && <p className="empty">Working tree clean.</p>}
@@ -301,7 +305,8 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
               <label htmlFor="commit-message">Commit message</label><textarea id="commit-message" value={draft} placeholder="Describe the staged changes" onChange={event => { setDraft(event.target.value); drafts.set(id, event.target.value); }} rows={4} />
               <small>Only staged content is committed. Drafts stay with this repository while the app is open.</small>
               {status.gitState === 'merge' && <small>Use Continue merge above to finish this merge.</small>}
-              <button type="submit" disabled={active || status.gitState === 'merge' || status.counts.staged === 0 || status.counts.conflicted > 0 || !draft.trim()}>Commit staged changes ({status.counts.staged})</button>
+              {status.gitState === 'cherryPick' && <small>Use the cherry-pick controls above to continue, skip an empty result, or abort. This draft is retained separately.</small>}
+              <button type="submit" disabled={active || cherryReviewRequired || !['idle', 'squashMerge'].includes(status.gitState) || status.counts.staged === 0 || status.counts.conflicted > 0 || !draft.trim()}>Commit staged changes ({status.counts.staged})</button>
             </form>
           </>}
         </>}
@@ -310,7 +315,7 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
     </div>
     <details className="repository-activity"><summary>Activity · {operations.length ? `${operations[operations.length - 1].action}: ${operations[operations.length - 1].state}` : 'No operations this session'}</summary><ol>{operations.slice(-30).reverse().map(operation => <li key={operation.operationId}><strong>{operation.action}: {operation.state}</strong>{operation.reason && ` · ${operation.reason}`}{operation.error && <span role="alert"> · {operation.error.message}</span>}{operation.outcomeUncertain && ' · Outcome uncertain. Refresh and inspect the repository before retrying.'}{operation.outputTruncated && ' · Operation output truncated.'}</li>)}</ol></details>
     <dialog ref={dialog} onCancel={() => setPlanned(null)} aria-labelledby="action-preview-title">
-      {planned && <><h2 id="action-preview-title">Review {planned.action.kind === 'checkoutRemoteBranch' ? 'remote checkout' : planned.action.kind === 'squashMerge' ? 'squash merge' : planned.action.kind}</h2><p>{planned.plan.summary}</p>{(planned.action.kind === 'merge' || planned.action.kind === 'squashMerge') && <p><strong>Source:</strong> {planned.action.sourceRef}<br /><strong>Current target:</strong> {headLabel}</p>}{planned.plan.destination && <p><strong>Destination:</strong> {planned.plan.destination}</p>}{planned.action.kind === 'squashMerge' && <p>The result stays staged for review. You must explicitly create the normal commit afterward. Squash conflicts have no ordinary merge abort.</p>}{planned.action.kind === 'abortMerge' && <p>Abort the current ordinary merge. Git will attempt to restore the state before the merge; inspect any changes you made during conflict resolution before proceeding.</p>}{planned.action.kind === 'combineCommits' && <><p>This rewrites history and creates a backup. The selected commits may already be published.</p><ol>{planned.action.commitOids.map(oid => <li key={oid}><code>{oid}</code></li>)}</ol><pre className="commit-message">{planned.action.message}</pre></>}{planned.action.kind === 'recoverCombine' && <p>Recovery rechecks the original branch and backup, and preserves working-file edits. Later branch commits require manual review.</p>}<p>Preconditions are checked again before execution.</p><div className="dialog-actions"><button onClick={() => setPlanned(null)}>Cancel</button><button disabled={busy} onClick={() => { void execute(planned); }}>{planned.action.kind === 'checkoutRemoteBranch' ? 'Create and switch' : `Run ${planned.action.kind}`}</button></div></>}
+      {planned && <><h2 id="action-preview-title">Review {planned.cherryMarkerOnly ? 'clear interrupted cherry-pick' : planned.action.kind === 'checkoutRemoteBranch' ? 'remote checkout' : planned.action.kind === 'squashMerge' ? 'squash merge' : actionLabel(planned.action.kind)}</h2><p>{planned.plan.summary}</p>{(planned.action.kind === 'merge' || planned.action.kind === 'squashMerge') && <p><strong>Source:</strong> {planned.action.sourceRef}<br /><strong>Current target:</strong> {headLabel}</p>}{planned.plan.destination && <p><strong>Destination:</strong> {planned.plan.destination}</p>}{planned.action.kind === 'squashMerge' && <p>The result stays staged for review. You must explicitly create the normal commit afterward. Squash conflicts have no ordinary merge abort.</p>}{planned.action.kind === 'abortMerge' && <p>Abort the current ordinary merge. Git will attempt to restore the state before the merge; inspect any changes you made during conflict resolution before proceeding.</p>}{planned.cherryMarkerOnly && <p>Clear only the recorded app cherry-pick marker after Git state is rechecked. The reviewed branch, index, and working files remain unchanged.</p>}{planned.action.kind === 'abortCherryPick' && !planned.cherryMarkerOnly && <p>Abort this cherry-pick using the reviewed Git state. Git may discard edits made while resolving it, including unrelated staged edits, and restore files to the reviewed current HEAD. If original target context is unknown, no return to an earlier target is promised. Inspect actual state if Git cannot abort.</p>}{planned.action.kind === 'skipCherryPick' && <p>Finish this empty cherry-pick without creating a commit. The source commit will not be added to the target history.</p>}{planned.action.kind === 'combineCommits' && <><p>This rewrites history and creates a backup. The selected commits may already be published.</p><ol>{planned.action.commitOids.map(oid => <li key={oid}><code>{oid}</code></li>)}</ol><pre className="commit-message">{planned.action.message}</pre></>}{planned.action.kind === 'recoverCombine' && <p>Recovery rechecks the original branch and backup, and preserves working-file edits. Later branch commits require manual review.</p>}<p>Preconditions are checked again before execution.</p><div className="dialog-actions"><button onClick={() => setPlanned(null)}>Cancel</button><button disabled={busy} onClick={() => { void execute(planned); }}>{planned.cherryMarkerOnly ? 'Clear interrupted cherry-pick' : planned.action.kind === 'checkoutRemoteBranch' ? 'Create and switch' : `Run ${actionLabel(planned.action.kind)}`}</button></div></>}
     </dialog>
   </section>;
 }

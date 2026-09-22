@@ -1,6 +1,220 @@
 # Build status
 
-## History search: Mac integration passed; Windows verification pending
+## 2026-09-22: A2 cherry-pick and conflict guidance in progress
+
+A1 is complete at `fe33bf3`; A2 changes are under implementation and have not
+passed their platform gates yet. Shared operation context and reviewed single
+commit cherry-pick/continue/abort/skip contracts are being integrated. Native
+fixtures cover success, add/add conflict continuation across WebView reload,
+modify/delete conflict abort, and an already-applied commit with explicit Skip.
+Disposable Git probes found ignored-file overwrite hazards (including directory
+rename destinations) and different native hook behavior between initial
+cherry-pick and Continue; backend safeguards and regression tests are required.
+No A2 release artifact or acceptance completion is claimed by the A1 evidence below.
+
+Interim frontend gate: `pnpm test` passes **79 tests** after adding 12 cherry-pick
+component regressions; typecheck and lint pass. Review corrected unknown external
+target wording, marker-only interrupted-pick recovery, and the active-operation
+guard. Native fixtures/verifiers were cross-reviewed, but execution is pending
+backend tests. A further disposable probe reproduced recursive submodule edits
+being discarded by Git Abort; explicit protection is being implemented before
+the A2 native gate.
+
+Final local source checks now pass: **83 frontend tests** (`pnpm test`), **137
+Rust tests** (`cargo test --manifest-path src-tauri/Cargo.toml --locked`),
+including 15 cherry-pick fixtures, plus typecheck, lint, formatting, and strict
+all-target Clippy with `native-smoke`. The existing opt-in backend performance
+measurement remains ignored; native performance regression coverage still runs.
+Final fixes protect submodule bytes, retain unknown source context, and block
+cross-operation mutations when a stale cherry-pick journal needs manual review.
+The macOS native build succeeded and **38 native DOM/IPC checks passed** via
+`python3 scripts/native-smoke.py /tmp/git-view-native-a2-mac.json`. This includes
+source metadata/parent validation, modify/delete Abort, explicit empty Skip,
+and add/add resolution after an actual WebView reload. Windows and release/package
+checks are pending at this checkpoint.
+
+## 2026-09-22: A1 remote tracking checkout complete on tested platforms
+
+Delivered at `fe33bf3f9183a65f3bc0c0fb18fd6c2e9d98e0e8` on both build hosts.
+Explicit remote/source selection, editable local name, exact upstream preview,
+collision guidance, mapping validation, source locking, and post-hook state
+inspection are implemented. Scope selection remains read-only. Unsupported or
+ambiguous fetch mappings are explained; no force/reset/automatic rollback occurs.
+
+| Check | macOS arm64 | Windows 11 x64 |
+| --- | --- | --- |
+| Frontend tests | 67 passed | 67 passed |
+| Rust tests | 122 passed | 116 passed |
+| Native DOM/IPC checks | 34 passed | 34 passed |
+| Typecheck, lint, strict all-target native-test Clippy | Passed | Passed |
+| Release package | `.app` built; packaged CLI/startup passed | NSIS built; installed CLI/native window passed |
+
+Mac commands: `pnpm test`, `pnpm typecheck`, `pnpm lint`,
+`cargo test --manifest-path src-tauri/Cargo.toml --locked`,
+`cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check`,
+`cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets --features native-smoke -- -D warnings`,
+`VITE_NATIVE_SMOKE=1 pnpm build`, native-smoke/custom-protocol Cargo build,
+`python3 scripts/native-smoke.py /tmp/git-view-native-a1-mac.json`,
+`pnpm tauri build --bundles app`, and `scripts/release-smoke.py` against the bundle
+executable. GUI checks required desktop access outside the sandbox. The new
+harness's asynchronous second-preview wait was corrected before the passing run.
+
+Windows commands: `scripts/windows-sync.py`, then `scripts/windows-remote.py`
+with `windows-verify.ps1`, `windows-release.ps1`, and
+`windows-installer-smoke.ps1`; strict Clippy with `native-smoke` was also run
+separately. Installer test location:
+`C:\codeme\git-view\.tools\installed-smoke-3b51b640bff04a159045c571638fda6f`.
+Native report:
+`C:\codeme\git-view\.tools\GitViewNativeSmoke-a06c80ca051645f9b8aaaa8a4a9f8ffa.json`.
+
+Collected unsigned artifacts (supersede prior files at these paths):
+
+- [macOS arm64 archive](../artifacts/Git-View_0.1.0_macos-arm64.zip): 3,473,379 bytes;
+  SHA-256 `f13ea6a79ca6ce7c575479bacdc5c2ad3aee3392ca51f49135f4532a710655ab`.
+- [Windows x64 installer](../artifacts/Git-View_0.1.0_windows-x64-setup.exe): 2,746,669 bytes;
+  SHA-256 `f0fb1cd5ee78b14d35a8230f01a3dd1e7d459c0ca50112d06e2e8c5f04a92468`.
+- [Manifest](../artifacts/manifest.json), [Mac native report](../artifacts/native-macos.json),
+  and [Windows native report](../artifacts/native-windows.json).
+
+Documentation links/anchors and whitespace checks pass. Guide, inventory,
+contracts, and acceptance instructions describe the delivered workflow. Existing
+unrelated README/runbook/setup edits remain preserved; no push or publication.
+Linux/Intel Mac, signing/notarization, and earlier accessibility/authentication
+gaps remain unverified. A1's required local delivery gate is complete; next is A2
+cherry-pick and conflict guidance, before stash and hunk staging.
+
+## 2026-09-22: A1 remote tracking checkout resumed and integrated
+
+Recovered unfinished worker edits after the computer crash and preserved existing
+documentation/setup changes. Integrated backend candidate mapping and guarded
+checkout with typed IPC, repository UI, 15 real-Git fixtures, 10 renderer tests,
+and native success/dirty/collision fixtures. User guide, feature inventory,
+contracts, Git semantics, and acceptance documentation updated.
+
+Current Mac checks: `cargo test --manifest-path src-tauri/Cargo.toml --locked`
+passes **122 tests**, with one existing performance test ignored; `pnpm test`
+passes **67 tests**. `pnpm typecheck`, `pnpm lint`, Rust formatting, and strict
+all-target Clippy with `native-smoke` pass. Native-test app compilation passes.
+The first sandboxed GUI run timed out without desktop access. Rerunning with
+desktop access passed the first 30 checks, then exposed a timing error in the new
+test harness: it queried the second confirmation dialog before the asynchronous
+preview finished. The corrected harness and complete native rerun pass all **34 checks**.
+Retained Mac report: `artifacts/native-macos.json`.
+
+Windows host is reachable with Rust 1.98.1. Source checkpoint
+`fe33bf3f9183a65f3bc0c0fb18fd6c2e9d98e0e8` is synchronized to the clean build
+checkout. Windows passes **116 Rust tests**, **67 frontend tests**, typecheck/lint and
+strict Clippy. Windows native acceptance and release packaging remain in progress.
+Mac `pnpm tauri build --bundles app` passes, and `scripts/release-smoke.py` passes
+CLI help/version/invalid arguments plus repository/discovery startup against the
+packaged executable.
+No A1 release/complete-platform claim yet. A2–A4 have not started.
+
+## 2026-09-22: next-stage product scope finalized
+
+Confirmed rebase for the following stage, after remote tracking checkout,
+cherry-pick, stash, and hunk staging. Confirmed the first conflict improvement:
+clear branch/commit context, conflict list, and next-step guidance with external
+file resolution. The integrated three-way editor is deferred.
+
+Finalized [Next feature stage](NEXT_STAGE.md) with A1–A4 delivery gates, shared
+conflict-guidance work in A2 extended for stash in A3, representative 15-repository
+usage, and documented engineering assumptions. Updated decision/roadmap links;
+no further product answers are needed to begin A1. Implementation has not started.
+Planning-only validation: local Markdown links and whitespace, including
+`git diff --check`; no application tests/builds rerun. Current user-guide behavior
+and completed-feature claims are unchanged. Existing edits preserved; nothing
+pushed or published.
+
+## 2026-09-21: visual workflow purpose clarified
+
+User clarified they use both terminal and visual tools for simple Git operations;
+complex merges, rebase, and unclear state are the reason to seek a visual client.
+Recorded this in the product/decision/next-stage documents and added acceptance
+goals for source/target clarity, operation-specific stopped states, conflict
+progress, recovery effects, and refresh/reload reconciliation. No existing
+push/pull/merge defect was reported by this clarification. Asked about rebase
+timing and external versus integrated conflict resolution; answers pending.
+Planning only: documentation link/whitespace checks, no application tests/builds.
+
+## 2026-09-21: cherry-pick added to the confirmed stage
+
+User confirmed the revised order: remote tracking checkout → cherry-pick → stash
+→ hunk staging, retaining the small-slice delivery gate. Renumbered the planning
+slices A1–A4 and expanded cherry-pick's proposed single-commit flow, distinct
+conflict/continue/abort states, empty-pick handling requirement, and acceptance
+coverage. Existing push/pull/merge friction is the remaining open workflow
+question. Application behavior is unchanged; checks for this update are planning
+document links and `git diff --check`, not application test/build reruns.
+
+## 2026-09-21: workflow context and stash preferences recorded
+
+User identified push/pull/merge/cherry-pick as tasks that send them outside the
+app; typical groups contain up to 15 repositories with common branch names and
+`main` as the default. Confirmed stash Apply retains the entry, Delete is separate
+and reviewed, and Include untracked files starts unchecked. Expanded A2 planning
+and its acceptance criteria accordingly. Asked whether cherry-pick should move
+after checkout and what causes friction in the existing push/pull/merge workflows;
+those answers remain pending. Updated planning/decision records only; no feature
+implementation, application tests, or builds performed in this planning update.
+
+## 2026-09-21: everyday Git stage selected
+
+User confirmed remote tracking checkout → stash → hunk staging, delivered in
+small slices that are tested and usable before moving on. Updated
+[Next feature stage](NEXT_STAGE.md) and [Decisions](DECISIONS.md) to record both
+answers. Expanded A1 with the proposed interaction, action/metadata boundaries,
+ownership, failure behavior, and backend/renderer/native acceptance cases.
+Stash restore actions, untracked-file defaults, and workflow examples remain
+pending. Planning only; application behavior, user-guide instructions, and
+implementation status are unchanged. No application tests or builds rerun.
+
+## 2026-09-21: next-stage planning started
+
+Added [Next feature stage](NEXT_STAGE.md), a draft covering everyday Git,
+group operations, and change-inspection tracks, with proposed boundaries,
+acceptance cases, implementation dependencies, and the existing Mac/Windows
+delivery gate. Asked the user for the leading track, delivery cadence, and
+current workflow pain points/group scale. Answers remain pending; no proposed
+feature is marked implemented and no application implementation began.
+
+Reviewed current roadmap, guide, acceptance requirements, action contracts,
+and backend preview/state checks. Documentation links and whitespace were
+checked; application tests/builds were not rerun for this planning-only change.
+The user guide's current behavior remains unchanged. Existing edits are
+preserved; nothing pushed or published.
+
+## 2026-09-20: user guide and roadmap inventory
+
+Reviewed the current application at `e044bcbc` against `docs/PRODUCT.md` and the
+overnight runbook. Added [User guide](USER_GUIDE.md) with discovery/group setup,
+history/search, staging/commits, remote actions, branches, both squash workflows,
+recovery, shortcuts, and troubleshooting. Added [Feature status](FEATURE_STATUS.md)
+to distinguish the completed runbook workflows from the broader unfinished
+product roadmap and outstanding platform/acceptance checks.
+
+Added repository-wide maintenance instructions in [AGENTS.md](../AGENTS.md) and
+a [pull request checklist](../.github/pull_request_template.md): future user-facing
+changes must update the guide and feature inventory in the same change. Linked
+both from README and clarified planned versus implemented persistence in the
+project-file specification. These instructions/checklists are a contributor
+requirement, not automatic prose generation or an enforced CI freshness check.
+
+Validation: compared guide controls, CLI forms, operation preconditions, and
+recovery limits with the implementation; local Markdown links/anchors and new
+document whitespace/code fences passed checks; `git diff --check` passed.
+Documentation only: no application code or workflow behavior changed and no
+application tests or native builds were rerun. The tested revisions, results,
+and packages below remain the latest application evidence. Existing README,
+runbook, build-status, and setup-document changes were preserved. Nothing pushed
+or published.
+
+## 2026-09-20: scoped history search complete on tested platforms
+
+Final checkpoint: `e044bcbcaa1ba0a4f939ce98b47bb80ac4d420b8` on both
+build hosts. Application source is unchanged from `f5526ef`; the final checkpoint
+only documents a Windows fixture permission attribute and strengthens the focused
+verification script's Clippy gate.
 
 Implemented next roadmap slice: search commit messages, author names/emails, or
 commit-ID prefixes within the chosen history scope. Results retain immutable
@@ -16,6 +230,25 @@ shallow drift, missing objects, replacements, and unchanged index/journal bytes.
 The eight renderer regressions cover query/scope/paging/keyboard/error races.
 Native checks search real commits, inspect a matching file diff, and restore the
 normal graph after clearing. Mac normal release build succeeds.
+Windows passes all 101 Rust tests and 57 frontend tests. Its first strict Clippy
+run flagged Windows-only read-only-attribute clearing in a disposable missing-object
+fixture. A statement-scoped allowance documents that no Unix permission bits are
+changed; application code is unchanged. Final focused Windows strict Clippy and
+all **31 native checks pass** at the final checkpoint. The existing group,
+discovery, merge, both squash, recovery, and reload workflows remain covered.
+Packaged Mac CLI help/version/invalid-argument checks and separate repository/
+discovery startup checks pass with desktop access. Native report:
+`/tmp/git-view-native-search-mac.json`, retained as `artifacts/native-macos.json`.
+
+Executed Mac commands: `pnpm typecheck`, `pnpm lint`, `pnpm test`,
+`cargo test --manifest-path src-tauri/Cargo.toml --locked`,
+`cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --features native-smoke -- -D warnings`,
+`cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check`,
+`VITE_NATIVE_SMOKE=1 pnpm build`,
+`cargo build --manifest-path src-tauri/Cargo.toml --features native-smoke,tauri/custom-protocol`,
+`python3 scripts/native-smoke.py /tmp/git-view-native-search-mac.json`,
+`pnpm tauri build --bundles app`, and `python3 scripts/release-smoke.py`
+against the packaged app executable.
 
 Review fixes: cursors retain concurrent issued continuations; search and normal
 history resolve HEAD without status cleanup; historical metadata/file lists/diffs
@@ -25,8 +258,53 @@ request refinement. Unsubmitted Clear and dismissed-error states no longer leave
 loading stuck or falsely claim zero matches. Two new fixture setup mistakes were
 corrected before the full successful backend rerun.
 
-The release artifacts and completed checks below still describe the discovery
-checkpoint until the search integration gate records their replacement.
+| Final verification | macOS arm64 | Windows 11 x64 |
+| --- | --- | --- |
+| Frontend unit/component/graph tests | 57 passed | 57 passed |
+| Rust unit/integration/acceptance tests | 107 passed | 101 passed |
+| Native DOM/IPC workflow checks | 31 passed | 31 passed |
+| Typecheck, lint, strict native-test Clippy | Passed | Passed |
+| Normal release build | `.app` passed | NSIS installer passed |
+| Packaged check | CLI/invalid arguments/startup passed | Silent installation, CLI and titled native window passed |
+
+Windows verification used `python3 scripts/windows-remote.py` with
+`scripts/windows-verify.ps1`, `scripts/windows-native-verify.ps1` after the
+test-only lint correction, `scripts/windows-release.ps1`, and
+`scripts/windows-installer-smoke.ps1`. Installed test application retained at
+`C:\codeme\git-view\.tools\installed-smoke-5a63e172a8da42e6afc8d1cfef86cdfe`.
+Native report:
+`C:\codeme\git-view\.tools\GitViewNativeSmoke-3cde1520a1d34d38b6bd7cd82eee7ef4.json`.
+
+Current unsigned artifacts (replace earlier artifacts at these paths):
+
+- [macOS arm64 archive](../artifacts/Git-View_0.1.0_macos-arm64.zip), 3,402,017 bytes;
+  SHA-256 `25867c840aab4cfe90018b7d1bf3007b8fdd66aaa58a9e4c30cc16f90ff95791`.
+- [Windows x64 installer](../artifacts/Git-View_0.1.0_windows-x64-setup.exe), 2,693,915 bytes;
+  SHA-256 `b5bad7609057c5086e8e49c9334c4d67244c928e6848fe8d6750d831cf9fbefe`.
+- [Source/hash manifest](../artifacts/manifest.json),
+  [Mac native report](../artifacts/native-macos.json),
+  [Windows native report](../artifacts/native-windows.json).
+
+Debug native 10,000-commit fixture creation plus first-page navigation measured
+352.0 ms on Mac and 2,116.4 ms on Windows; scrolling plus two frames measured
+20.0 ms and 3.0 ms. The Windows sample overlapped the release compiler and includes
+fixture creation, so it is not an isolated history-page latency measurement.
+Warm CLI welcome/render measured 181.0 ms and 599.9 ms respectively.
+The normally ignored backend performance check was then run explicitly without
+a concurrent release compiler: first 200 commits from 10,000 took **44.37 ms Mac /
+190.15 ms Windows**; 25 sequential status reads took **187.90 ms / 1,425.20 ms**.
+Both measurements passed (one additional measurement test per platform, separate
+from the regular test counts above). Command: `cargo test --manifest-path
+src-tauri/Cargo.toml --test git_engine acceptance_performance_measurements --
+--ignored --nocapture`; Windows wrapper: `scripts/windows-performance.ps1`.
+
+Implementation and test fixes are checkpointed locally. Existing README/runbook/
+setup-document changes remain preserved; final progress documentation remains
+uncommitted. Nothing pushed or published. Builds remain unsigned/not notarized;
+Linux and Intel Mac execution remain unverified. History search intentionally
+ignores replacement refs and rejects legacy grafts, has bounded queries, and
+does not offer arbitrary revision expressions. No known blocker remains for this
+implemented slice. Earlier sections retain prior checkpoint evidence.
 
 ## 2026-09-20: folder discovery and easier group creation complete
 

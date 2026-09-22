@@ -11,6 +11,19 @@ export type Head =
 
 export type GitState = 'idle' | 'merge' | 'squashMerge' | 'rebase' | 'cherryPick' | 'revert' | 'other';
 
+export interface OperationContext {
+  kind: GitState;
+  sourceOids: Oid[];
+  sourceRef: string | null;
+  originalHead: Oid | null;
+  targetBranch: string | null;
+  stopReason: 'conflicts' | 'empty' | 'ready' | 'unknown';
+  canContinue: boolean;
+  canAbort: boolean;
+  canSkip: boolean;
+  reason: string;
+}
+
 export interface RepositoryStatus {
   repositoryId: RepositoryId;
   snapshotId: SnapshotId;
@@ -24,6 +37,7 @@ export interface RepositoryStatus {
   lastSuccessfulFetchAt: string | null;
   activeOperationId: string | null;
   squashMerge?: { originalHead: string; sourceOid: string; sourceRef: string } | null;
+  operationContext?: OperationContext | null;
 }
 
 export type RepositoryRow =
@@ -82,6 +96,8 @@ export type RepositoryAction =
   | { kind: 'checkoutRemoteBranch'; statusSnapshotId: SnapshotId; remoteId: string; sourceRef: string; name: string }
   | { kind: 'merge' | 'squashMerge'; statusSnapshotId: SnapshotId; sourceRef: string }
   | { kind: 'continueMerge' | 'abortMerge'; statusSnapshotId: SnapshotId }
+  | { kind: 'cherryPick'; statusSnapshotId: SnapshotId; sourceOid: Oid }
+  | { kind: 'continueCherryPick' | 'abortCherryPick' | 'skipCherryPick'; statusSnapshotId: SnapshotId }
   | { kind: 'combineCommits'; statusSnapshotId: SnapshotId; commitOids: string[]; message: string }
   | { kind: 'recoverCombine'; statusSnapshotId: SnapshotId; recoveryId: string };
 

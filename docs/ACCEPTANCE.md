@@ -90,6 +90,23 @@ distinguished from automating the operating-system save picker itself.
 
 ## UI tests and native smoke
 
+The A2 cherry-pick gate requires disposable-repository checks for an exact
+single-commit patch, parent, source message/author, preserved target-only files,
+and unchanged source ref. Reject merge/initially empty sources, dirty or
+unattached targets, stale plans, and ignored-path overwrite hazards (including
+directory renames). Exercise text/add-add/modify-delete conflicts, index-based
+resolution, Continue, reviewed Abort, already-applied changes with explicit Skip,
+hook/signing failures, cancellation, external state changes, and unsupported
+external multi-pick sequences. Ordinary merge and squash review must retain
+operation-specific guidance and controls.
+
+Native A2 acceptance uses actual history selection and confirmation controls,
+success metadata verification, modify/delete abort, empty Skip, and an add/add
+conflict that survives a real WebView reload before external resolution,
+DOM staging, and Continue. Run the existing workflows as regressions, then build
+and exercise macOS and Windows packages. Planned coverage is not passing evidence;
+record source revisions and actual results in Build status.
+
 Use unit tests for graph lane/parent invariants and reducers; component tests for selection, action states, and retained drafts. Assert observable behavior rather than mirroring component internals. Mock IPC only where the test explicitly concerns renderer behavior.
 
 Native smoke sequence: launch from CLI; open project; run mixed-result batch pull; enter repository; inspect a merge commit against each parent; inspect a working file; stage only one of two changes; commit; inspect resulting history; push to a local remote; switch back to group and observe refreshed status. Repeat commit with a failing test hook and confirm the draft survives.

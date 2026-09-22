@@ -4,10 +4,13 @@ import { invoke } from '@tauri-apps/api/core';
 import { api, errorMessage } from '../../api/client';
 import type { OperationResult } from '../../api/types';
 
-interface SmokeContext { projectPath: string; cleanPath: string; dirtyPath: string; mergePath: string; m2?: boolean; m3?: boolean; performance?: boolean; discovery?: boolean; historySearch?: boolean; remoteCheckout?: boolean }
+interface SmokeContext { projectPath: string; cleanPath: string; dirtyPath: string; mergePath: string; m2?: boolean; m3?: boolean; performance?: boolean; discovery?: boolean; historySearch?: boolean; remoteCheckout?: boolean; cherryPick?: boolean }
 interface SmokeResult { passed: boolean; checks: string[]; error?: string; body?: string }
 interface ReloadMarker { version: 1; repositoryId: string; operationId: string; path: string; checks: string[] }
 const reloadKey = 'git-view.native-smoke.reload.v1';
+const cherryReloadKey = 'git-view.native-smoke.cherry-reload.v1';
+interface CherryFixture { repositoryId: string; path: string; sourceOid: string; targetOid: string; sourceRef: string; conflictPaths: string[] }
+interface CherryReloadMarker { fixture: CherryFixture; checks: string[] }
 let progressWrite: Promise<unknown> = Promise.resolve();
 function progressChecks(): string[] {
   const checks: string[] = [];
@@ -602,6 +605,107 @@ async function runRemoteCheckoutSmoke(checks: string[]) {
   }
 }
 
+async function cherryRepository(fixture: CherryFixture) {
+  return until('cherry-pick fixture selected', () => {
+    const repository = document.querySelector<HTMLElement>('.repository-screen');
+    return repository?.querySelector('.repository-title strong')?.getAttribute('title') === fixture.path ? repository : null;
+  });
+}
+async function cherryCommand(repository: HTMLElement, repositoryId: string, action: string, label: string, confirm: string) {
+  return operation(action, repositoryId, async () => {
+    await click(label, repository);
+    const preview = await until(`${label} preview visible`, () => repository.querySelector<HTMLDialogElement>('dialog[open]'));
+    await click(confirm, preview);
+  });
+}
+async function runCherryPickSmoke(checks: string[]) {
+  for (const scenario of ['success', 'conflictAbort', 'empty', 'conflictContinue'] as const) {
+    const fixture = await invoke<CherryFixture>('native_smoke_cherry_pick_case', { scenario });
+    const repository = await cherryRepository(fixture);
+    const scope = await until('cherry-pick source scope', () => [...repository.querySelectorAll<HTMLButtonElement>('.repository-refs button')].find(node => node.title === fixture.sourceRef));
+    scope.click();
+    await until('cherry-pick source scope selected', () => scope.classList.contains('selected'));
+    const source = await until('cherry-pick source history row', () => [...repository.querySelectorAll<HTMLButtonElement>('.history-row')].find(node => node.title.split('\n')[0] === fixture.sourceOid));
+    source.click();
+    const before = await api.getStatus(fixture.repositoryId);
+    assert(before.head.kind === 'branch' && before.head.oid === fixture.targetOid && before.gitState === 'idle', 'Inspecting the cherry-pick source must leave actual target unchanged');
+    const picked = await operation('cherryPick', fixture.repositoryId, async () => {
+      await click('Cherry-pick commit', repository);
+      const preview = await until('cherry-pick source and target preview', () => repository.querySelector<HTMLDialogElement>('dialog[open]'));
+      assert(preview.textContent?.includes(fixture.sourceOid) && preview.textContent.includes(fixture.targetOid), 'Cherry-pick preview must identify exact source and current target');
+      await click('Run cherry-pick', preview);
+    });
+    assert(picked.state === (scenario === 'success' ? 'succeeded' : 'failed'), `${scenario} cherry-pick outcome: ${picked.state}, ${picked.error?.message ?? picked.reason}`);
+    await refreshRepository();
+    if (scenario === 'success') {
+      const verified = await invoke<{ verified: boolean }>('native_smoke_cherry_pick_verify', { repositoryId: fixture.repositoryId, scenario });
+      assert(verified.verified, 'Cherry-pick success must preserve source author/message and expected patch/new parent');
+      checks.push('Native cherry-pick selected a source in a read-only scope, previewed exact source and actual target, and created the expected patch with source message/author and target parent');
+      continue;
+    }
+    const notice = await region('Git operation');
+    assert(notice.textContent?.includes('Cherry-pick in progress') && notice.textContent.includes(fixture.sourceOid), 'Stopped cherry-pick must show operation-specific source context');
+    const continuation = [...notice.querySelectorAll<HTMLButtonElement>('button')].find(node => node.textContent === 'Continue cherry-pick');
+    assert(continuation?.disabled, 'Continue must stay disabled for unresolved or empty cherry-picks');
+    if (scenario === 'empty') {
+      assert(notice.textContent?.includes('no remaining changes'), 'Empty cherry-pick must explain why no commit was created');
+      const skipped = await cherryCommand(repository, fixture.repositoryId, 'skipCherryPick', 'Skip empty cherry-pick', 'Run skip empty cherry-pick');
+      assert(skipped.state === 'succeeded', `Skip empty cherry-pick failed: ${skipped.error?.message ?? skipped.reason}`);
+      const verified = await invoke<{ verified: boolean }>('native_smoke_cherry_pick_verify', { repositoryId: fixture.repositoryId, scenario });
+      assert(verified.verified, 'Empty skip must finish operation without moving target or creating commit');
+      checks.push('Native empty cherry-pick explained the stopped state, disabled Continue, and explicitly skipped without creating a commit or changing target content');
+    } else {
+      assert(fixture.conflictPaths.every(path => notice.textContent?.includes(path)), 'Conflict guidance must list actual unresolved Git-index files');
+      if (scenario === 'conflictAbort') {
+        const aborted = await cherryCommand(repository, fixture.repositoryId, 'abortCherryPick', 'Abort cherry-pick', 'Run abort cherry-pick');
+        assert(aborted.state === 'succeeded', `Abort cherry-pick failed: ${aborted.error?.message ?? aborted.reason}`);
+        const verified = await invoke<{ verified: boolean }>('native_smoke_cherry_pick_verify', { repositoryId: fixture.repositoryId, scenario });
+        assert(verified.verified, 'Abort must restore original target and remove operation markers');
+        checks.push('Native modify/delete cherry-pick conflict showed files/source/target and disabled Continue; reviewed Abort restored original target and file/index state');
+      } else {
+        const marker: CherryReloadMarker = { fixture, checks: [...checks] };
+        sessionStorage.setItem(cherryReloadKey, JSON.stringify(marker));
+        assert(sessionStorage.getItem(cherryReloadKey), 'Cherry-pick reload checkpoint must be retained');
+        await progressWrite;
+        window.location.reload();
+        return;
+      }
+    }
+  }
+}
+async function finishCherryPickReload(marker: CherryReloadMarker, checks: string[]) {
+  const fixture = await invoke<CherryFixture>('native_smoke_cherry_pick_case', { scenario: 'conflictContinue' });
+  assert(fixture.repositoryId === marker.fixture.repositoryId && fixture.sourceOid === marker.fixture.sourceOid && fixture.targetOid === marker.fixture.targetOid, 'Reload must reconnect to the original stopped cherry-pick');
+  const repository = await cherryRepository(fixture);
+  const notice = await region('Git operation');
+  await until('reloaded cherry-pick context reconciled', () => notice.textContent?.includes('Cherry-pick in progress') && notice.textContent.includes(fixture.sourceOid) && fixture.conflictPaths.every(path => notice.textContent?.includes(path)));
+  const stopped = await api.getStatus(fixture.repositoryId);
+  assert(stopped.gitState === 'cherryPick' && stopped.counts.conflicted > 0 && stopped.operationContext?.stopReason === 'conflicts', 'Actual unresolved operation must survive full WebView reload');
+  await invoke('native_smoke_resolve_conflicts', { repositoryId: fixture.repositoryId });
+  await refreshRepository();
+  const continuation = [...repository.querySelectorAll<HTMLButtonElement>('button')].find(node => node.textContent === 'Continue cherry-pick');
+  assert(continuation?.disabled && (await api.getStatus(fixture.repositoryId)).counts.conflicted > 0, 'External file edits alone must not enable Continue before Git index staging');
+  for (const path of fixture.conflictPaths) {
+    const staged = await operation('stage', fixture.repositoryId, async () => {
+      const row = await until(`cherry-pick conflict file ${path}`, () => [...repository.querySelectorAll<HTMLButtonElement>('.repository-details .file-list button[title]')].find(node => node.title === path)?.closest('li'));
+      await click('Stage resolution', row);
+    });
+    assert(staged.state === 'succeeded', `Cherry-pick resolution stage failed: ${staged.error?.message ?? staged.reason}`);
+    await refreshRepository();
+  }
+  const draft = await until('normal commit draft after resolution', () => repository.querySelector<HTMLTextAreaElement>('#commit-message'));
+  type(draft, 'Keep normal draft separate from cherry-pick');
+  await until('separate normal draft rendered', () => draft.value === 'Keep normal draft separate from cherry-pick');
+  const normalCommit = [...repository.querySelectorAll<HTMLButtonElement>('button')].find(node => node.textContent?.startsWith('Commit staged changes'));
+  assert(normalCommit?.disabled, 'Stopped cherry-pick must use Continue rather than a normal commit');
+  const continued = await cherryCommand(repository, fixture.repositoryId, 'continueCherryPick', 'Continue cherry-pick', 'Run continue cherry-pick');
+  assert(continued.state === 'succeeded', `Continue cherry-pick failed: ${continued.error?.message ?? continued.reason}`);
+  const verified = await invoke<{ verified: boolean }>('native_smoke_cherry_pick_verify', { repositoryId: fixture.repositoryId, scenario: 'conflictContinue' });
+  assert(verified.verified, 'Continued cherry-pick must preserve source metadata and expected resolved patch');
+  assert(draft.value === 'Keep normal draft separate from cherry-pick', 'Continue must retain separate normal commit draft');
+  checks.push('Native add/add cherry-pick conflict survived full WebView reload with accurate source/target/files; external edits remained unresolved until DOM Stage resolution, then Continue preserved source metadata and separate normal draft');
+}
+
 async function startRunningOperationReload(checks: string[]) {
   const fixture = await invoke<{ repositoryId: string; operationId: string; path: string }>('native_smoke_slow_commit');
   await until('slow commit actually running before full reload', async () => {
@@ -651,6 +755,16 @@ export async function runNativeSmoke(): Promise<void> {
       sessionStorage.removeItem(reloadKey);
       await progressWrite;
       await invoke('native_smoke_report', { result: { passed: true, checks } satisfies SmokeResult });
+      return;
+    }
+    const cherryCheckpoint = sessionStorage.getItem(cherryReloadKey);
+    if (cherryCheckpoint) {
+      const marker = JSON.parse(cherryCheckpoint) as CherryReloadMarker;
+      assert(Array.isArray(marker.checks) && marker.checks.every(check => typeof check === 'string'), 'Cherry-pick checkpoint must retain prior checks');
+      checks.push(...marker.checks);
+      await finishCherryPickReload(marker, checks);
+      sessionStorage.removeItem(cherryReloadKey);
+      await startRunningOperationReload(checks);
       return;
     }
     const context = await invoke<SmokeContext>('native_smoke_context');
@@ -823,10 +937,12 @@ export async function runNativeSmoke(): Promise<void> {
     if (context.discovery) await runDiscoverySmoke(checks);
     if (context.historySearch) await runHistorySearchSmoke(checks);
     if (context.remoteCheckout) await runRemoteCheckoutSmoke(checks);
+    if (context.cherryPick) { await runCherryPickSmoke(checks); return; }
     await startRunningOperationReload(checks);
     return; // The reloaded renderer resumes above and submits the final report.
   } catch (cause) {
     sessionStorage.removeItem(reloadKey);
+    sessionStorage.removeItem(cherryReloadKey);
     result = { passed: false, checks, error: errorMessage(cause), body: document.body.innerText.slice(0, 16000) };
   }
   await progressWrite;

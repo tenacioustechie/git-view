@@ -1,6 +1,7 @@
 # Git View user guide
 
-Reviewed 22 September 2026 for version 0.1.0, including remote tracking checkout.
+Reviewed 22 September 2026 for version 0.1.0, including remote tracking checkout
+and cherry-pick controls. Cherry-pick platform acceptance is still in progress.
 See Build status for the current verification checkpoint.
 This guide describes implemented behavior. See [Feature status](FEATURE_STATUS.md)
 for the remaining roadmap and [Build status](BUILD_STATUS.md) for tested versions,
@@ -17,6 +18,7 @@ packages, and platform limitations.
 - [Stage files and commit](#stage-files-and-commit)
 - [Fetch, pull, and push](#fetch-pull-and-push)
 - [Create and switch branches](#create-and-switch-branches)
+- [Cherry-pick a commit](#cherry-pick-a-commit)
 - [Merge a branch](#merge-a-branch)
 - [Squash merge a branch](#squash-merge-a-branch)
 - [Combine existing commits and recover](#combine-existing-commits-and-recover)
@@ -305,6 +307,58 @@ partially created branch or discards working files.
 Remote refs can also be inspected or used as merge sources. Group-wide branch
 switching is not implemented.
 
+## Cherry-pick a commit
+
+Use this to apply one existing commit's changes to the branch currently checked
+out. Begin on a local branch with an existing commit, a clean index/worktree,
+and no operation in progress.
+
+1. Select the source commit in history. You can change history scope to find it;
+   the scope does not change the checked-out target branch.
+2. Inspect the source message, author, parent, and changed files, then choose
+   **Cherry-pick commit**.
+3. Review the source commit and current target branch/HEAD in the preview, then
+   confirm. A successful pick adds one commit using the source message and author.
+4. Inspect refreshed history and working changes. No push follows automatically.
+
+Merge commits, multi-commit sequences, and group-wide picks are outside this
+action. An initially empty source commit is blocked. If the source changes are
+already present and Git stops with no remaining changes, choose **Skip empty
+cherry-pick** to finish without a new commit, or review **Abort cherry-pick**.
+An unfinished or empty pick is not reported as a successful new commit.
+
+When conflicts occur, **Cherry-pick in progress** shows the current target,
+known source, unresolved paths, and next steps. Open those files in your editor,
+resolve them, return to Git View, **Refresh**, and choose **Stage resolution**.
+Editing conflict markers alone does not resolve Git's index entries. Review the
+staged changes, choose **Continue cherry-pick**, and confirm. The ordinary commit
+button is unavailable during a cherry-pick.
+
+**Abort cherry-pick** requires a separate review: Git may discard edits made
+during resolution. Preserve any edits you want to keep before confirming. The
+operation state survives reload; after external Git changes, refresh and inspect
+the reported context. An externally started pick may have unknown original target
+information: its Abort preview describes the reviewed current HEAD instead.
+Unknown or inconsistent state can require manual Git recovery instead of an app
+action. If **Clear interrupted cherry-pick** is offered for a clean, unchanged
+target, review it to remove only the app's interrupted marker; it does not reset
+files or move the branch. Multi-commit sequences started externally must be
+managed externally.
+
+If a recorded cherry-pick conflicts with a different active Git operation, the
+panel keeps the actual operation label and displays the old record separately.
+Mutations remain blocked until that mismatch is reviewed and resolved externally;
+inspection, refresh, and fetch remain available.
+
+Git's own hook/signing behavior applies. An initial cherry-pick and **Continue
+cherry-pick** can invoke different hooks. If a hook or signing fails, inspect the
+current state, fix the reported configuration, then use the available recovery
+action rather than starting another pick. Ignored-content collisions are blocked;
+some directory-rename situations require preserving or moving ignored content
+outside the worktree before retrying.
+Cherry-pick and its recovery actions do not recursively update submodule
+worktrees; manage submodule contents separately.
+
 ## Merge a branch
 
 1. Switch to the target local branch and ensure the index and worktree are clean.
@@ -316,6 +370,10 @@ remain, open the files in your editor, resolve them, return to Git View, refresh
 and choose **Stage resolution** for each resolved file. Once all conflicts are
 staged, choose **Continue merge** and confirm. This uses the merge's recorded
 message and normal hooks/signing.
+
+The operation panel shows the current target, available source commit context,
+unresolved files, and next steps. A source or original target that cannot be
+identified reliably is shown as unknown rather than inferred from history scope.
 
 **Abort merge** is available for an ordinary merge in progress. Review your
 resolution edits before confirming: Git attempts to restore the pre-merge state
@@ -399,7 +457,7 @@ acceptance remains outstanding. A group-filter focus shortcut is not implemented
 | External project edit conflicts with a draft | Save the draft separately with **Save edits as**, or **Reload project** to use the disk version. |
 
 Not yet available: hunk/line staging, stash, side-by-side diffs, blame/file history,
-rebase/cherry-pick, batch push, group branch switching, integrated conflict editing,
+rebase, batch push, group branch switching, integrated conflict editing,
 multiple windows, group templates, and persisted recent-project/view settings.
 The broader backlog and verification gaps are tracked in [Feature status](FEATURE_STATUS.md).
 

@@ -1,4 +1,5 @@
 mod actions;
+mod cherry_pick;
 mod discovery;
 mod history;
 mod merge;
@@ -84,6 +85,7 @@ pub struct PreparedAction {
     pub(crate) finish_squash: bool,
     pub(crate) rewrite: Option<rewrite::PreparedRewrite>,
     pub(crate) remote_checkout: Option<remote_checkout::Checkout>,
+    pub(crate) cherry: Option<cherry_pick::CherryPlan>,
 }
 impl PreparedAction {
     /// Restrict a filtered batch fetch to the HEAD observed in its preview.

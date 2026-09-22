@@ -16,7 +16,20 @@ type Head =
   | { kind: 'detached'; oid: Oid }
   | { kind: 'unborn'; name: string };
 
-type GitState = 'idle' | 'merge' | 'rebase' | 'cherryPick' | 'revert' | 'other';
+type GitState = 'idle' | 'merge' | 'squashMerge' | 'rebase' | 'cherryPick' | 'revert' | 'other';
+
+interface OperationContext {
+  kind: GitState;
+  sourceOids: Oid[];
+  sourceRef: string | null;
+  originalHead: Oid | null;
+  targetBranch: string | null;
+  stopReason: 'conflicts' | 'empty' | 'ready' | 'unknown';
+  canContinue: boolean;
+  canAbort: boolean;
+  canSkip: boolean;
+  reason: string;
+}
 
 interface RepositoryStatus {
   repositoryId: RepositoryId;
@@ -30,6 +43,8 @@ interface RepositoryStatus {
   upstream: null | { ref: string; remote: string; ahead: number | null; behind: number | null };
   lastSuccessfulFetchAt: string | null;
   activeOperationId: string | null;
+  squashMerge?: { originalHead: Oid; sourceOid: Oid; sourceRef: string } | null;
+  operationContext?: OperationContext | null;
 }
 
 type RepositoryRow =
@@ -86,7 +101,9 @@ type RepositoryAction =
   | { kind: 'switchBranch'; statusSnapshotId: SnapshotId; localRef: string }
   | { kind: 'checkoutRemoteBranch'; statusSnapshotId: SnapshotId; remoteId: string; sourceRef: string; name: string }
   | { kind: 'merge' | 'squashMerge'; statusSnapshotId: SnapshotId; sourceRef: string }
-  | { kind: 'continueMerge' | 'abortMerge'; statusSnapshotId: SnapshotId };
+  | { kind: 'continueMerge' | 'abortMerge'; statusSnapshotId: SnapshotId }
+  | { kind: 'cherryPick'; statusSnapshotId: SnapshotId; sourceOid: Oid }
+  | { kind: 'continueCherryPick' | 'abortCherryPick' | 'skipCherryPick'; statusSnapshotId: SnapshotId };
 
 type RepositoryActionPlan =
   | { kind: 'eligible'; planId: string; expiresAt: string; summary: string; destination: string | null }
@@ -181,6 +198,15 @@ objects consistently, ignoring replacement refs. Shallow-boundary changes expire
 snapshots; legacy grafts require removal or migration before viewing history.
 
 ## Mutations and batches
+
+A2 adds four reviewed actions: `cherryPick` binds one full source commit ID,
+while `continueCherryPick`, `abortCherryPick`, and `skipCherryPick` bind the
+observed operation state. All include `statusSnapshotId`. The optional
+`operationContext` identifies known source commits, original HEAD, recorded
+target branch, stop reason, and backend-assessed available actions. An empty
+source list or null context field means unknown, not permission to infer a source
+from selected history. Multiple source OIDs support ordinary merges honestly.
+Capability flags are explanatory; execution always revalidates the plan.
 
 `plan_repository_action` receives the discriminated action and repository ID and creates a backend-held plan, expiring after five minutes. Record resolved refs/destinations and required HEAD/index/status observations in that plan. `run_repository_action(planId)` revalidates and executes it; submitting a plan twice returns the existing operation. Simple file actions can plan and run from one UI gesture; remote/branch/merge actions show the resolved target where required. M2 adds normal merge, merge continue/abort, and squash-merge variants; return an unsupported error until implemented. No arbitrary argv variant.
 

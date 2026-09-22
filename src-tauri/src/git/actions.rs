@@ -18,6 +18,17 @@ impl GitEngine {
         let initial_config = self.config_fingerprint(&repo).await?;
         let observed = self.observe(&repo).await?;
         let status = observed.status.as_ref().unwrap();
+        if status.operation_context.as_ref().is_some_and(|context| {
+            context.kind == GitState::CherryPick
+                && context.stop_reason == OperationStopReason::Unknown
+        }) && cherry_pick::read_journal(&repo)?.is_some()
+            && !matches!(
+                action,
+                RepositoryAction::Fetch { .. } | RepositoryAction::AbortCherryPick { .. }
+            )
+        {
+            return Err(AppError::new("cherry_pick_manual_review","The recorded cherry-pick disagrees with the repository state. Inspect the operation context and journal before changing the index, files, or history."));
+        }
         let args;
         let mut input = None;
         let mut destination = None;
@@ -26,6 +37,7 @@ impl GitEngine {
         let mut squash_start = None;
         let mut rewrite = None;
         let mut remote_checkout = None;
+        let mut cherry = None;
         let finish_squash = matches!(action, RepositoryAction::Commit { .. })
             && status.git_state == GitState::SquashMerge;
         let snapshot_id = match &action {
@@ -53,6 +65,12 @@ impl GitEngine {
             | RepositoryAction::SquashMerge {
                 status_snapshot_id, ..
             }
+            | RepositoryAction::CherryPick {
+                status_snapshot_id, ..
+            }
+            | RepositoryAction::ContinueCherryPick { status_snapshot_id }
+            | RepositoryAction::AbortCherryPick { status_snapshot_id }
+            | RepositoryAction::SkipCherryPick { status_snapshot_id }
             | RepositoryAction::ContinueMerge { status_snapshot_id }
             | RepositoryAction::AbortMerge { status_snapshot_id }
             | RepositoryAction::CombineCommits {
@@ -167,7 +185,11 @@ impl GitEngine {
                 if !matches!(
                     status.git_state,
                     GitState::Idle | GitState::Merge | GitState::SquashMerge
-                ) {
+                ) && !(status.git_state == GitState::CherryPick
+                    && status.operation_context.as_ref().is_some_and(|context| {
+                        context.can_abort && context.stop_reason != OperationStopReason::Unknown
+                    }))
+                {
                     return Err(AppError::new(
                         "operation_in_progress",
                         "This operation is not available during an ongoing Git operation.",
@@ -546,6 +568,16 @@ impl GitEngine {
                 summary=Some("Restore the recorded original branch tip using verified backup refs. The index and working files are left byte-for-byte unchanged; later commits or a changed branch block recovery.".into());
                 destination = Some(recovery_id.clone());
             }
+            RepositoryAction::CherryPick { .. }
+            | RepositoryAction::ContinueCherryPick { .. }
+            | RepositoryAction::AbortCherryPick { .. }
+            | RepositoryAction::SkipCherryPick { .. } => {
+                let (prepared, command, description) =
+                    self.prepare_cherry(&repo, status, &action).await?;
+                cherry = Some(prepared);
+                args = command;
+                summary = Some(description);
+            }
             RepositoryAction::ContinueMerge { .. } => {
                 if status.git_state != GitState::Merge {
                     return Err(AppError::new(
@@ -566,15 +598,15 @@ impl GitEngine {
                 if status.git_state != GitState::Merge {
                     return Err(AppError::new("invalid_operation","Only an ordinary merge with MERGE_HEAD can be aborted. Squash changes require manual review and cleanup."));
                 }
-                args = runner::args(&["merge", "--abort"]);
+                args = runner::args(&["-c", "submodule.recurse=false", "merge", "--abort"]);
                 summary=Some("Abort the ordinary merge. Git will try to restore its pre-merge state; uncommitted resolution edits may be discarded.".into());
             }
         }
         let config_fingerprint = self.config_fingerprint(&repo).await?;
-        if remote_checkout.is_some() && config_fingerprint != initial_config {
+        if (remote_checkout.is_some() || cherry.is_some()) && config_fingerprint != initial_config {
             return Err(AppError::new(
                 "precondition_changed",
-                "Git configuration changed while preparing checkout.",
+                "Git configuration changed while preparing the action.",
             ));
         }
         Ok(PreparedAction {
@@ -590,6 +622,7 @@ impl GitEngine {
             finish_squash,
             rewrite,
             remote_checkout,
+            cherry,
             action,
             args,
             input,
@@ -676,6 +709,9 @@ impl GitEngine {
         }
         if let Some(checkout) = &plan.remote_checkout {
             return Box::pin(self.execute_remote_checkout(plan, checkout, &canceled)).await;
+        }
+        if let Some(cherry) = &plan.cherry {
+            return Box::pin(self.execute_cherry(plan, cherry, &canceled)).await;
         }
         let _squash_activity = plan
             .squash_start

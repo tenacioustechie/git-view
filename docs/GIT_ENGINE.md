@@ -1,6 +1,9 @@
 # Git engine behavior
 
-These are implementation requirements and proposed command strategies, not code already present. Test commands against the chosen minimum Git version and local fixtures before wiring them to UI actions.
+These are engine policies and command strategies. [Feature status](FEATURE_STATUS.md)
+distinguishes implemented behavior from remaining roadmap work; [Build status](BUILD_STATUS.md)
+records actual verification. Test new commands against supported Git versions and
+disposable fixtures before wiring them to UI actions.
 
 ## Runner and identity
 
@@ -42,6 +45,7 @@ Get changed paths from NUL-delimited metadata rather than patch headers. Use ind
 | Push | Show resolved remote and destination ref; push current branch to that one ref explicitly; explicitly disable follow-tags and recursive submodule push; no mirror/force; first push chooses remote/ref and optional upstream |
 | Create/switch branch | Validate name and resolve target; initial policy requires clean status and no ongoing operation; backend rechecks HEAD |
 | Remote tracking checkout | Resolve explicit fetch mapping, require clean idle state and unused local name/config namespace, pin reviewed source during execution, create/switch with direct tracking, preserve ignored files, inspect actual post-hook state |
+| Cherry-pick (A2) | One full non-merge commit ID, clean existing attached target, source/target preview, ignored-content protection, persistent stopped-state context, reviewed Continue/Abort/empty Skip |
 | Merge (M2) | Clean starting state; show source and current target; use normal merge, allow fast-forward, avoid editor wait; support conflicts and hook failures |
 | Squash-merge (M2) | Clean starting state; merge source with `--squash`; leave changes staged for review and an explicit normal commit |
 
@@ -50,6 +54,55 @@ Pull should be equivalent to `git -c pull.rebase=false -c rebase.autoStash=false
 Before push, resolve the actual configured push destination, including push remote rules, rather than assuming upstream and push target coincide. Reject mirror/all-ref destinations and multiple effective push URLs in M1 with an explanation. Previewed targets must match the executed explicit remote/refspec. Pass `--no-follow-tags --recurse-submodules=no` so user configuration cannot publish additional tags or submodule repositories. Normal Git hooks and remote rejection remain authoritative. See [git-push](https://git-scm.com/docs/git-push).
 
 An ordinary merge can leave a merge-in-progress state and support Continue or Abort. A squash merge does not create `MERGE_HEAD`, so it cannot reuse ordinary merge abort semantics. For M2 expose staged review and external/manual cleanup instructions; no automatic destructive rollback. Record the pre-operation HEAD and surface conflicts. See [git-merge](https://git-scm.com/docs/git-merge).
+
+## Remote tracking checkout
+
+Candidate enumeration reverses configured fetch refspecs and excludes symbolic
+refs, non-commit targets, negative mappings, and ambiguous ownership/destinations.
+Explicit source/remote selection does not fetch. Checkout rechecks status/config,
+rejects existing branch/config namespaces, and holds a Git reference transaction
+on the reviewed source through the switch and hooks. It uses direct tracking,
+no guessing/submodule recursion, and preserves ignored files that would collide.
+Post-checkout inspection verifies HEAD, local ref, upstream config, and clean
+state. Hooks can leave partial effects; errors describe observed state without
+resetting or deleting branches. See [Git switch](https://git-scm.com/docs/git-switch)
+and [Git branch tracking](https://git-scm.com/docs/git-branch).
+
+## Cherry-pick and operation context
+
+A2 starts one non-merge commit with `git --no-replace-objects cherry-pick --no-edit
+-- <oid>`. Initially empty sources are rejected; Git's default stop on a
+becomes-empty result leaves explicit Skip or Abort. Continue uses Git's sequencer
+continuation rather than a normal app Commit, preserving the source message and
+author. Normal signing remains active. Initial cherry-pick invokes Git's native
+prepare-commit-msg/post-commit hooks; Continue also invokes normal commit hooks.
+No extra hook invocation or hook/signing bypass is added. See
+[Git cherry-pick](https://git-scm.com/docs/git-cherry-pick/2.50.0).
+
+Cherry-pick and its continuation/exit commands explicitly set
+`submodule.recurse=false`, as does ordinary merge Abort, to avoid discarding
+private submodule-worktree edits during recovery. They do not implement submodule
+lifecycle management.
+
+A private per-worktree `git-view-cherry-pick.json` records the reviewed branch,
+original HEAD, source, and operation identity before mutation. Stopped state is
+reconciled against actual Git metadata on refresh/reload. A missing/mismatched
+marker or moved target is not guessed to be completed or rolled back. A clean,
+unchanged target with only an interrupted app marker can explicitly clear that
+marker; other inconsistent cases require manual review. External single picks
+retain unknown original context; external multi-pick sequencers are excluded.
+
+Git can overwrite ignored paths during a cherry-pick, including directory-rename
+destinations even on a conflict. Preflight and execution check local destination
+collisions. Potential directory relocation with ignored content is conservatively
+blocked. This does not claim exclusive access against external Git processes or
+arbitrary user hooks/merge drivers. Abort/Skip previews explain their effect on
+staged resolution edits; no automatic reset or rollback is performed.
+
+`operationContext` carries known source IDs, original target information, stop
+reason, and backend capabilities for cherry-pick, ordinary merge, and squash
+review. Conflict completion follows Git index state, not a search for text
+markers. Missing original context is displayed as unknown.
 
 ## Group pull and batching
 

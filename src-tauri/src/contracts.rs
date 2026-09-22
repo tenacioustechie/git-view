@@ -51,6 +51,28 @@ pub enum GitState {
     Revert,
     Other,
 }
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum OperationStopReason {
+    Conflicts,
+    Empty,
+    Ready,
+    Unknown,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OperationContext {
+    pub kind: GitState,
+    pub source_oids: Vec<String>,
+    pub source_ref: Option<String>,
+    pub original_head: Option<String>,
+    pub target_branch: Option<String>,
+    pub stop_reason: OperationStopReason,
+    pub can_continue: bool,
+    pub can_abort: bool,
+    pub can_skip: bool,
+    pub reason: String,
+}
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Counts {
@@ -84,6 +106,8 @@ pub struct RepositoryStatus {
     pub active_operation_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub squash_merge: Option<SquashMergeState>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub operation_context: Option<OperationContext>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -318,6 +342,19 @@ pub enum RepositoryAction {
     AbortMerge {
         status_snapshot_id: String,
     },
+    CherryPick {
+        status_snapshot_id: String,
+        source_oid: String,
+    },
+    ContinueCherryPick {
+        status_snapshot_id: String,
+    },
+    AbortCherryPick {
+        status_snapshot_id: String,
+    },
+    SkipCherryPick {
+        status_snapshot_id: String,
+    },
     CombineCommits {
         status_snapshot_id: String,
         commit_oids: Vec<String>,
@@ -344,6 +381,10 @@ impl RepositoryAction {
             Self::SquashMerge { .. } => "squashMerge",
             Self::ContinueMerge { .. } => "continueMerge",
             Self::AbortMerge { .. } => "abortMerge",
+            Self::CherryPick { .. } => "cherryPick",
+            Self::ContinueCherryPick { .. } => "continueCherryPick",
+            Self::AbortCherryPick { .. } => "abortCherryPick",
+            Self::SkipCherryPick { .. } => "skipCherryPick",
             Self::CombineCommits { .. } => "combineCommits",
             Self::RecoverCombine { .. } => "recoverCombine",
         }
