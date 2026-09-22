@@ -1165,11 +1165,29 @@ impl GitEngine {
                 } else {
                     write_new(&new, &j.new_log)?;
                 }
-                fs::set_permissions(&new, fs::metadata(&log).map_err(io)?.permissions())
-                    .map_err(io)?;
-                fs::File::open(&new)
-                    .and_then(|f| f.sync_all())
-                    .map_err(io)?;
+                // Windows FlushFileBuffers requires a write-capable handle. Open
+                // without truncation, then keep that handle through permission
+                // preservation and flush; a read-only File::open is insufficient.
+                let step_error = |step: &str, cause: std::io::Error| {
+                    error(format!(
+                        "Could not {step} for stash replacement {}: {cause}",
+                        new.display()
+                    ))
+                };
+                let replacement = fs::OpenOptions::new()
+                    .write(true)
+                    .open(&new)
+                    .map_err(|e| step_error("open a writable handle", e))?;
+                let permissions = fs::metadata(&log)
+                    .map_err(|e| step_error("read original reflog permissions", e))?
+                    .permissions();
+                replacement
+                    .set_permissions(permissions)
+                    .map_err(|e| step_error("preserve reflog permissions", e))?;
+                replacement
+                    .sync_all()
+                    .map_err(|e| step_error("flush the writable handle", e))?;
+                drop(replacement);
                 // A fresh comparison plus a REQUIRE-EXISTING replacement prevents the
                 // native reflog-drop exception from resurrecting an unlinked reflog.
                 if self.stash_pair(repo).await? != before {
@@ -1429,7 +1447,9 @@ mod tests {
                 fs::read(p.join(".git/git-view-stash-delete.json")).unwrap(),
                 journal
             );
-            finalize(&restarted, &id).await.unwrap();
+            finalize(&restarted, &id)
+                .await
+                .unwrap_or_else(|e| panic!("Finalize after {phase}: {e:?}"));
             let after = restarted.list_stashes(&id).await.unwrap();
             assert!(after.recovery.is_none());
             assert_eq!(after.entries.len(), 2, "{phase}");
@@ -1462,11 +1482,12 @@ mod tests {
             let (dir, engine, id) = fixture(false).await;
             let plan = deletion(&engine, &id).await;
             *engine.stash_failure.lock().unwrap() = Some(phase.into());
-            assert_eq!(
-                engine.execute(&plan).await.err().unwrap().code,
-                "outcome_uncertain"
+            let failure = engine.execute(&plan).await.err().unwrap();
+            assert_eq!(failure.code, "outcome_uncertain", "{phase}: {failure:?}");
+            assert!(
+                !dir.path().join(".git/logs/refs/stash").exists(),
+                "{phase} was not reached or the log was recreated: {failure:?}"
             );
-            assert!(!dir.path().join(".git/logs/refs/stash").exists());
             let list = engine.list_stashes(&id).await.unwrap();
             assert!(!list.recovery.unwrap().can_finalize);
             assert!(dir.path().join(".git/git-view-stash-delete.json").exists());
