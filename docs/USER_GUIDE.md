@@ -384,8 +384,9 @@ message is retained during the session, independently of your commit draft.
 Select a saved entry to inspect its message, date, full commit ID, and originating
 branch when known. **Inspect saved changes** offers **All tracked changes**,
 **Saved staged changes**, and, when present, **Saved untracked files**. Select a
-file to read its bounded diff. A refresh that changes entry identity clears the
-selection; select and review the entry again before acting.
+file to read its bounded diff. Refreshing an unchanged list keeps the selected
+entry. A refresh that changes entry identity clears the selection; select and
+review the entry again before acting.
 
 To restore work, first make the destination clean, including untracked files and
 submodules. Select the entry, optionally check **Restore staged state**, choose

@@ -2,6 +2,17 @@
 
 ## 2026-09-22: A3 stash implementation in progress
 
+Integration follow-up at `9fb0912`: the full macOS Rust suite passes **155 tests**.
+The first Windows run exposed a read-only replacement-file flush (`os error 5`);
+the corrected writable-handle implementation passes all 24 Windows library tests,
+including interrupted Delete and concurrent whole-reflog removal. The full
+Windows run is still underway. Native macOS reached 38 checks but caught a stash
+selection disappearing during a delayed operation refresh; stable exact-entry
+identity and renderer/harness regression fixes are in progress. An earlier native
+attempt launched a normal binary after a concurrent Cargo test build replaced
+the smoke executable; it timed out and is not passing evidence. Native builds
+and launches are now sequenced after ordinary test builds.
+
 A2 is complete at `fd637b8`. A3 shared contracts, command registration, renderer
 API, stash UI, and native fixture/verifier scaffolding are in place. The frontend
 suite passes **96 tests**, including 13 stash cases; typecheck/lint pass, and

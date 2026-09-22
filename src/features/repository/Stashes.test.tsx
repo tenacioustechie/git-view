@@ -146,6 +146,27 @@ describe('stash workspace (mocked IPC)', () => {
     expect(screen.queryByRole('button', { name: /stale.txt/ })).toBeNull();
     expect(screen.getByRole('button', { name: /saved.txt/ })).toBeTruthy();
   });
+  it('retains exact selected identity and inspected section across an unchanged-list refresh', async () => {
+    await open(); await select(true);
+    fireEvent.change(screen.getByLabelText('Stash section'), { target: { value: 'index' } });
+    await waitFor(() => expect(api.getStashDetails).toHaveBeenLastCalledWith(repository.repositoryId, 'stash-list-1', 'opaque-second', 'index'));
+    vi.mocked(api.listStashes).mockResolvedValue({ ...list, snapshotId: 'stash-list-refreshed' });
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+    await waitFor(() => expect(api.getStashDetails).toHaveBeenLastCalledWith(repository.repositoryId, 'stash-list-refreshed', 'opaque-second', 'index'));
+    expect(screen.getByLabelText('Selected stash').textContent).toContain('Older saved changes');
+    expect((screen.getByLabelText('Stash section') as HTMLSelectElement).value).toBe('index');
+    fireEvent.click(await screen.findByRole('button', { name: /modified · saved.txt/ }));
+    expect(await screen.findByText('+saved patch')).toBeTruthy();
+  });
+  it('clears selection when reflog identity changes even with identical OIDs and messages', async () => {
+    await open(); await select(true);
+    vi.mocked(api.listStashes).mockResolvedValue({ ...list, snapshotId: 'changed-pair', entries: list.entries.map(entry => ({ ...entry, entryId: `${entry.entryId}-new-pair` })) });
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+    await waitFor(() => expect(screen.queryByLabelText('Selected stash')).toBeNull());
+    expect(screen.queryByRole('button', { name: 'Delete stash' })).toBeNull();
+    expect(screen.getByRole('button', { name: /Older saved changes/ }).getAttribute('aria-pressed')).toBe('false');
+    expect(api.getStashDetails).toHaveBeenCalledTimes(1);
+  });
   it('blocks old visible entry actions when a refreshed list fails', async () => {
     await open(); await select();
     vi.mocked(api.listStashes).mockRejectedValue(new Error('Cannot validate stash reflog'));

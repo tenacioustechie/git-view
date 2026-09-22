@@ -717,6 +717,7 @@ async function stashRepository(path: string) {
   return repository;
 }
 async function selectNativeStash(panel: HTMLElement, oid: string) {
+  await until('stash list refresh settled', () => !panel.textContent?.includes('Loading stashes…'));
   const row = await until(`stash ${oid} listed`, () => [...panel.querySelectorAll<HTMLButtonElement>('.stash-list button')].find(node => node.title === oid));
   row.click();
   return until('selected stash metadata', () => {
@@ -740,6 +741,10 @@ async function runStashSmoke(checks: string[]) {
       if (scenario === 'includeUntracked') inclusion.click();
       const created = await cherryCommand(repository, fixture.repositoryId, 'createStash', 'Create stash', 'Run create stash');
       assert(created.state === 'succeeded', `Create stash failed: ${created.error?.message ?? created.reason}`);
+      // Backend completion precedes the renderer's operation poll. Wait until
+      // that poll has observed success before starting multi-section inspection.
+      await until('renderer reconciles completed stash creation', () => [...repository.querySelectorAll('.repository-activity li strong')].some(node => node.textContent === 'createStash: succeeded'));
+      await button('Refresh', repository);
       const verified = await invoke<{ verified: boolean }>('native_smoke_stash_verify', { repositoryId: fixture.repositoryId, scenario, stage: 'created' });
       assert(verified.verified, 'Created stash must preserve exact saved contents and inclusion behavior');
       await refreshRepository();
@@ -754,10 +759,9 @@ async function runStashSmoke(checks: string[]) {
       assert(selector, 'Saved stash section selector must exist');
       for (const [section, path, contents] of [['worktree', fixture.trackedPath, 'saved working bytes'], ['index', fixture.trackedPath, 'saved index bytes'], ['untracked', fixture.untrackedPath, 'saved untracked bytes']]) {
         selector.value = section; selector.dispatchEvent(new Event('change', { bubbles: true }));
-        const files = await until(`actual saved ${section} details`, () => selected.querySelector<HTMLElement>(`[data-loaded-section="${section}"]`));
-        const file = await until(`saved stash file ${path}`, () => [...files.querySelectorAll<HTMLButtonElement>('button[title]')].find(node => node.title === path));
+        const file = await until(`actual saved ${section} file ${path}`, () => [...panel.querySelectorAll<HTMLButtonElement>(`[aria-label="Selected stash"] [data-loaded-section="${section}"] button[title]`)].find(node => node.title === path));
         file.click();
-        await until(`saved ${section} patch`, () => selected.querySelector('.unified-diff')?.textContent?.includes(contents));
+        await until(`saved ${section} patch`, () => panel.querySelector('[aria-label="Selected stash"] .unified-diff')?.textContent?.includes(contents));
       }
       const restore = selected.querySelector<HTMLInputElement>('input[type="checkbox"]');
       assert(restore && !restore.checked, 'Restore staged state must initially be unchecked');

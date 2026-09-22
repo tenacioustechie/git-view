@@ -351,7 +351,22 @@ impl GitEngine {
                 "The stash ref and reflog disagree. Inspect them before using stash actions.",
             ));
         }
-        for row in &mut entries {
+        // Keep a selected occurrence stable across an unchanged list refresh.
+        // The entire exact pair (including file identity/time evidence) belongs
+        // to this token: repeated identical rows remain distinct by ordinal,
+        // and every token changes when another writer changes the list.
+        let list_identity = digest(
+            format!(
+                "{}\0{}\0{}\0{}",
+                digest(&os_bytes(repo.common_dir.as_os_str())),
+                pair.tip.as_deref().unwrap_or_default(),
+                digest(&pair.log),
+                pair.stamp
+            )
+            .as_bytes(),
+        );
+        for (ordinal, row) in entries.iter_mut().enumerate() {
+            row.entry.entry_id = digest(format!("{list_identity}\0{ordinal}").as_bytes());
             match self.stash_shape(&repo, &row.oid).await {
                 Ok(shape) => row.entry.has_untracked = shape.untracked.is_some(),
                 Err(e) => row.entry.unavailable_reason = Some(e.message),

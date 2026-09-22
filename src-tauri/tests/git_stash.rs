@@ -454,6 +454,17 @@ async fn identical_raw_occurrences_and_linked_worktrees_have_exact_selection() {
     assert_ne!(list.entries[0].entry_id, list.entries[1].entry_id);
     assert_eq!(list.entries[0].created_at, "2023-11-14T22:13:20+00:00");
     assert_eq!(list.entries[0].message, "duplicate occurrence");
+    let refreshed = engine.list_stashes(&linked_id).await.unwrap();
+    assert_ne!(refreshed.snapshot_id, list.snapshot_id);
+    assert_eq!(
+        refreshed
+            .entries
+            .iter()
+            .map(|e| &e.entry_id)
+            .collect::<Vec<_>>(),
+        list.entries.iter().map(|e| &e.entry_id).collect::<Vec<_>>()
+    );
+    let original_ids: Vec<_> = list.entries.iter().map(|e| e.entry_id.clone()).collect();
     let status = engine.get_status(&linked_id).await.unwrap();
     let plan = engine
         .prepare_action(
@@ -471,6 +482,10 @@ async fn identical_raw_occurrences_and_linked_worktrees_have_exact_selection() {
     assert_eq!(after.entries.len(), 2);
     assert_eq!(after.entries[0].message, "duplicate occurrence");
     assert_eq!(after.entries[1].message, "On main: original");
+    assert!(after
+        .entries
+        .iter()
+        .all(|e| !original_ids.contains(&e.entry_id)));
     assert_eq!(git(p, &["rev-parse", "refs/stash"]), oid);
 }
 #[tokio::test]
