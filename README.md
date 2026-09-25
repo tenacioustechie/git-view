@@ -1,13 +1,30 @@
 # Git View
 
-A planned lightweight desktop Git client for macOS, Windows, and Linux. Launch directly into one repository or a saved group of repositories from the command line.
+A lightweight desktop Git client built with Tauri, Rust, TypeScript, and React. Launch directly into one repository or a saved JSON group from the command line.
 
-**Status: planning only.** No application has been implemented yet. This plan was prepared on 18 September 2026 for an overnight build. Tauri/Rust/TypeScript and project-file groups are confirmed; remaining assumptions are recorded in the decisions.
+**Using the app:** start with the [User guide](docs/USER_GUIDE.md).
+See [Feature status](docs/FEATURE_STATUS.md) for what is implemented and what remains.
+Future user-facing changes must update both documents in the same change; see
+[Repository instructions](AGENTS.md).
+
+**Implementation and verification:** see the [Build and installation guide](docs/BUILD_GUIDE.md)
+for local builds, package installation, and the current GitHub Actions pipeline.
+See [Build status](docs/BUILD_STATUS.md) for tested source revisions, native
+evidence, artifact paths, and remaining platform checks. Local macOS and Windows
+workflows are exercised with disposable repositories; Linux CI is configured
+but has not run.
+
+Install the pinned dependencies with `pnpm install --frozen-lockfile`. Run `pnpm tauri dev` for development. On macOS, `scripts/macos-build.sh --skip-deps --open` builds and opens the current source; add `--check --install` to run the full checks and replace `/Applications/Git View.app`. On Windows, use `.\scripts\windows-build.ps1 -SkipDeps -Launch`; add `-Check -Install` for full checks and per-user installation. Use `scripts/git-view` on macOS/Linux or `scripts\git-view.cmd` on Windows after building. These launchers preserve the invoking working directory. They are not installed globally.
 
 ## Build documents
 
 | Document | Purpose |
 | --- | --- |
+| [User guide](docs/USER_GUIDE.md) | Opening repositories, groups, discovery, history, commits, text-hunk staging, remote actions, cherry-pick, guided rebase, stashes, merges, and recovery |
+| [Build and installation guide](docs/BUILD_GUIDE.md) | Prerequisites, local development, source checks, release packages, installation, and the current GitHub Actions pipeline |
+| [Feature status](docs/FEATURE_STATUS.md) | Current completion inventory, remaining roadmap, and verification gaps |
+| [Next feature stage](docs/NEXT_STAGE.md) | Confirmed delivery sequence, feature boundaries, acceptance criteria, and implementation preparation |
+| [Development machine setup](Dev-Machine-Setup.md) | Mac and Windows prerequisites, SSH access, and readiness checks |
 | [Product and UX](docs/PRODUCT.md) | Scope, screens, CLI behavior, workflows, and feature milestones |
 | [Decisions](docs/DECISIONS.md) | Confirmed requirements, open questions, and working defaults |
 | [Architecture](docs/ARCHITECTURE.md) | Stack, module boundaries, history rendering, persistence, and platforms |
@@ -17,17 +34,19 @@ A planned lightweight desktop Git client for macOS, Windows, and Linux. Launch d
 | [Overnight build](docs/OVERNIGHT.md) | Dependencies, subagent ownership, checkpoints, and kickoff prompt |
 | [Acceptance](docs/ACCEPTANCE.md) | Meaningful tests, platform checks, and morning handoff criteria |
 
-Agreed stack: Tauri 2, Rust, and a TypeScript UI; React is the proposed UI framework. Use the user's installed Git. Tauri uses the operating system's webview, which supports the small distribution goal. Actual memory use and launch speed must be measured. See [Tauri's introduction](https://tauri.app/start/).
+Git View uses the installed Git and operating system webview. Normal hooks, signing, and credential helpers remain in effect. Pull is explicitly fast-forward-only and skips dirty repositories; it never automatically stashes or rebases.
 
-Planned CLI examples, **not commands available today**:
+Local launcher examples:
 
 ```sh
-git-view .
-git-view repo ~/code/api
-git-view group ./work.git-view.json
-git-view group --scan ~/code --depth 3
+scripts/git-view .
+scripts/git-view repo ~/code/api
+scripts/git-view group ./work.git-view.json
+scripts/git-view group --scan ~/code --depth 3
 ```
 
-The overnight target is a useful local build with history, commit inspection, whole-file staging, commit, fetch/pull/push, and a group dashboard with batch fetch and branch-filtered pull. Both squash-merging and combining existing commits are confirmed requirements. Merge and squash-merge follow the core integration gate; combining existing commits has a separate milestone with backup and recovery support.
+The application includes paged history, scoped message/author/commit-ID search, parent-specific commit inspection, whole-file staging, commits, fetch/pull/push, local branch creation/switching, reviewed remote tracking checkout, single-commit cherry-pick with persistent conflict guidance, and a project dashboard with batch fetch/pull and per-member results. Project files can be created and edited; external changes cannot be silently overwritten. Ordinary merge and squash-merge have separate workflows. Combine commits uses backup/recovery safeguards described in [the recovery design](docs/REWRITE_RECOVERY.md); consult build status for its current acceptance evidence.
 
-Start with [the decisions](docs/DECISIONS.md), then use [the execution plan](docs/OVERNIGHT.md). This documentation does not schedule or launch an overnight coding session.
+In a repository, choose a branch or **All branches and tags**, then use **Search history**. Message search includes the full commit body; author search matches names and emails; commit-ID search accepts at least four hexadecimal characters. Message and author queries are literal text. Search results omit graph connectors across excluded commits. **Clear search** restores the graph; `⌘F` / `Ctrl+F` focuses search.
+
+Project files use version 1 of the [documented JSON format](docs/PROJECT_FILES.md); paths resolve relative to the project file. Discover repositories scans a folder to a chosen depth, then lets you select repositories before creating a project or adding to its draft. Scanning never saves membership automatically. Stash creation, inspection, retained Apply, reviewed Delete, complete text-hunk staging, and guided linear rebase are implemented and tested on macOS/Windows; see Build status. Individual-line staging, merge-preserving or arbitrary interactive rebase, and force push are not implemented. Releases are unsigned local builds; nothing is pushed or published by the build scripts.

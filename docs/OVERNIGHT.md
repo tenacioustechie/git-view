@@ -10,18 +10,40 @@ Use one coordinator and at most three concurrent workers, matching this session'
 
 An overnight run requires an active execution session, sufficient account/runtime availability, a machine that remains awake, and resolved prerequisite access. Writing these files does not create such a session. Do not promise work will run after the session stops.
 
+## Configured development machines
+
+Recorded and checked on 19 September 2026:
+
+| Setting | Value |
+| --- | --- |
+| Coordinator workspace on Mac | `/Users/brian/codeme/git-view` |
+| Windows SSH alias | `git-view-windows` |
+| Windows SSH host / user | `thinkpadbm` / `brian` |
+| Windows repository and build directory | `C:\codeme\git-view` |
+| Git origin on both machines | `https://github.com/tenacioustechie/git-view.git` |
+| Verified HEAD on both machines | `e69eedae94ff6d4f961dbdf048b4133f60f53e82` |
+
+The SSH alias selects the machine/account. The remote working directory is a separate build setting, recorded here; SSH and Git do not automatically synchronize checkouts that share a remote. Use `git -C C:/codeme/git-view ...` for remote Git commands. Remote build scripts must explicitly set their working directory to `C:\codeme\git-view` and fail if that directory cannot be opened. Do not use a global SSH `RemoteCommand` to select the directory, because automation also needs to run other commands and transfer files.
+
+The Mac is the source-editing workspace. The coordinator owns Windows synchronization and build/test commands; the UI/Git workers do not independently edit or switch the Windows checkout. Before each Windows test checkpoint, check its working state and synchronize an identified source revision. Use local checkpoint commits and a Git bundle transferred over SSH to avoid publishing unfinished work to origin. On Windows, fetch the bundle and use a dedicated build branch; preserve unrelated local changes and use a separate worktree if needed. Record the tested commit and artifact paths. Keep native dependencies and build outputs on their own platform.
+
+Only committed content travels in a Git bundle: include the intended source/docs changes in the checkpoint, and do not claim Windows tested uncommitted Mac edits. No checkout synchronization, commits, dependency installation, or application implementation was performed by the setup verification.
+
 ## Preflight while the user is available
+
+Follow [Development machine setup](../Dev-Machine-Setup.md) for the install steps and Mac-to-Windows SSH checks before starting implementation.
 
 | Check | Current evidence | Next action when implementation starts |
 | --- | --- | --- |
 | Stack | Tauri/Rust/TypeScript accepted | Use React/Vite unless corrected |
-| Rust | Not found in PATH or default install locations | Install via supported toolchain setup with any required runtime permission |
+| Mac Rust | Rust/Cargo 1.98.1 installed at `/opt/homebrew/opt/rustup/bin`; absent from this session's PATH | Export the rustup bin directory into PATH and verify native compilation |
 | Node / pnpm | Node 22.22.0 / pnpm 9.12.0 available | Check compatibility with selected packages; pin working versions |
 | Apple build tools | Command Line Tools path available | Compile the minimal app before parallel feature work |
 | Downloads | Session network is restricted | Resolve real dependency-download permission prompts during scaffold |
 | GUI launch | May require runtime permission | Run a minimal native smoke test before leaving it unattended |
-| Repository | Empty, no commits | Preserve planning docs; coordinator owns any initial commit/checkpoint |
-| Windows/Linux CI | No configured remote/runner established | Add workflow files; report unexecuted platform checks honestly |
+| Repository | Both checkouts share origin and HEAD; local setup docs have uncommitted changes | Preserve those changes; coordinator owns source checkpoints and synchronization |
+| Windows | SSH key login and checkout verified; Rust/Cargo 1.98.1 available; Node/pnpm not found through SSH | Install or expose Node/pnpm for the SSH account, verify linker/WebView2, then run native builds |
+| Linux CI | No Linux machine or executed runner established | Add workflow files; report unexecuted platform checks honestly |
 
 Do not change the user's global agent settings, disable sandbox protections, or assume permission for protected installations. If a prerequisite is blocked, continue independent UI/contracts/docs work and record the precise blocker. Mocked UI progress is not a completed native Git application.
 
@@ -95,7 +117,14 @@ Read `docs/PROJECT_FILES.md`, `docs/PRODUCT.md`, and `docs/CONTRACTS.md`. Own `s
 ```text
 Build Git View in this workspace using the plans in README.md and docs/.
 Read DECISIONS, PRODUCT, PROJECT_FILES, ARCHITECTURE, GIT_ENGINE,
-CONTRACTS, OVERNIGHT, and ACCEPTANCE before assigning work.
+CONTRACTS, OVERNIGHT, ACCEPTANCE, and Dev-Machine-Setup.md before assigning work.
+
+The Mac workspace is /Users/brian/codeme/git-view.
+The Windows SSH alias is git-view-windows and its checkout is
+C:\codeme\git-view. Use Windows for native compilation and tests.
+Resolve the recorded PATH/dependency issues first. The coordinator owns
+local checkpoint commits and transferring Git bundles to Windows; preserve
+existing changes and record exactly which revision each platform tests.
 
 Use one coordinator and up to three subagents with the file ownership
 in OVERNIGHT.md. Scaffold and freeze shared contracts before concurrent
@@ -104,7 +133,10 @@ edits. Keep the agreed Tauri/Rust/TypeScript stack; React is the default UI.
 The first integration gate is a real JSON project dashboard and Pull all
 that skips dirty repositories and reports each outcome. Complete M1,
 including the single-repository DAG and commit workflow, before M2 stretch
-features. Test Git mutations only in disposable fixtures with local remotes.
+features. Both squash-merge (M2) and combining existing commits (M3) remain
+required for the full product; continue through these milestones as the
+session permits and report any unfinished work. Test Git mutations only
+in disposable fixtures with local remotes.
 
 Continue implementing and integrating without stopping at a plan. Follow
 actual runtime permissions for installs/downloads/GUI access; resolve setup

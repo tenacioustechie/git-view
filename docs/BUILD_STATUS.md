@@ -1,5 +1,63 @@
 # Build status
 
+## 2026-09-23: Windows source build and install helper
+
+`scripts/windows-build.ps1` now resolves an ordinary checkout from its own
+location, installs locked dependencies by default, builds the x64 NSIS package,
+and reports the built executable, installer, and SHA-256. `-Check` adds the full
+frontend and Rust gates plus release CLI and visible native-window checks;
+`-Install` performs a silent current-user installation under
+`%LOCALAPPDATA%\Git View`; `-Launch` opens the built or installed executable;
+and `-SkipDeps` speeds up repeat builds. The script refuses to build while a
+`git-view` process is running so Windows file locking and single-instance
+forwarding cannot invalidate the result.
+
+PowerShell parsing and `-Help` pass on macOS PowerShell and the designated
+Windows 11 x64 host. The script was copied into that host's ignored `.tools`
+directory and executed normally with `-File` against its existing `d9af4e6`
+checkout. Both `-SkipDeps` and the no-option locked-dependency path built the
+release executable and NSIS installer successfully and reported SHA-256 values.
+The Windows source checkout was not synchronized to the newer working-tree CSS
+change for this script-only validation. `-Check`, `-Install`, and `-Launch` were
+not exercised, so this gate did not replace or open the user's installed app;
+the earlier `d9af4e6` Windows full checks, native acceptance, and isolated
+installer smoke remain the current evidence for those underlying operations.
+
+## 2026-09-23: macOS source build helper
+
+`scripts/macos-build.sh` now provides one macOS entry point for locked dependency
+installation, an unsigned `.app` build, optional full frontend/Rust and packaged
+smoke checks, optional replacement of `/Applications/Git View.app`, and optional
+launch. The install step stages the new bundle in `/Applications`, moves an
+existing copy aside, and restores it if final placement fails. It refuses to
+replace the application while a `git-view` process is running and does not use
+`sudo`.
+
+Shell syntax, help output, and unknown-option rejection pass. A real
+`scripts/macos-build.sh --skip-deps` run built the application successfully.
+`scripts/macos-build.sh --check --skip-deps` passed typecheck, lint, 114 frontend
+tests, 171 Rust tests with one opt-in performance case ignored, formatting,
+strict all-target Clippy, and the release bundle build. Its sandboxed packaged
+startup step exited during macOS application registration; the exact
+`scripts/release-smoke.py` command rerun with GUI launch access passed CLI,
+invalid-argument, repository startup, and unsaved-discovery startup checks. The
+optional `--install` and `--open` mutations were not exercised, so the existing
+application in `/Applications` was not changed by this verification.
+
+## 2026-09-23: historical commit selection highlight
+
+A working-tree UI change based on repository HEAD `59f0c2f` fixes the history
+row selection background being overridden by the row's transparent background.
+The selected commit now retains the same accent-tinted background used by other
+selected repository controls and adds an inset accent edge in both the DAG and
+filtered history results. The existing `aria-pressed` state drives the visual
+selection and remains available to assistive technology.
+
+`pnpm typecheck`, `pnpm lint`, `pnpm test`, and `pnpm build` pass. The frontend
+suite remains 114 passing tests. This CSS change has not yet been included in a
+new native package or repeated macOS/Windows native acceptance run; the current
+artifacts below remain the `d9af4e6` packages.
+
 ## 2026-09-23: guided linear rebase complete on tested platforms
 
 Source checkpoint `d9af4e65d99647280409f0f78c76aeeaac31df18`, based on A4

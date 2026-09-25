@@ -175,7 +175,7 @@ A committed workflow is not a passed job. A compiled binary is not an installer 
 
 ## Commands to establish in the scaffold
 
-The scaffold provides `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm build`, `pnpm tauri dev`, and `pnpm tauri build`. Rust checks use `cargo fmt --manifest-path src-tauri/Cargo.toml -- --check`, `cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings`, and `cargo test --manifest-path src-tauri/Cargo.toml --locked`. Native and platform scripts are under `scripts/`; exact executed commands are recorded in Build status.
+The scaffold provides `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm build`, `pnpm tauri dev`, and `pnpm tauri build`. Rust checks use `cargo fmt --manifest-path src-tauri/Cargo.toml -- --check`, `cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings`, and `cargo test --manifest-path src-tauri/Cargo.toml --locked`. `scripts/macos-build.sh` wraps the macOS source checks, release build, packaged smoke check, optional `/Applications` installation, and optional launch. `scripts/windows-build.ps1` provides the equivalent Windows checks, NSIS build, per-user installation, and launch. Other native and platform scripts are under `scripts/`; exact executed commands are recorded in Build status.
 
 Run the checks appropriate to each slice, then the full required gate once integrated. Repeat only for new changes, failures, or unresolved risks. Do not claim all checks passed when a command was unavailable, skipped, or only run against mocks.
 

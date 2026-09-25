@@ -39,16 +39,29 @@ Extract the macOS archive and open **Git View.app**, or run the Windows installe
 and launch the installed app. These packages are unsigned; macOS notarization is
 also outstanding. Linux and Intel Mac execution have not been verified.
 
-To build from this repository, first follow [Development machine setup](../Dev-Machine-Setup.md),
-then run from the checkout:
+To build or install from this repository, follow the
+[Build and installation guide](BUILD_GUIDE.md). For a development session, run
+from the checkout:
 
 ```sh
 pnpm install --frozen-lockfile
 pnpm tauri dev
 ```
 
-For a release build, use `pnpm tauri build`. The local launcher uses a release
-executable when available, otherwise a debug executable:
+The build guide contains the full source checks, platform package commands,
+output paths, installation steps, and current GitHub Actions behavior. The local
+launcher uses a release executable when available, otherwise a debug executable:
+
+```sh
+scripts/macos-build.sh --skip-deps --open
+scripts/macos-build.sh --check --install --open
+```
+
+The first command rebuilds and opens the macOS app from the checkout. The second
+runs the full checks, replaces `/Applications/Git View.app`, and opens the
+installed copy. Quit Git View before replacing the installed application.
+
+After building, the local launcher accepts repository and group arguments:
 
 ```sh
 scripts/git-view .
@@ -58,6 +71,17 @@ scripts/git-view group --scan ~/code --depth 3
 ```
 
 On Windows, use `scripts\git-view.cmd` in place of `scripts/git-view`, for example:
+
+```powershell
+.\scripts\windows-build.ps1 -SkipDeps -Launch
+.\scripts\windows-build.ps1 -Check -Install -Launch
+```
+
+The first command rebuilds and opens the Windows executable from the checkout.
+The second runs the full checks, installs to `%LOCALAPPDATA%\Git View`, and opens
+the installed copy. Quit Git View before building or replacing it.
+
+After building, use the launcher with repository and group arguments:
 
 ```powershell
 .\scripts\git-view.cmd repo C:\codeme\api
