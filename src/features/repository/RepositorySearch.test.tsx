@@ -37,6 +37,7 @@ function search(text: string, field: 'message' | 'author' | 'oid' = 'message') {
 describe('repository history search (mocked IPC)', () => {
   it('submits literal field/query only on request, omits DAG edges and opens actual commit/file details', async () => {
     const view = render(<RepositoryView repository={repository} />);
+    fireEvent.click(screen.getByRole("button", { name: "History" }));
     await screen.findByRole('button', { name: /Merge feature/ });
     fireEvent.change(screen.getByLabelText('History search query'), { target: { value: '[a.b]' } });
     expect(api.searchHistory).not.toHaveBeenCalled();
@@ -53,6 +54,7 @@ describe('repository history search (mocked IPC)', () => {
   it('pages only the active query snapshot and scope; clear restores ordinary history', async () => {
     vi.mocked(api.searchHistory).mockResolvedValueOnce({ ...page, commits: [page.commits[0]], nextCursor: 'older-results' }).mockResolvedValueOnce({ ...page, commits: [page.commits[1]] });
     const view = render(<RepositoryView repository={repository} />);
+    fireEvent.click(screen.getByRole("button", { name: "History" }));
     fireEvent.click(await screen.findByRole('button', { name: 'main' }));
     search('Author@example.invalid', 'author');
     fireEvent.click(await screen.findByRole('button', { name: 'Load more results' }));
@@ -68,6 +70,7 @@ describe('repository history search (mocked IPC)', () => {
     let completeOld!: (value: HistoryPage) => void;
     vi.mocked(api.searchHistory).mockImplementation((_id, query) => query.text === 'old' ? new Promise(resolve => { completeOld = resolve; }) : Promise.resolve({ ...page, commits: [match('c'.repeat(40), 'New result')] }));
     render(<RepositoryView repository={repository} />);
+    fireEvent.click(screen.getByRole("button", { name: "History" }));
     await screen.findByRole('button', { name: 'main' });
     search('old');
     await waitFor(() => expect(api.searchHistory).toHaveBeenCalled());
@@ -83,6 +86,7 @@ describe('repository history search (mocked IPC)', () => {
     let completePage!: (value: HistoryPage) => void;
     vi.mocked(api.searchHistory).mockResolvedValueOnce({ ...page, commits: [page.commits[0]], nextCursor: 'next' }).mockImplementationOnce(() => new Promise(resolve => { completePage = resolve; }));
     render(<RepositoryView repository={repository} />);
+    fireEvent.click(screen.getByRole("button", { name: "History" }));
     search('find');
     fireEvent.click(await screen.findByRole('button', { name: 'Load more results' }));
     await waitFor(() => expect(api.searchHistory).toHaveBeenCalledTimes(2));
@@ -95,6 +99,7 @@ describe('repository history search (mocked IPC)', () => {
   it('shows explicit empty results, backend errors and invalid OID guidance', async () => {
     vi.mocked(api.searchHistory).mockResolvedValueOnce({ ...page, commits: [] }).mockRejectedValueOnce(new Error('Query exceeds 512 UTF-8 bytes'));
     render(<RepositoryView repository={repository} />);
+    fireEvent.click(screen.getByRole("button", { name: "History" }));
     search('abcdef', 'oid');
     expect(await screen.findByText('No commits match this search.')).toBeTruthy();
     expect(api.searchHistory).toHaveBeenLastCalledWith(repository.repositoryId, { field: 'oid', text: 'abcdef' }, null);
@@ -122,14 +127,16 @@ describe('repository history search (mocked IPC)', () => {
     dialog.remove();
     search('literal');
     await screen.findByRole('button', { name: /Matched newer/ });
-    fireEvent.keyDown(draft, { key: 'Escape' });
+    fireEvent.keyDown(screen.getByRole('button', { name: 'History' }), { key: 'Escape' });
     expect(screen.getByLabelText('Search results')).toBeTruthy();
     fireEvent.keyDown(input, { key: 'Escape' });
     await screen.findByRole('button', { name: /Merge feature/ });
+    fireEvent.click(screen.getByRole('button', { name: /^Changes / }));
     expect((screen.getByLabelText('Commit message') as HTMLTextAreaElement).value).toBe('Keep working draft');
   });
   it('clears unsubmitted query text without discarding normal history or leaving loading stuck', async () => {
     render(<RepositoryView repository={repository} />);
+    fireEvent.click(screen.getByRole("button", { name: "History" }));
     await screen.findByRole('button', { name: /Merge feature/ });
     const input = screen.getByLabelText('History search query');
     fireEvent.change(input, { target: { value: 'unsubmitted query' } });
@@ -142,6 +149,7 @@ describe('repository history search (mocked IPC)', () => {
   });
   it('selects real filtered commits with history navigation keys', async () => {
     render(<RepositoryView repository={repository} />);
+    fireEvent.click(screen.getByRole("button", { name: "History" }));
     search('matched');
     await screen.findByRole('button', { name: /Matched newer/ });
     const results = screen.getByLabelText('Search results');

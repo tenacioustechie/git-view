@@ -35,6 +35,90 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 describe('repository workflows (mocked IPC)', () => {
+  it('opens the requested branch form from Changes without planning a Git mutation', async () => {
+    render(<RepositoryView repository={repository} />);
+    await screen.findByRole('button', { name: 'Stage' });
+    fireEvent.click(screen.getByRole('button', { name: 'Branch actions' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Create branch…' }));
+    const control = screen.getByText('Create branch').closest('details')!;
+    expect(control.open).toBe(true);
+    expect(document.activeElement).toBe(control.querySelector('summary'));
+    expect(screen.getByRole('button', { name: 'History' }).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.queryByRole('region', { name: 'Branch actions' })).toBeNull();
+    expect(api.planAction).not.toHaveBeenCalled();
+  });
+  it('keeps push destination drafts across dismissal and still requires confirmation', async () => {
+    render(<RepositoryView repository={repository} />);
+    await waitFor(() => expect((screen.getByRole('button', { name: 'Fetch' }) as HTMLButtonElement).disabled).toBe(false));
+    const trigger = screen.getByRole('button', { name: 'Push…' });
+    fireEvent.click(trigger);
+    const input = within(screen.getByRole('region', { name: 'Push…' })).getByLabelText('Destination ref');
+    fireEvent.change(input, { target: { value: 'refs/heads/reviewed-topic' } });
+    fireEvent.keyDown(input, { key: 'Escape' });
+    expect(document.activeElement).toBe(trigger);
+    fireEvent.click(trigger);
+    expect((screen.getByLabelText('Destination ref') as HTMLInputElement).value).toBe('refs/heads/reviewed-topic');
+    fireEvent.click(screen.getByRole('button', { name: 'Preview push' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(api.planAction).toHaveBeenCalledWith(repository.repositoryId, { kind: 'push', statusSnapshotId: repository.status.snapshotId, remoteId: 'remote-token', destinationRef: 'refs/heads/reviewed-topic', setUpstream: false });
+    expect(screen.queryByRole('region', { name: 'Push…' })).toBeNull();
+    expect(api.runAction).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    expect(api.runAction).not.toHaveBeenCalled();
+  });
+  it('opens in Changes, selects only the inspected context, and retains the draft across workspaces', async () => {
+    render(<RepositoryView repository={repository} />);
+    const rows = await screen.findAllByRole('button', { name: file.displayPath });
+    expect(screen.queryByRole('region', { name: 'History' })).toBeNull();
+    fireEvent.click(rows[1]);
+    expect(rows[1].getAttribute('aria-pressed')).toBe('true');
+    expect(rows[0].getAttribute('aria-pressed')).toBe('false');
+    expect(api.planAction).not.toHaveBeenCalled();
+    expect(within(screen.getByLabelText('Change preview')).getByLabelText('File diff')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Commit message'), { target: { value: 'Keep across views' } });
+    fireEvent.click(screen.getByRole('button', { name: 'History' }));
+    expect(screen.queryByLabelText('Filter changed files')).toBeNull();
+    expect(screen.getByRole('region', { name: 'History' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /^Changes / }));
+    expect((screen.getByLabelText('Commit message') as HTMLTextAreaElement).value).toBe('Keep across views');
+    expect(screen.queryByLabelText('File diff')).toBeNull();
+  });
+  it('stages only filtered files using the current snapshot and opaque IDs', async () => {
+    vi.mocked(api.getChanges).mockResolvedValue({ snapshotId: 'filtered-snapshot', files: [
+      { ...file, fileId: 'a', displayPath: 'src/a.ts', indexStatus: '.' },
+      { ...file, fileId: 'b', displayPath: 'src/b.ts', indexStatus: '.' },
+      { ...file, fileId: 'c', displayPath: 'docs/readme.md', indexStatus: '.' },
+    ] });
+    render(<RepositoryView repository={repository} />);
+    await screen.findByRole('button', { name: 'Stage all (3)' });
+    fireEvent.change(screen.getByLabelText('Filter changed files'), { target: { value: 'src/' } });
+    expect(screen.queryByRole('button', { name: 'docs/readme.md' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Stage visible (2)' }));
+    await waitFor(() => expect(api.planAction).toHaveBeenCalledWith(repository.repositoryId, { kind: 'stage', snapshotId: 'filtered-snapshot', fileIds: ['a', 'b'] }));
+  });
+  it('navigates file previews with the keyboard without staging and skips collapsed groups', async () => {
+    render(<RepositoryView repository={repository} />);
+    const rows = await screen.findAllByRole('button', { name: file.displayPath });
+    rows[0].focus();
+    fireEvent.keyDown(rows[0], { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(rows[1]);
+    expect(rows[1].getAttribute('aria-pressed')).toBe('true');
+    rows[0].closest('details')!.open = false;
+    fireEvent.keyDown(rows[1], { key: 'Home' });
+    expect(document.activeElement).toBe(rows[1]);
+    expect(api.planAction).not.toHaveBeenCalled();
+  });
+  it('keeps conflict resolution explicit and prevents group staging during unknown operations', async () => {
+    repository.status = { ...repository.status, operationContext: { kind: 'cherryPick', stopReason: 'unknown', sourceOids: [], sourceRef: null, originalHead: null, targetBranch: null, reason: 'Review interrupted operation.', canContinue: false, canAbort: false, canSkip: false } };
+    vi.mocked(api.getStatus).mockResolvedValue(repository.status);
+    vi.mocked(api.getChanges).mockResolvedValue({ snapshotId: 'guarded', files: [file, { ...file, fileId: 'conflict', displayPath: 'conflict.txt', conflicted: true }] });
+    render(<RepositoryView repository={repository} />);
+    const stage = await screen.findByRole('button', { name: 'Stage all (1)' });
+    expect((stage as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Stage resolution' }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(stage);
+    expect(api.planAction).not.toHaveBeenCalled();
+  });
   it('treats porcelain dot status as unchanged and keeps index/worktree lists separate', async () => {
     vi.mocked(api.getChanges).mockResolvedValue({ snapshotId: 'changes', files: [
       { ...file, fileId: 'staged-only', displayPath: 'staged.txt', worktreeStatus: '.' },
@@ -87,21 +171,49 @@ describe('repository workflows (mocked IPC)', () => {
   it('rejects a new page from another history snapshot', async () => {
     vi.mocked(api.getHistory).mockResolvedValueOnce(fixtures.history).mockResolvedValueOnce({ ...fixtures.historyNext, snapshotId: 'different' });
     render(<RepositoryView repository={repository} />);
+    fireEvent.click(screen.getByRole('button', { name: 'History' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Load older commits' }));
     expect(await screen.findByRole('alert')).toHaveProperty('textContent', expect.stringContaining('History changed'));
     expect(api.getHistory).toHaveBeenLastCalledWith(repository.repositoryId, null, 'history', 'page-2');
   });
   it('inspects a merge against the explicitly selected parent', async () => {
     render(<RepositoryView repository={repository} />);
+    fireEvent.click(screen.getByRole('button', { name: 'History' }));
     fireEvent.click(await screen.findByRole('button', { name: /Merge feature/ }));
     const parents = await screen.findByLabelText('Compare with parent');
     fireEvent.change(parents, { target: { value: fixtures.mergeCommit.parents[1] } });
     await waitFor(() => expect(api.getCommit).toHaveBeenLastCalledWith(repository.repositoryId, fixtures.mergeCommit.oid, fixtures.mergeCommit.parents[1]));
   });
+  it('uses exact historical file tokens and clears the file filter and preview on parent changes', async () => {
+    const historical = { ...file, fileId: 'history-file', displayPath: 'src/first.ts', indexStatus: null, worktreeStatus: null };
+    vi.mocked(api.getCommit).mockResolvedValueOnce({ ...fixtures.mergeCommit, snapshotId: 'parent-one', files: [historical] })
+      .mockResolvedValueOnce({ ...fixtures.mergeCommit, snapshotId: 'parent-two', selectedParent: fixtures.mergeCommit.parents[1], files: [{ ...historical, fileId: 'second-file', displayPath: 'src/second.ts' }] });
+    render(<RepositoryView repository={repository} />);
+    fireEvent.click(screen.getByRole('button', { name: 'History' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Merge feature/ }));
+    fireEvent.click(await screen.findByRole('button', { name: historical.displayPath }));
+    await waitFor(() => expect(api.getDiff).toHaveBeenLastCalledWith({ repositoryId: repository.repositoryId, snapshotId: 'parent-one', fileId: 'history-file', context: 'commit' }));
+    expect(screen.getByRole('button', { name: historical.displayPath }).getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(screen.getByRole('button', { name: 'Hide details' }));
+    expect(screen.queryByRole('button', { name: 'Cherry-pick commit' })).toBeNull();
+    expect(screen.getByLabelText('File diff')).toBeTruthy();
+    expect(screen.getByLabelText('Compare with parent')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Show details' }));
+    expect(screen.getByRole('button', { name: 'Cherry-pick commit' })).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Filter commit files'), { target: { value: 'first' } });
+    fireEvent.change(screen.getByLabelText('Compare with parent'), { target: { value: fixtures.mergeCommit.parents[1] } });
+    await screen.findByRole('button', { name: 'src/second.ts' });
+    expect(screen.queryByLabelText('File diff')).toBeNull();
+    expect((screen.getByLabelText('Filter commit files') as HTMLInputElement).value).toBe('');
+    fireEvent.click(screen.getByRole('button', { name: 'src/second.ts' }));
+    await waitFor(() => expect(api.getDiff).toHaveBeenLastCalledWith({ repositoryId: repository.repositoryId, snapshotId: 'parent-two', fileId: 'second-file', context: 'commit' }));
+    expect(api.planAction).not.toHaveBeenCalled();
+  });
   it('previews separate ordinary merge and squash merge actions with source and target', async () => {
     vi.mocked(api.listRefs).mockResolvedValue([{ fullName: 'refs/heads/feature', label: 'feature', oid: 'feature-tip', kind: 'local' }]);
     vi.mocked(api.planAction).mockResolvedValue({ kind: 'eligible', planId: 'merge-plan', expiresAt: '2030-01-01T00:00:00Z', summary: 'Merge feature-tip into main-tip', destination: 'refs/heads/main' });
     render(<RepositoryView repository={repository} />);
+    fireEvent.click(screen.getByRole('button', { name: 'History' }));
     fireEvent.click(screen.getByText('Merge branches'));
     await within(screen.getByLabelText('Merge source branch')).findByRole('option', { name: 'feature' });
     fireEvent.change(screen.getByLabelText('Merge source branch'), { target: { value: 'refs/heads/feature' } });
@@ -157,6 +269,7 @@ describe('repository workflows (mocked IPC)', () => {
     vi.mocked(api.getHistory).mockResolvedValue({ ...fixtures.history, commits: fixtures.history.commits.map(commit => ({ ...commit, parents: [commit.parents[0]] })) });
     vi.mocked(api.planAction).mockResolvedValue({ kind: 'blocked', reason: 'Branch changed after selection', error: null });
     render(<RepositoryView repository={repository} />);
+    fireEvent.click(screen.getByRole('button', { name: 'More repository actions' }));
     fireEvent.click(screen.getByRole('button', { name: 'Combine commits…' }));
     fireEvent.change(await screen.findByLabelText('Combined commit message'), { target: { value: 'Retain rejected combine message' } });
     fireEvent.click(await screen.findByRole('button', { name: 'Preview combine commits' }));
@@ -170,6 +283,7 @@ describe('repository workflows (mocked IPC)', () => {
     vi.mocked(api.getHistory).mockResolvedValue({ ...fixtures.history, commits: fixtures.history.commits.map(commit => ({ ...commit, parents: [commit.parents[0]] })) });
     vi.mocked(api.runAction).mockResolvedValue({ ...fixtures.failedAction, repositoryId: repository.repositoryId, action: 'combineCommits' });
     render(<RepositoryView repository={repository} />);
+    fireEvent.click(screen.getByRole('button', { name: 'More repository actions' }));
     fireEvent.click(screen.getByRole('button', { name: 'Combine commits…' }));
     fireEvent.change(await screen.findByLabelText('Combined commit message'), { target: { value: 'Retain failed combine message' } });
     fireEvent.click(await screen.findByRole('button', { name: 'Preview combine commits' }));
@@ -178,6 +292,7 @@ describe('repository workflows (mocked IPC)', () => {
     fireEvent.click(within(preview).getByRole('button', { name: 'Run combineCommits' }));
     await screen.findAllByText(/Hook rejected commit/);
     fireEvent.click(screen.getByRole('button', { name: 'Close combine' }));
+    fireEvent.click(screen.getByRole('button', { name: 'More repository actions' }));
     fireEvent.click(screen.getByRole('button', { name: 'Combine commits…' }));
     expect(((await screen.findByLabelText('Combined commit message')) as HTMLTextAreaElement).value).toBe('Retain failed combine message');
   });

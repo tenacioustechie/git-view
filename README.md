@@ -3,6 +3,14 @@
 A lightweight desktop Git client built with Tauri, Rust, TypeScript, and React. Launch directly into one repository or a saved JSON group from the command line.
 
 **Using the app:** start with the [User guide](docs/USER_GUIDE.md).
+The current source opens repositories in **Changes**, with a file list, dedicated
+diff preview, and commit composer. Choose **History** for the graph and branch
+controls. **Workspace** holds opening/discovery actions; **Recent** reopens the
+last 20 repositories/projects and remembers them across app restarts. The current-branch menu
+opens branch workflows; **More (…)** holds Combine commits. History includes a
+filterable commit-file browser and Show/Hide details; Changes and History diffs
+have line-number gutters and full-row change colours. These design passes
+are not yet in the collected native packages.
 See [Feature status](docs/FEATURE_STATUS.md) for what is implemented and what remains.
 Future user-facing changes must update both documents in the same change; see
 [Repository instructions](AGENTS.md).

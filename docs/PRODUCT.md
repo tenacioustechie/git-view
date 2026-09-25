@@ -1,8 +1,19 @@
 # Product and user experience
 
+This document is the product plan, including work not yet implemented. See
+[Feature status](FEATURE_STATUS.md) for the completion inventory and the
+[User guide](USER_GUIDE.md) for current app behavior.
+
 ## Outcome
 
 Git View should make two everyday tasks quick: understand one repository's history and changes, and see which repositories in a project need attention. Opening a repository from a group must preserve the group's filters, selection, and scroll position when returning.
+
+User clarification on 21 September 2026: simple operations happen in both terminal
+and visual tools. Complex merges, rebase, and unclear repository state are key
+reasons to use a visual client. Prioritize understandable source/target context,
+operation state, conflict progress, and next-step/recovery guidance when extending
+workflows. Confirmed next-stage sequencing and scope are in the
+[next-stage plan](NEXT_STAGE.md).
 
 ## Feature milestones
 
@@ -37,9 +48,28 @@ Reserve `repo` and `group` as subcommands; ambiguous path names work through `gi
 
 Use one app process and one primary window initially. A new CLI launch focuses that window and selects the requested repository/group. Keep commit drafts per repository when switching. If a modal requires a response, queue the incoming navigation request. Retain initial launch requests until the UI acknowledges them. An unreadable/invalid project file or invalid explicit repository path must show an actionable error, not silently open an unrelated repository. Cold-start CLI parse/path errors use a nonzero exit; forwarded requests report delivery at the CLI and any later open failure in the GUI.
 
-GUI opening provides Open repository, recent repositories/groups, and Add group. Supply a working local launcher during M1; installed PATH integration for each platform is part of packaging acceptance.
+GUI opening uses Workspace for repositories/projects and discovery, with an
+adjacent Recent dropdown for up to 20 successful opens, newest first. Recent
+stores names, kinds, and returned absolute paths locally in webview storage;
+reopening uses the normal backend open and navigation guards. Failed opens retain
+the current workspace, and Clear recent removes the list only. These controls
+are implemented in the working tree; see Build status for verification. Supply
+a working local launcher during M1; installed PATH integration for each platform
+is part of packaging acceptance.
 
 ## Repository screen
+
+Design direction updated 24 September 2026: separate **Changes** and **History**
+workspaces. The first working-tree implementation opens in Changes, placing a
+filterable file list and commit composer beside a dedicated diff pane. History
+retains the branch controls, graph, and commit details pictured below. The second
+pass consolidates opening actions under Workspace, keeps remote operations in
+a single-row toolbar, adds branch-menu navigation to reviewed forms, moves
+Stashes to workspace navigation, and puts history tools under More. The third
+pass adds a filterable historical file browser, independent diff scrolling,
+Show/Hide details, and numbered, full-row-coloured unified diffs. See [Feature status](FEATURE_STATUS.md) for
+implemented scope and [Build status](BUILD_STATUS.md) for verification; this
+working-tree redesign is not yet in the collected native packages.
 
 ```text
 ┌ Repository / group ▾ ── branch ▾ ───────── Fetch  Pull  Push  More ┐
@@ -57,7 +87,17 @@ Resizable panels; minimum useful desktop window approximately 1000×680. Narrowe
 
 Selecting a commit shows full OID, message, author/committer and dates, ordered parents, and changed files. Merge diffs say which parent is being compared and offer a parent selector. Root commits show changes against an empty tree. Binary and truncated diffs have explicit states. Files and messages render as text.
 
-The pinned Working changes row opens Staged and Changes lists plus a commit form. A file can be in both lists. M1 stages or unstages entire files, shows untracked files as new content, and commits only staged changes. Retain the draft after hook, signing, or identity failure. For normal commits require staged content and a nonblank message; an ordinary merge awaiting completion may need a commit even without an index-to-HEAD diff.
+The Changes navigation control, or the pinned Working changes row in History,
+opens the Changes workspace. Its Staged, Unstaged, Untracked, and conditional
+Conflicted groups share a separate diff pane; the commit composer sits outside
+file-list scrolling. A file can be in both Staged and Unstaged. File selection
+only previews content; staging is explicit. Group stage/unstage actions state
+whether they affect all files or only filter matches, and exclude conflicts.
+M1 stages or unstages entire files, shows untracked files as new content, and
+commits only staged changes. Retain the draft across workspace navigation and
+after hook, signing, or identity failure. For normal commits require staged
+content and a nonblank message; an ordinary merge awaiting completion may need
+a commit even without an index-to-HEAD diff.
 
 Show detached/unborn HEAD, missing upstream, conflict, and in-progress operations persistently. Disable incompatible actions with a reason. Provide branch create/switch with an explicit target; stale branch selections must be revalidated by the backend.
 

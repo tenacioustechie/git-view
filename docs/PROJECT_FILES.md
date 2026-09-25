@@ -1,6 +1,6 @@
 # Repository group project files
 
-The user wants a project file that lists repositories. Use ordinary JSON, with a suggested filename of `<name>.git-view.json`. The project file is the source of truth for membership; private app settings remember recently opened projects and view preferences.
+The user wants a project file that lists repositories. Use ordinary JSON, with a suggested filename of `<name>.git-view.json`. The project file is the source of truth for membership. The Recent menu remembers opened repositories and projects in local webview storage; other view preferences are retained only within the session. See the [User guide](USER_GUIDE.md) and [Feature status](FEATURE_STATUS.md).
 
 ## Version 1
 

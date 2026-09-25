@@ -32,6 +32,7 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 async function selectSource() {
+  fireEvent.click(screen.getByRole('button', { name: 'History' }));
   fireEvent.click(await screen.findByRole('button', { name: /Cherry source/ }));
   return screen.findByRole('button', { name: 'Cherry-pick commit' });
 }
@@ -45,6 +46,7 @@ function stopped(stopReason: OperationContext['stopReason'], files = [file]) {
 describe('cherry-pick and operation guidance (mocked IPC)', () => {
   it('previews the selected source against actual target despite a different read-only scope', async () => {
     render(<RepositoryView repository={repository} />);
+    fireEvent.click(screen.getByRole('button', { name: 'History' }));
     fireEvent.click(await screen.findByRole('button', { name: 'source' }));
     expect(api.planAction).not.toHaveBeenCalled();
     fireEvent.click(await selectSource());

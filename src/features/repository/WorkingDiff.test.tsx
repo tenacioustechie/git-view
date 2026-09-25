@@ -80,7 +80,7 @@ describe('working hunk actions (mocked IPC)', () => {
     fireEvent.click(within(screen.getByLabelText('Hunk 1')).getByRole('button', { name: 'Stage hunk' }));
     if (change === 'context') fireEvent.click(screen.getAllByRole('button', { name: file.displayPath })[0]);
     else if (change === 'refresh') fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
-    else fireEvent.click(screen.getByRole('button', { name: /Working changes .*staged/ }));
+    else fireEvent.click(screen.getByRole('button', { name: /^Changes / }));
     await act(async () => finish({ kind: 'eligible', planId: 'obsolete', expiresAt: '', summary: 'Old hunk', destination: null }));
     await screen.findByText(/Repository view changed while preparing hunk action/);
     expect(api.runAction).not.toHaveBeenCalled();

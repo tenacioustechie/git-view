@@ -40,7 +40,7 @@ async function until<T>(description: string, read: () => T | false | null | unde
 }
 async function button(name: string | RegExp, scope: ParentNode = document) {
   return until(`enabled button ${String(name)}`, () => [...scope.querySelectorAll<HTMLButtonElement>('button')].find(node => {
-    const text = node.textContent?.trim() ?? '';
+    const text = node.getAttribute('aria-label') ?? node.textContent?.trim() ?? '';
     return visible(node) && !node.disabled && (typeof name === 'string' ? text === name : name.test(text));
   }));
 }
@@ -55,7 +55,7 @@ async function region(label: string) {
   return until(`visible ${label}`, () => [...document.querySelectorAll<HTMLElement>('[aria-label]')].find(node => node.getAttribute('aria-label') === label && visible(node)));
 }
 async function stageFile(path: string) {
-  const row = await until(`stageable row ${path}`, () => [...document.querySelectorAll<HTMLButtonElement>('.repository-details .file-list button[title]')]
+  const row = await until(`stageable row ${path}`, () => [...document.querySelectorAll<HTMLButtonElement>('.changes-workspace .file-list .file-preview')]
     .find(node => node.title === path && visible(node) && [...(node.closest('li')?.querySelectorAll('button') ?? [])].some(action => action.textContent === 'Stage'))?.closest('li'));
   await click('Stage', row);
 }
@@ -70,7 +70,7 @@ async function refreshRepository() {
   await click('Refresh', repository);
   await until('repository refresh complete', () => {
     const buttons = [...repository.querySelectorAll<HTMLButtonElement>('button')];
-    return buttons.some(node => node.textContent === 'Refresh' && !node.disabled);
+    return buttons.some(node => node.getAttribute('aria-label') === 'Refresh' && !node.disabled);
   });
 }
 async function assertDiffVisible() {
@@ -182,6 +182,7 @@ async function runMergeSmoke(checks: string[]) {
     const before = await api.getStatus(fixture.repositoryId);
     assert(before.head.kind === 'branch' && !before.dirty && before.gitState === 'idle', `${scenario} fixture must start clean on an attached branch`);
     const originalHead = before.head.oid;
+    await click('History', repository);
     const source = (await api.listRefs(fixture.repositoryId)).find(ref => ref.fullName === fixture.sourceRef);
     assert(source, `${scenario} source branch must exist`);
     const squash = scenario === 'squash' || scenario === 'squashConflict';
@@ -284,6 +285,7 @@ async function runCombineSmoke(checks: string[]) {
     assert(opened.status.head.kind === 'branch' && !opened.status.dirty, 'Combine fixture must be clean on a branch');
     const originalHead = opened.status.head.oid;
     assert(fixture.commitOids.length === 2 && fixture.commitOids[0] === originalHead, 'Fixture must identify the latest two commits');
+    await click('More repository actions', repository);
     await click('Combine commits…', repository);
     const panel = await region('Combine commits');
     const count = await until('combine count', () => panel.querySelector<HTMLInputElement>('[aria-label="Newest commits to combine"]'));
@@ -368,6 +370,7 @@ async function runPerformanceSmoke(checks: string[]) {
     const node = document.querySelector<HTMLElement>('.repository-screen');
     return node?.querySelector('.repository-title strong')?.getAttribute('title') === opened.displayPath ? node : null;
   });
+  await click('History', repository);
   const scroll = await until('first 200 history rows laid out', () => {
     const node = repository.querySelector<HTMLDivElement>('.history-list');
     const layout = node?.firstElementChild as HTMLElement | null;
@@ -502,6 +505,7 @@ async function runHistorySearchSmoke(checks: string[]) {
     const screen = document.querySelector<HTMLElement>('.repository-screen');
     return screen?.querySelector('.repository-title strong')?.getAttribute('title') === fixture.path ? screen : null;
   });
+  await click('History', repository);
   const scope = await until('main branch scope available', () => [...repository.querySelectorAll<HTMLButtonElement>('.repository-refs button')].find(node => node.title === fixture.scopeRef));
   scope.click();
   await until('main branch scope selected', () => scope.classList.contains('selected'));
@@ -552,6 +556,7 @@ async function runRemoteCheckoutSmoke(checks: string[]) {
       return screen?.querySelector('.repository-title strong')?.getAttribute('title') === fixture.path ? screen : null;
     });
     const initial = await api.getStatus(fixture.repositoryId);
+    await click('History', repository);
     const scope = await until('remote history scope available', () => [...repository.querySelectorAll<HTMLButtonElement>('.repository-refs button')].find(node => node.title === fixture.sourceRef));
     scope.click();
     await until('remote scope selected', () => scope.classList.contains('selected'));
@@ -623,6 +628,7 @@ async function runCherryPickSmoke(checks: string[]) {
   for (const scenario of ['success', 'conflictAbort', 'empty', 'conflictContinue'] as const) {
     const fixture = await invoke<CherryFixture>('native_smoke_cherry_pick_case', { scenario });
     const repository = await cherryRepository(fixture);
+    await click('History', repository);
     const scope = await until('cherry-pick source scope', () => [...repository.querySelectorAll<HTMLButtonElement>('.repository-refs button')].find(node => node.title === fixture.sourceRef));
     scope.click();
     await until('cherry-pick source scope selected', () => scope.classList.contains('selected'));
@@ -688,7 +694,7 @@ async function finishCherryPickReload(marker: CherryReloadMarker, checks: string
   assert(continuation?.disabled && (await api.getStatus(fixture.repositoryId)).counts.conflicted > 0, 'External file edits alone must not enable Continue before Git index staging');
   for (const path of fixture.conflictPaths) {
     const staged = await operation('stage', fixture.repositoryId, async () => {
-      const row = await until(`cherry-pick conflict file ${path}`, () => [...repository.querySelectorAll<HTMLButtonElement>('.repository-details .file-list button[title]')].find(node => node.title === path)?.closest('li'));
+      const row = await until(`cherry-pick conflict file ${path}`, () => [...repository.querySelectorAll<HTMLButtonElement>('.changes-workspace .file-preview')].find(node => node.title === path)?.closest('li'));
       await click('Stage resolution', row);
     });
     assert(staged.state === 'succeeded', `Cherry-pick resolution stage failed: ${staged.error?.message ?? staged.reason}`);
@@ -838,7 +844,7 @@ async function runHunkSmoke(checks: string[]) {
   const repository = await stashRepository(fixture.path);
   const inspectFile = async (context: 'staged' | 'unstaged') => {
     const file = await until(`${context} hunk fixture file`, () => {
-      const heading = [...repository.querySelectorAll<HTMLElement>('.repository-details h3')].find(node => node.textContent?.startsWith(`${context === 'staged' ? 'Staged' : 'Unstaged'} (`));
+      const heading = [...repository.querySelectorAll<HTMLElement>('.change-group summary')].find(node => node.textContent?.startsWith(`${context === 'staged' ? 'Staged' : 'Unstaged'} `));
       return [...(heading?.parentElement?.querySelectorAll<HTMLButtonElement>('.file-list button[title]') ?? [])].find(node => node.title === fixture.filePath);
     });
     file.click();
@@ -896,6 +902,7 @@ async function runRebaseSmoke(checks: string[]) {
     const fixture = await invoke<RebaseFixture>('native_smoke_rebase_case', { scenario });
     const repository = await stashRepository(fixture.path);
     const controls = await until('rebase branch controls', () => repository.querySelector<HTMLDetailsElement>('.rebase-controls'));
+    await click('History', repository);
     controls.open = true;
     controls.dispatchEvent(new Event('toggle'));
     const select = await until('rebase target selector', () => controls.querySelector<HTMLSelectElement>('select[aria-label="Rebase onto branch"]'));
@@ -920,7 +927,7 @@ async function runRebaseSmoke(checks: string[]) {
         await invoke('native_smoke_resolve_conflicts', { repositoryId: fixture.repositoryId });
         await refreshRepository();
         const staged = await operation('stage', fixture.repositoryId, async () => {
-          const row = await until('rebase conflict row', () => [...repository.querySelectorAll<HTMLButtonElement>('.repository-details .file-list button[title]')].find(node => node.title === 'conflict.txt')?.closest('li'));
+          const row = await until('rebase conflict row', () => [...repository.querySelectorAll<HTMLButtonElement>('.changes-workspace .file-preview')].find(node => node.title === 'conflict.txt')?.closest('li'));
           await click('Stage resolution', row);
         });
         assert(staged.state === 'succeeded', 'Rebase resolution stage must succeed');
@@ -1068,6 +1075,7 @@ export async function runNativeSmoke(): Promise<void> {
     if (!selectedMember.checked) selectedMember.click();
     await click(cleanMember.label, cleanRow);
     const repository = await region('Repository');
+    await click('History', repository);
     await until('virtualized history renders', () => repository.querySelector<HTMLButtonElement>('.history-row'));
     await checkHistoryKeyboardAndAlignment(repository, checks);
     await checkNativeAppearance(checks);
@@ -1115,9 +1123,9 @@ export async function runNativeSmoke(): Promise<void> {
     checks.push('DOM inspected working patch, staged one of two files, committed only selected file, and cleared successful draft');
 
     await refreshRepository();
-    const pushPanel = repository.querySelector<HTMLDetailsElement>('.push-controls');
+    const pushPanel = repository.querySelector<HTMLElement>('.push-controls');
     assert(pushPanel, 'Push controls must be present');
-    if (!pushPanel.open) pushPanel.querySelector('summary')!.click();
+    await click('Push…', repository);
     const push = await operation('push', clean.repositoryId, async () => {
       await click('Preview push', pushPanel);
       const dialog = await until('push review modal', () => repository.querySelector<HTMLDialogElement>('dialog[open]'));

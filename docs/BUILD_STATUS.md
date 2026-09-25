@@ -1,5 +1,145 @@
 # Build status
 
+## 2026-09-24: Persistent Recent dropdown
+
+Working-tree frontend changes based on `59f0c2f` add Recent beside Workspace.
+It records up to 20 successful repository/project opens, newest first, using
+backend-returned paths and project names. GUI/CLI intake, project creation,
+dashboard member opens and Save as share this history. Same-kind/path entries
+deduplicate; background project refreshes update names without promoting entries
+or restoring cleared history. Recent reopening uses the existing backend open
+commands with modal/native-dialog and stale-navigation guards. Failures retain
+the active workspace and prior list; Clear recent only forgets the list.
+
+Persistence uses the versioned local webview storage key
+`git-view.recent-workspaces.v1`, storing only kind/name/path. Invalid records are
+filtered and input size/list length are bounded; inaccessible storage is reported
+without preventing session use. React reference guidance from Context7 informed
+pure state updates with persistence in a separate effect. Browser and packaged
+origins have separate histories; this is not a synced preference store.
+
+macOS checks pass: `pnpm typecheck`, `pnpm lint`, `pnpm test` (**142 tests across
+16 files**, ten added for Recent), `pnpm tauri build --bundles app`, and release
+CLI `--help`/`--version`. Tests cover remount persistence, canonical returned
+paths, mixed project/repository reopening, order/deduplication/cap, Windows/UNC
+path formats, Save as and refresh behavior, clear-without-closing, failed/stale
+opens, modal guards, StrictMode, malformed/oversized storage, and storage errors.
+
+Chrome checks with actual components and isolated fixture storage verified menu
+placement at wide and 800×580 viewports, type/path labels, keyboard reopening,
+ordering after page reload, and Clear recent/empty state. The temporary preview
+and its history were removed, and browser sizing restored. Guide/inventory,
+README, and product plan match final controls; 91 local documentation links and
+anchors and `git diff --check` pass.
+
+The unsigned macOS bundle is updated at
+`src-tauri/target/release/bundle/macos/Git View.app`. The installed application
+and collected `d9af4e6` artifacts remain unchanged. Packaged-app restart
+persistence, native workflow acceptance, Windows native/build acceptance and
+dark-theme appearance were not rerun for this feature. Nothing was committed,
+pushed, installed or published.
+
+## 2026-09-24: History file browser and diff — third design pass
+
+Working-tree frontend changes based on `59f0c2f` add a compact historical file
+browser with status/path rows, current/previous-path filtering, selected-row
+highlighting, and arrow/Home/End navigation. The file list and diff scroll
+independently and switch from stacked to side-by-side based on inspector width.
+Show/Hide details frees preview space without hiding the parent comparison;
+Commit information reveals full identities and ID. New comparisons reset filters
+and preview selection, and new file selections reset the diff scroll position.
+
+The Changes/History patch renderer now has old/new line-number gutters and
+full-row addition/removal colours. Numbering is derived only for ordinary unified
+hunks, not metadata/combined headers; zero-length ranges and no-newline markers
+are covered. Patch source stays literal and unchanged, and opaque backend hunk
+tokens still exclusively determine mutation scope. Stash's existing raw-patch
+presentation is unchanged. Context7's React guidance informed key-based resets
+of the comparison-specific file browser.
+
+macOS gates: `pnpm typecheck`, `pnpm lint`, and `pnpm test` pass (**132 tests in
+15 files**). Eight added tests cover file filtering/navigation/empty states,
+line numbering/literal rendering, exact historical snapshot/file requests,
+parent-change resets, and hiding/restoring details without losing the preview.
+`pnpm tauri build --bundles app` builds the frontend and unsigned macOS bundle
+at `src-tauri/target/release/bundle/macos/Git View.app`; release CLI `--help` and
+`--version` pass. The installed app and collected `d9af4e6` packages are unchanged.
+
+Chrome layout checks using actual components and mutation-blocking fixture IPC
+cover light mode at 1298×1038, 1684×1038 and 800×580, including rename filtering,
+parent-change reset, independent scroll areas, details hiding, wide/stacked file
+navigation, and the shared Changes diff. The temporary preview was removed.
+Guides and inventory match final controls; local links/anchors and
+`git diff --check` pass. Native workflow acceptance, Windows build/acceptance,
+dark-theme appearance and complete screen-reader acceptance were not repeated;
+prior native results do not validate this frontend pass. No Git mutation backend
+or installed package was changed, and nothing was committed, pushed or published.
+
+## 2026-09-24: Toolbar and menus — second design pass
+
+Working-tree changes based on `59f0c2f`, following the Changes workspace pass,
+replace the opening-button row with a Workspace disclosure and group repository
+identity, current-branch actions, refresh, and remote operations in one compact
+toolbar. Branch commands open the existing History forms without mutating Git.
+Stashes moves beside Changes/History; More contains history search and Combine
+commits. Push retains its destination/upstream controls and reviewed plan flow.
+Shared disclosures support keyboard opening, command-arrow/Home/End navigation,
+outside-focus/click dismissal, Escape focus restoration, and retained form drafts.
+These are in-app controls; native operating-system menus remain future work.
+
+macOS checks passed: `pnpm typecheck`, `pnpm lint`, `pnpm test` (**124 passed**
+across 13 files), and `pnpm tauri build --bundles app` (including `pnpm build`).
+Six added tests cover disclosure focus/dismissal/draft retention, Workspace native
+picker routing, branch-menu form navigation, and Push draft/review/cancel behavior.
+The final release executable's `--help` and `--version` also pass.
+The unsigned app bundle is at `src-tauri/target/release/bundle/macos/Git View.app`;
+it contains both design passes. It has not replaced `/Applications/Git View.app`,
+and no new release/collected artifacts have been published.
+
+A Chrome preview of the actual components with fixture IPC was inspected in
+light mode at the default wide viewport and 800×580. The toolbar stays on one
+row, dropdowns remain within the viewport, branch commands reveal/focus their
+forms, and Push retains its draft after dismissal. Workspace and More layouts,
+command-arrow navigation, Escape focus restoration, and one-open-menu behavior
+were checked. The temporary mutation-blocking preview was removed after use.
+Guide/inventory/product/README descriptions were aligned with final controls;
+local documentation links/anchors and `git diff --check` passed. Native-smoke
+selectors were updated and typechecked, but native workflow acceptance, Windows
+build/acceptance, and dark-theme visual acceptance were not repeated for this
+pass. Earlier native results below do not validate this new UI.
+
+## 2026-09-24: Changes workspace — first design pass
+
+Working-tree frontend changes based on `59f0c2f` introduce separate Changes and
+History workspaces. Changes has compact status/path rows, explicit file selection,
+collapsible groups, a path filter, keyboard file navigation, section stage/unstage
+actions that name their filtered scope, an independent diff pane with a sticky
+file heading, and a commit composer outside file-list scrolling. Conflicts retain
+individual Stage resolution actions. Commit drafts remain owned by the repository
+across workspace navigation. The existing working-tree history highlight and
+unrelated documentation/build-helper edits are preserved.
+
+macOS frontend checks: `pnpm typecheck`, `pnpm lint`, `pnpm test` (**118 passed**),
+and `pnpm build`. Four additional integration tests cover workspace/draft
+navigation, selected staged versus unstaged context, filtered bulk file IDs,
+keyboard selection/collapsed groups, and unknown-operation mutation guards.
+Existing history/remote-checkout/cherry-pick tests now navigate through History.
+The affected guide steps were compared with final labels/actions, 85 local
+documentation links/anchors passed checks, and `git diff --check` passed.
+Native-smoke selectors/navigation have been updated and typechecked, but native
+smoke execution has not been repeated for this pass.
+
+A Chrome preview using the actual app/components and fixture IPC was inspected
+in light mode at 1684×1038 and the app's minimum 800×580 viewport. File selection,
+filter scope, History navigation, and commit-draft retention were exercised; the
+small-window composer was adjusted so the Commit button remains visible in the
+ordinary Changes view. The preview blocks Git mutations. This is browser layout
+evidence, not macOS webview/Windows native acceptance or dark-theme acceptance.
+
+The installed app and collected `d9af4e6` artifacts have not been replaced.
+Toolbar restructuring, historical file-browser layout, line-number gutters,
+multi-file selection, and remaining visual-system work are subsequent passes.
+
 ## 2026-09-23: Windows source build and install helper
 
 `scripts/windows-build.ps1` now resolves an ordinary checkout from its own

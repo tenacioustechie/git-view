@@ -6,6 +6,9 @@ import type { Project, RepositoryOpen } from '../api/types';
 import { GroupView } from '../features/groups/GroupView';
 import { DiscoveryView } from '../features/groups/DiscoveryView';
 import { RepositoryView } from '../features/repository/RepositoryView';
+import { ToolbarPopover } from './ToolbarPopover';
+import { Icon } from './Icon';
+import { useRecentWorkspaces, type RecentWorkspace } from './useRecentWorkspaces';
 import './app.css';
 
 type DiscoveryRoute = { key: string; root?: string; depth?: number };
@@ -19,14 +22,38 @@ export function App() {
   const [projectName, setProjectName] = useState('');
   const opening = useRef(false);
   const navigationVersion = useRef(0);
+  const { items: recent, warning: recentWarning, remember, clear: clearRecent } = useRecentWorkspaces();
   const acceptRepository = useCallback((repo: RepositoryOpen) => {
     navigationVersion.current++;
     setRepository(repo); setDiscovery(null); setError(null);
-  }, []);
+    remember({ kind: 'repository', path: repo.displayPath, name: repo.displayPath.split(/[\\/]/).filter(Boolean).pop() || repo.displayPath });
+  }, [remember]);
   const acceptProject = useCallback((next: Project) => {
     navigationVersion.current++;
     setProject(next); setRepository(null); setDiscovery(null); setError(null);
-  }, []);
+    remember({ kind: 'project', path: next.displayPath, name: next.name });
+  }, [remember]);
+  function projectChanged(next: Project) {
+    remember({ kind: 'project', path: next.displayPath, name: next.name }, next.displayPath === project?.displayPath);
+    setProject(next);
+  }
+  async function reopen(item: RecentWorkspace) {
+    if (busy || navigationBlocked() || document.querySelector('dialog[open]')) return;
+    const version = ++navigationVersion.current;
+    setBusy(true); setError(null);
+    const current = () => navigationVersion.current === version && !navigationBlocked() && !document.querySelector('dialog[open]');
+    try {
+      if (item.kind === 'repository') {
+        const next = await withNavigationBlock(() => api.openRepository(item.path));
+        if (current()) acceptRepository(next);
+      } else {
+        const next = await withNavigationBlock(() => api.openProject(item.path));
+        if (current()) acceptProject(next);
+      }
+    } catch (cause) {
+      if (current()) setError(`Could not reopen ${item.name}: ${errorMessage(cause)}. Use Workspace to locate it if it has moved.`);
+    } finally { setBusy(false); }
+  }
   function back() {
     navigationVersion.current++;
     setRepository(null); setDiscovery(null);
@@ -89,23 +116,37 @@ export function App() {
     <header className="app-header">
       <a href="#" onClick={e => { e.preventDefault(); back(); }} className="brand">Git View</a>
       <nav aria-label="Open workspace">
-        <button disabled={busy} onClick={() => void perform(async () => {
+        <ToolbarPopover name="Workspace" label={<>Workspace <Icon name="chevron" /></>} align="left" disabled={busy}>{close => <>
+        <p className="popover-caption">Open workspace</p>
+        <button disabled={busy} onClick={() => { close(); void perform(async () => {
           const path = await open({ directory: true, multiple: false, title: 'Open repository' });
           if (typeof path === 'string') acceptRepository(await api.openRepository(path));
-        })}>Open repository</button>
-        <button disabled={busy} onClick={() => void perform(async () => {
+        }); }}>Open repository</button>
+        <button disabled={busy} onClick={() => { close(); void perform(async () => {
           const path = await open({ multiple: false, title: 'Open project', filters: [{ name: 'Git View project', extensions: ['json'] }] });
           if (typeof path === 'string') acceptProject(await api.openProject(path));
-        })}>Open project</button>
-        <button disabled={busy} onClick={discover}>Discover repositories</button>
-        {project && repository && <button onClick={back}>Back to {project.name}</button>}
+        }); }}>Open project</button>
+        <div className="popover-separator" />
+        <button disabled={busy} onClick={() => { close(); discover(); }}>Discover repositories</button>
+        </>}</ToolbarPopover>
+        <ToolbarPopover name="Recent" label={<>Recent <Icon name="chevron" /></>} align="left" className="recent-workspaces" disabled={busy}>{close => <>
+          <p className="popover-caption">Recently opened</p>
+          {recentWarning && <p className="recent-notice" role="status">{recentWarning}</p>}
+          {!recent.length && <p className="recent-empty">No recent workspaces yet.<br />Open a repository or project to get started.</p>}
+          {recent.map(item => <button key={JSON.stringify([item.kind, item.path])} className="recent-item" title={item.path} aria-label={`Open ${item.kind} ${item.name}: ${item.path}`} disabled={busy} onClick={() => { close(); void reopen(item); }}>
+            <span className="recent-item-heading"><strong>{item.name}</strong><span className="recent-kind">{item.kind === 'project' ? 'Project' : 'Repository'}</span></span>
+            <span className="recent-path">{item.path}</span>
+          </button>)}
+          {recent.length > 0 && <><div className="popover-separator" /><button title="Forget this list only; no projects or repository files are deleted" onClick={() => { close(); clearRecent(); }}>Clear recent</button></>}
+        </>}</ToolbarPopover>
       </nav>
+      {project && repository && <button className="project-back" onClick={back}>Back to {project.name}</button>}
     </header>
     {error && <div className="app-error" role="alert">{error}<button aria-label="Dismiss error" onClick={() => setError(null)}>×</button></div>}
     {project && <div className="group-container" hidden={repository !== null || discovery !== null}>
-      <GroupView key={project.projectId} project={project} onOpenRepository={acceptRepository} onProjectChange={setProject} />
+      <GroupView key={project.projectId} project={project} onOpenRepository={acceptRepository} onProjectChange={projectChanged} />
     </div>}
-    {repository && !discovery && <RepositoryView repository={repository} onBack={project ? back : undefined} />}
+    {repository && !discovery && <RepositoryView repository={repository} />}
     {discovery && <DiscoveryView key={discovery.key} initialRoot={discovery.root} initialDepth={discovery.depth} onProjectCreated={acceptProject}
       onCancel={() => { navigationVersion.current++; setDiscovery(null); }} />}
     {!project && !repository && !discovery && <main className="welcome">

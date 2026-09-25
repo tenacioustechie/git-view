@@ -40,6 +40,7 @@ function select(branch = origin) { fireEvent.change(screen.getByLabelText('Remot
 describe('remote tracking checkout (mocked IPC)', () => {
   it('keeps scope read-only, selects exact remote, retains edited name and cancels without mutation', async () => {
     render(<RepositoryView repository={repository} />);
+    fireEvent.click(screen.getByRole("button", { name: "History" }));
     fireEvent.click(await screen.findByRole('button', { name: 'origin/feature/topic' }));
     expect(api.planAction).not.toHaveBeenCalled();
     expect(api.listRemoteBranches).not.toHaveBeenCalled();
@@ -61,6 +62,7 @@ describe('remote tracking checkout (mocked IPC)', () => {
   it('directs a local collision to separately reviewed local switching and preserves its existing tip', async () => {
     vi.mocked(api.listRefs).mockResolvedValue([{ fullName: origin.sourceRef, label: 'origin/feature/topic', oid: origin.sourceOid, kind: 'remote' }, { fullName: 'refs/heads/feature/topic', label: 'feature/topic', oid: 'c'.repeat(40), kind: 'local' }]);
     render(<RepositoryView repository={repository} />);
+    fireEvent.click(screen.getByRole("button", { name: "History" }));
     await openCheckout(); select();
     expect((screen.getByRole('button', { name: 'Preview checkout' }) as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByText(/already exists at/).textContent).toContain('c'.repeat(40));
@@ -74,6 +76,7 @@ describe('remote tracking checkout (mocked IPC)', () => {
     repository.status = { ...repository.status, dirty: mode === 'dirty', gitState: mode === 'dirty' ? 'idle' : mode };
     vi.mocked(api.getStatus).mockResolvedValue(repository.status);
     render(<RepositoryView repository={repository} />);
+    fireEvent.click(screen.getByRole("button", { name: "History" }));
     const panel = await openCheckout(); select();
     expect((screen.getByRole('button', { name: 'Preview checkout' }) as HTMLButtonElement).disabled).toBe(true);
     expect(panel.textContent).toContain(mode === 'dirty' ? 'clean index and working tree' : `Finish the ${mode === 'squashMerge' ? 'squash merge review' : mode} operation`);
@@ -82,9 +85,10 @@ describe('remote tracking checkout (mocked IPC)', () => {
   it('refreshes actual state after execution rejection while retaining branch name and commit draft', async () => {
     vi.mocked(api.runAction).mockRejectedValue(new Error('Post-checkout hook failed; inspect actual state'));
     render(<RepositoryView repository={repository} />);
+    fireEvent.change(await screen.findByLabelText('Commit message'), { target: { value: 'Retain this commit draft' } });
+    fireEvent.click(screen.getByRole("button", { name: "History" }));
     await openCheckout(); select(other);
     fireEvent.change(screen.getByLabelText('Local branch name'), { target: { value: 'custom/topic' } });
-    fireEvent.change(screen.getByLabelText('Commit message'), { target: { value: 'Retain this commit draft' } });
     fireEvent.click(screen.getByRole('button', { name: 'Preview checkout' }));
     const confirm = await screen.findByRole('button', { name: 'Create and switch' });
     vi.mocked(api.getStatus).mockResolvedValue({ ...repository.status, head: { kind: 'branch', name: 'custom/topic', oid: other.sourceOid }, upstream: { remote: 'other', ref: other.sourceRef, ahead: 0, behind: 0 } });
@@ -92,14 +96,17 @@ describe('remote tracking checkout (mocked IPC)', () => {
     await screen.findByText('Post-checkout hook failed; inspect actual state');
     expect(api.runAction).toHaveBeenCalledTimes(1);
     expect(api.getStatus).toHaveBeenCalledTimes(2);
-    expect(screen.getByText(/custom\/topic · Clean/).textContent).toContain(other.sourceRef);
-    expect((screen.getByLabelText('Commit message') as HTMLTextAreaElement).value).toBe('Retain this commit draft');
+    expect(screen.getByRole('button', { name: 'Branch actions' }).getAttribute('title')).toContain('custom/topic');
+    expect(screen.getByText(/^Clean ·/).textContent).toContain(other.sourceRef);
     expect((screen.getByLabelText('Local branch name') as HTMLInputElement).value).toBe('custom/topic');
+    fireEvent.click(screen.getByRole('button', { name: /^Changes / }));
+    expect((screen.getByLabelText('Commit message') as HTMLTextAreaElement).value).toBe('Retain this commit draft');
   });
   it('prevents duplicate previews and keeps the typed name after backend branch-name rejection', async () => {
     let finish!: (value: Awaited<ReturnType<typeof api.planAction>>) => void;
     vi.mocked(api.planAction).mockImplementation(() => new Promise(resolve => { finish = resolve; }));
     render(<RepositoryView repository={repository} />);
+    fireEvent.click(screen.getByRole("button", { name: "History" }));
     await openCheckout(); select();
     const name = screen.getByLabelText('Local branch name') as HTMLInputElement;
     fireEvent.change(name, { target: { value: 'invalid name' } });
@@ -117,6 +124,7 @@ describe('remote tracking checkout (mocked IPC)', () => {
     let complete!: (value: Awaited<ReturnType<typeof api.listRemoteBranches>>) => void;
     vi.mocked(api.listRemoteBranches).mockImplementationOnce(() => new Promise(resolve => { complete = resolve; })).mockResolvedValue({ targets: [other], issues: [{ sourceRef: origin.sourceRef, reason: 'Ambiguous configured fetch mapping' }] });
     render(<RepositoryView repository={repository} />);
+    fireEvent.click(screen.getByRole("button", { name: "History" }));
     await screen.findByRole('button', { name: 'origin/feature/topic' });
     const details = screen.getByText('Check out remote branch').closest('details')!;
     details.open = true; fireEvent(details, new Event('toggle'));
@@ -131,6 +139,7 @@ describe('remote tracking checkout (mocked IPC)', () => {
     let finish!: (value: Awaited<ReturnType<typeof api.planAction>>) => void;
     vi.mocked(api.planAction).mockImplementation(() => new Promise(resolve => { finish = resolve; }));
     render(<RepositoryView repository={repository} />);
+    fireEvent.click(screen.getByRole("button", { name: "History" }));
     await openCheckout(); select();
     fireEvent.click(screen.getByRole('button', { name: 'Preview checkout' }));
     fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
@@ -145,6 +154,7 @@ describe('remote tracking checkout (mocked IPC)', () => {
     vi.mocked(api.runAction).mockImplementation(() => new Promise(resolve => { finish = resolve; }));
     vi.mocked(api.searchHistory).mockResolvedValue({ ...fixtures.history, commits: [] });
     render(<RepositoryView repository={repository} />);
+    fireEvent.click(screen.getByRole("button", { name: "History" }));
     await openCheckout(); select();
     fireEvent.click(screen.getByRole('button', { name: 'Preview checkout' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Create and switch' }));

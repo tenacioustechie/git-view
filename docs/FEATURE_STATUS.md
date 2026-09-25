@@ -1,6 +1,7 @@
 # Feature status
 
-Reviewed 23 September 2026, including guided linear rebase at source checkpoint
+Reviewed 24 September 2026, including the workspace redesign and persistent Recent menu in the working tree
+based on `59f0c2f` and guided linear rebase at source checkpoint
 `d9af4e6` and the earlier A1–A4 workflows, against the
 [product plan](PRODUCT.md). This is the current completion inventory;
 [Build status](BUILD_STATUS.md) retains dated commands, results, and artifact evidence.
@@ -32,8 +33,8 @@ refer to the delivered runbook workflows on tested platforms.
 | Area | Implemented | Outstanding in the product plan |
 | --- | --- | --- |
 | Launch | Repository/nested-path CLI, JSON project CLI, discovery CLI, help/version, local wrappers, one-window forwarding with navigation guards | Installed PATH integration, further installation polish, additional windows, group templates |
-| History | Virtualized paged graph, parent continuity, refs, branch/tag scopes, message/body and author/email search, full/prefix commit-ID search, snapshot paging | Advanced revision-query UI |
-| Details | Full messages/identities/parents, parent-specific changed files, unified diffs, binary/truncation states | Side-by-side diffs, richer file navigation, blame and file history |
+| History | Virtualized paged graph, persistent selected-row highlight, parent continuity, refs, branch/tag scopes, message/body and author/email search, full/prefix commit-ID search, snapshot paging | Advanced revision-query UI |
+| Details | Full messages/identities/parents, parent-specific filterable file browser with keyboard selection, collapsible commit information, independently scrolling unified diffs with line numbers/full-row colours, binary/truncation states | Side-by-side diffs, blame and file history |
 | Working changes | Staged/unstaged/untracked/conflicted states, whole-file stage/unstage, supported complete text-hunk stage/unstage, staged-only commit, session draft retention, hook/signing failure handling; named stash creation/inspection, retained Apply, reviewed exact-entry Delete and recovery | Individual-line staging; expanded hunk support for excluded file types |
 | Remotes | Fetch, clean-only fast-forward pull, explicit normal single-repository push, optional upstream setup | Explicit batch push; hosting integrations only if requested |
 | Branches | Local create/switch with previews, explicit remote tracking checkout, ordinary merge, squash merge from local or remote refs, reviewed single non-merge cherry-pick; guided linear rebase onto an existing local or fetched remote branch with Continue, reviewed Skip, Abort, backup and stopped-state guidance | Merge-preserving or arbitrary interactive rebase; multi-commit and merge-commit cherry-pick excluded from A2 |
@@ -44,10 +45,35 @@ refer to the delivered runbook workflows on tested platforms.
 
 ## Interaction and persistence still outstanding
 
-- Recent repositories/projects and persisted view preferences are not implemented.
-  Group filters/selection and commit drafts are retained during the session only.
-- Repository panels have CSS resize support and adapt their widths, but the
-  planned narrow-window navigation collapse and details toggle are absent.
+- The first design pass implements separate Changes/History navigation, a
+  dedicated Changes diff pane, an independently scrolling file list and commit
+  composer, selected-file highlighting, status/path rows, filtering, keyboard
+  file navigation, and section-level stage/unstage with explicit filter scope.
+  This working-tree UI has frontend and browser-preview checks, not new native
+  package acceptance. Multi-file selection and broader visual polish remain
+  future design passes.
+- The second design pass adds a compact Workspace menu; a single-row repository
+  toolbar with branch-action navigation, icon Refresh, remote selector and
+  distinct Fetch/Pull/Push; Stashes navigation; and More for history search and
+  Combine commits. Menu dismissal, keyboard navigation/focus return, and retained
+  Push fields are implemented. Branch menu items open the existing reviewed
+  forms; native OS menus and a redesigned branch-management screen are future work.
+- The third design pass adds historical status/path rows, current/previous-path
+  filtering, selected-file highlighting and keyboard navigation, a responsive
+  file-list/diff split, Show/Hide details, and old/new line-number gutters with
+  full-row change colours for the shared diff renderer. Parent changes clear
+  stale previews/filters. Git mutation capabilities and preview limits are unchanged.
+- The Recent dropdown persists up to 20 successfully opened repositories/projects
+  in local webview storage, supports reopening and clearing, and preserves the
+  current view on failure. Background project refreshes do not reorder or restore
+  cleared entries; unavailable storage falls back to a session-only list with a
+  warning. Browser reload/component remount persistence is tested; packaged-app
+  restart persistence and Windows native acceptance remain unverified for this change.
+- Other persisted view preferences are not implemented. Group filters/selection
+  and commit drafts are retained during the session only.
+- Repository panels have CSS resize support and adapt their widths. Commit
+  details can be hidden to expand the preview; narrow-window navigation collapse
+  is still absent.
 - Group status reads run with bounded concurrency, but opening/refreshing returns
   a complete snapshot; progressive row delivery during slow reads is absent.
 - Repository refresh/search and history navigation shortcuts exist. Group-filter

@@ -9,6 +9,10 @@ import { Rebase } from './Rebase';
 import { OperationContext } from './OperationContext';
 import { Stashes } from './Stashes';
 import { WorkingDiff } from './WorkingDiff';
+import { ChangesWorkspace } from './ChangesWorkspace';
+import { CommitFiles } from './CommitFiles';
+import { ToolbarPopover } from '../../app/ToolbarPopover';
+import { Icon } from '../../app/Icon';
 import './repository.css';
 
 const drafts = new Map<string, string>();
@@ -40,6 +44,9 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
+  const [showCommitInfo, setShowCommitInfo] = useState(true);
+  const [workspace, setWorkspace] = useState<'changes' | 'history'>('changes');
+  const [focusSearch, setFocusSearch] = useState(false);
   const [details, setDetails] = useState<CommitDetails | null>(null);
   const [diff, setDiff] = useState<DiffResult | null>(null);
   const [diffRequest, updateDiffRequest] = useState<DiffRequest | null>(null);
@@ -72,6 +79,8 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
   const seenOperations = useRef(new Map<string, string>());
   const dialog = useRef<HTMLDialogElement>(null);
   const switchControls = useRef<HTMLDetailsElement>(null);
+  const branchSidebar = useRef<HTMLElement>(null);
+  const [branchPanel, setBranchPanel] = useState<string | null>(null);
   const executing = useRef(false);
   const planning = useRef(false);
   const active = busy || Boolean(status.activeOperationId) || operations.some(operation => !terminal(operation));
@@ -127,7 +136,7 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
     const onKey = (event: KeyboardEvent) => {
       if (document.querySelector('dialog[open]')) return;
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'f') {
-        event.preventDefault(); searchInput.current?.focus(); searchInput.current?.select();
+        event.preventDefault(); setWorkspace('history'); setShowCombine(false); setShowStashes(false); setDiffRequest(null); setFocusSearch(true);
       } else if (event.key === 'Escape' && (search || searchText) && (event.target === searchInput.current || (event.target instanceof HTMLElement && event.target.closest('.history-list')))) {
         event.preventDefault(); clearSearch();
       } else if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'r') {
@@ -137,7 +146,22 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
     window.addEventListener('focus', onFocus);
     window.addEventListener('keydown', onKey);
     return () => { window.removeEventListener('focus', onFocus); window.removeEventListener('keydown', onKey); };
-  }, [refresh, search, searchText, clearSearch]);
+  }, [refresh, search, searchText, clearSearch, setDiffRequest]);
+  useEffect(() => {
+    if (focusSearch && workspace === 'history') {
+      searchInput.current?.focus(); searchInput.current?.select(); setFocusSearch(false);
+    }
+  }, [focusSearch, workspace]);
+  useEffect(() => {
+    if (!branchPanel || workspace !== 'history') return;
+    const control = branchSidebar.current?.querySelector<HTMLDetailsElement>(branchPanel);
+    if (control) {
+      control.open = true;
+      control.querySelector('summary')?.focus();
+      control.scrollIntoView?.({ block: 'nearest' });
+    }
+    setBranchPanel(null);
+  }, [branchPanel, workspace]);
   useEffect(() => {
     const remote = remotes.find(item => item.id === remoteId);
     setDestination(remote?.destinationRef ?? (status.head.kind === 'branch' ? `refs/heads/${status.head.name}` : ''));
@@ -207,7 +231,7 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
     try {
       const operation = await api.runAction(plan.planId);
       if (action.kind === 'squashMerge' || action.kind === 'merge' || isCherryAction(action.kind) || isRebaseAction(action.kind)) {
-        detailGeneration.current++; setSelected(null); setDetails(null); setDiffRequest(null);
+        detailGeneration.current++; setSelected(null); setDetails(null); setDiffRequest(null); setWorkspace('changes');
       }
       seenOperations.current.set(operation.operationId, operation.state);
       setOperations(old => [...old.filter(item => item.operationId !== operation.operationId), operation]);
@@ -256,37 +280,83 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
     } catch (cause) { if (epoch === generation.current) setError(errorMessage(cause)); }
     finally { if (loadingPage.current === epoch) loadingPage.current = null; if (epoch === generation.current) setLoading(false); }
   };
-  const working = () => { detailGeneration.current++; setSelected(null); setDetails(null); setDiffRequest(null); setShowCombine(false); setShowStashes(false); };
+  const working = () => { detailGeneration.current++; setWorkspace('changes'); setSelected(null); setDetails(null); setDiffRequest(null); setShowCombine(false); setShowStashes(false); };
+  const browseHistory = () => {
+    if (workspace === 'history' && !showCombine && !showStashes) return;
+    detailGeneration.current++; setSelected(null); setDetails(null); setWorkspace('history'); setDiffRequest(null); setShowCombine(false); setShowStashes(false);
+  };
   const cancelPreview = () => { const refreshStashes = planned && isStashAction(planned.action.kind); setPlanned(null); if (refreshStashes) void currentRefresh.current(); };
   const headLabel = status.head.kind === 'detached' ? `Detached at ${status.head.oid.slice(0, 8)}` : `${status.head.name}${status.head.kind === 'unborn' ? ' (no commits)' : ''}`;
+  const repositoryName = repository.displayPath.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || repository.displayPath;
+  const statusSummary = `${status.dirty ? 'Working changes' : 'Clean'}${status.upstream ? ` · ↑${status.upstream.ahead ?? '?'} ↓${status.upstream.behind ?? '?'} ${status.upstream.ref}` : ' · No upstream'}`;
+  const openBranchPanel = (selector: string) => {
+    // Navigating to a form does not change history selection or Git state.
+    if (showCombine || showStashes) { detailGeneration.current++; setSelected(null); setDetails(null); }
+    setWorkspace('history'); setShowCombine(false); setShowStashes(false); setDiffRequest(null); setBranchPanel(selector);
+  };
+  const fileDiff = diffRequest ? <WorkingDiff request={diffRequest} displayPath={diffFileName} diff={diff} active={active || loading} blockedReason={operationReviewRequired ? 'Resolve the recorded Git operation context before staging or unstaging hunks.' : null} onAction={action => { void act(action); }} /> : null;
+  const composer = <form className="commit-form" onSubmit={event => { event.preventDefault(); void act({ kind: 'commit', statusSnapshotId: status.snapshotId, message: draft }); }}>
+    <label htmlFor="commit-message">Commit message</label><textarea id="commit-message" value={draft} placeholder="Describe the staged changes" onChange={event => { setDraft(event.target.value); drafts.set(id, event.target.value); }} rows={3} />
+    <small>Only staged content is committed. Draft kept for this session.</small>
+    {status.gitState === 'merge' && <small>Use Continue merge above to finish this merge.</small>}
+    {status.gitState === 'cherryPick' && <small>Use the cherry-pick controls above to continue, skip an empty result, or abort. This draft is retained separately.</small>}
+    {status.gitState === 'rebase' && <small>Use the rebase controls above to continue, skip, or abort. This draft is retained separately.</small>}
+    <button className="primary-action" type="submit" disabled={active || loading || !changes || operationReviewRequired || !['idle', 'squashMerge'].includes(status.gitState) || status.counts.staged === 0 || status.counts.conflicted > 0 || !draft.trim()}>Commit staged changes ({status.counts.staged})</button>
+  </form>;
 
   return <section className="repository-screen" aria-label="Repository">
     <header className="repository-toolbar">
       {onBack && <button onClick={onBack}>← Back</button>}
-      <div className="repository-title"><strong title={repository.displayPath}>{repository.displayPath}</strong><small>{headLabel} · {status.dirty ? 'Working changes' : 'Clean'}{status.upstream ? ` · ↑${status.upstream.ahead ?? '?'} ↓${status.upstream.behind ?? '?'} ${status.upstream.ref}` : ' · No upstream'}</small></div>
-      <button title="Refresh (⌘R / Ctrl+R)" disabled={loading} onClick={() => { void refresh(); }}>{loading ? 'Refreshing…' : 'Refresh'}</button>
-      <label>Remote <select aria-label="Remote" value={remoteId} onChange={event => setRemoteId(event.target.value)}><option value="">None</option>{remotes.map(remote => <option key={remote.id} value={remote.id}>{remote.name}</option>)}</select></label>
-      <button disabled={active || !remoteId} onClick={() => { void act({ kind: 'fetch', remoteId }, true); }}>Fetch</button>
-      <button disabled={active || operationReviewRequired} onClick={() => { void act({ kind: 'pull', statusSnapshotId: status.snapshotId }, true); }}>Pull</button>
-      <button onClick={() => { detailGeneration.current++; setShowCombine(true); setShowStashes(false); setDiffRequest(null); }}>Combine commits…</button>
-      <button onClick={() => { detailGeneration.current++; setShowStashes(true); setShowCombine(false); setDiffRequest(null); }}>Stashes</button>
-      <details className="push-controls"><summary>Push…</summary><div>
+      <div className="repository-title"><strong title={repository.displayPath}>{repositoryName}</strong><small title={statusSummary}>{statusSummary}</small></div>
+      <ToolbarPopover name="Branch actions" title={`Branch actions · ${headLabel}`} className="branch-actions" align="left" label={<><Icon name="branch" /><span className="branch-label">{headLabel}</span><Icon name="chevron" /></>}>{close => <>
+        <p className="popover-caption">Current branch · {headLabel}</p>
+        <button onClick={() => { close(); openBranchPanel('.switch-controls'); }}>Switch branch…</button>
+        <button onClick={() => { close(); openBranchPanel('.create-controls'); }}>Create branch…</button>
+        <button onClick={() => { close(); openBranchPanel('.remote-checkout'); }}>Check out remote branch…</button>
+        <div className="popover-separator" />
+        <button onClick={() => { close(); openBranchPanel('.merge-controls'); }}>Merge branches…</button>
+        <button onClick={() => { close(); openBranchPanel('.rebase-controls'); }}>Rebase branch…</button>
+      </>}</ToolbarPopover>
+      <div className="repository-remote-actions" role="group" aria-label="Remote actions">
+      <button className="refresh-action" aria-label={loading ? 'Refreshing…' : 'Refresh'} title="Refresh (⌘R / Ctrl+R)" disabled={loading} onClick={() => { void refresh(); }}><Icon name="refresh" /></button>
+      <select className="toolbar-remote" aria-label="Remote" title="Remote for Fetch and Push; Pull uses the current branch’s upstream" value={remoteId} onChange={event => setRemoteId(event.target.value)}><option value="">No remote</option>{remotes.map(remote => <option key={remote.id} value={remote.id}>{remote.name}</option>)}</select>
+      <button aria-label="Fetch" title="Fetch the selected remote" disabled={active || !remoteId} onClick={() => { void act({ kind: 'fetch', remoteId }, true); }}><Icon name="fetch" />Fetch</button>
+      <button aria-label="Pull" title={status.upstream ? `Pull from ${status.upstream.ref}; last known ${status.upstream.behind ?? 'unknown'} behind` : 'Review pull; no upstream configured'} disabled={active || operationReviewRequired} onClick={() => { void act({ kind: 'pull', statusSnapshotId: status.snapshotId }, true); }}><Icon name="pull" />Pull{status.upstream?.behind !== null && status.upstream?.behind !== undefined && status.upstream.behind > 0 && <span className="toolbar-count" aria-hidden="true">{status.upstream.behind}</span>}</button>
+      <ToolbarPopover name="Push…" className="push-controls" label={<><Icon name="push" />Push<Icon name="chevron" /></>}>{close => <>
+        <p className="popover-caption">Push to {remotes.find(remote => remote.id === remoteId)?.name ?? 'a remote'}</p>
         <label>Destination ref<input value={destination} onChange={event => setDestination(event.target.value)} placeholder="refs/heads/main" /></label>
         <label><input type="checkbox" checked={setUpstream} onChange={event => setSetUpstream(event.target.checked)} /> Set upstream</label>
-        <button disabled={active || operationReviewRequired || !remoteId || !destination} onClick={() => { void act({ kind: 'push', statusSnapshotId: status.snapshotId, remoteId, destinationRef: destination, setUpstream }, true); }}>Preview push</button>
-      </div></details>
+        <small>Review the destination before pushing.</small>
+        <button className="push-preview" disabled={active || operationReviewRequired || !remoteId || !destination} onClick={() => { close(); void act({ kind: 'push', statusSnapshotId: status.snapshotId, remoteId, destinationRef: destination, setUpstream }, true); }}>Preview push</button>
+      </>}</ToolbarPopover>
+      </div>
+      <ToolbarPopover name="More repository actions" className="repository-more" label={<Icon name="more" />}>{close => <>
+        <p className="popover-caption">History actions</p>
+        <button onClick={() => { close(); setWorkspace('history'); setShowCombine(false); setShowStashes(false); setDiffRequest(null); setFocusSearch(true); }}>Find in history…</button>
+        <button onClick={() => { close(); detailGeneration.current++; setWorkspace('history'); setShowCombine(true); setShowStashes(false); setDiffRequest(null); }}>Combine commits…</button>
+      </>}</ToolbarPopover>
     </header>
+    <nav className="repository-workspaces" aria-label="Repository workspace">
+      <button aria-pressed={workspace === 'changes'} onClick={working}>Changes <span className="file-count">{changes?.files.length ?? '…'}</span></button>
+      <button aria-pressed={workspace === 'history' && !showStashes} onClick={browseHistory}>History</button>
+      <button aria-pressed={workspace === 'history' && showStashes} onClick={() => { detailGeneration.current++; setWorkspace('history'); setShowStashes(true); setShowCombine(false); setDiffRequest(null); }}>Stashes</button>
+      <small>{workspace === 'changes' ? 'Review · stage · commit' : 'Browse commits and manage branches'}</small>
+    </nav>
     {error && <div role="alert" className="repository-error">{error}<button onClick={() => setError(null)} aria-label="Dismiss error">×</button></div>}
     <OperationContext status={status} files={changes?.files ?? null} active={active} onPlan={action => { void act(action, true); }} onReview={working} />
     {status.submoduleDirty && <div className="repository-notice">A submodule has working changes. Open the submodule separately to review it.</div>}
-    <div className="repository-panels">
-      <aside className="repository-refs">
+    {workspace === 'changes' && <ChangesWorkspace changes={changes} selection={diffRequest} disabled={active || loading}
+      blockedReason={operationReviewRequired ? 'Resolve the recorded Git operation context before staging or unstaging files.' : null}
+      onSelect={(file, context) => { if (changes) setDiffRequest({ repositoryId: id, snapshotId: changes.snapshotId, fileId: file.fileId, context }, file.displayPath); }}
+      onAction={action => { void act(action); }} composer={composer} diff={fileDiff} />}
+    <div className="repository-panels" hidden={workspace !== 'history'}>
+      <aside className="repository-refs" ref={branchSidebar}>
         <h2>History scope</h2><button className={scope === null ? 'selected' : ''} onClick={() => changeScope(null)}>All branches and tags</button>
         {(['local', 'remote', 'tag'] as const).map(kind => <div key={kind}><h3>{kind === 'local' ? 'Local branches' : kind === 'remote' ? 'Remote branches' : 'Tags'}</h3>{refs.filter(ref => ref.kind === kind).map(ref => <button title={ref.fullName} key={ref.fullName} className={scope === ref.fullName ? 'selected' : ''} onClick={() => changeScope(ref.fullName)}>{ref.label}</button>)}</div>)}
-        <details ref={switchControls}><summary>Switch branch</summary><label>Local branch<select value={branchTarget} onChange={event => setBranchTarget(event.target.value)}><option value="">Choose branch</option>{refs.filter(ref => ref.kind === 'local').map(ref => <option key={ref.fullName} value={ref.fullName}>{ref.label}</option>)}</select></label><button title={status.gitState !== 'idle' ? 'Finish the current Git operation before switching branches.' : undefined} disabled={active || status.gitState !== 'idle' || !branchTarget} onClick={() => { void act({ kind: 'switchBranch', statusSnapshotId: status.snapshotId, localRef: branchTarget }, true); }}>Preview switch</button></details>
+        <details className="switch-controls" ref={switchControls}><summary>Switch branch</summary><label>Local branch<select value={branchTarget} onChange={event => setBranchTarget(event.target.value)}><option value="">Choose branch</option>{refs.filter(ref => ref.kind === 'local').map(ref => <option key={ref.fullName} value={ref.fullName}>{ref.label}</option>)}</select></label><button title={status.gitState !== 'idle' ? 'Finish the current Git operation before switching branches.' : undefined} disabled={active || status.gitState !== 'idle' || !branchTarget} onClick={() => { void act({ kind: 'switchBranch', statusSnapshotId: status.snapshotId, localRef: branchTarget }, true); }}>Preview switch</button></details>
         <RemoteCheckout repositoryId={id} status={status} refs={refs} active={active} refreshVersion={refreshVersion} onPlan={action => { void act(action, true); }} onSwitch={localRef => { setBranchTarget(localRef); if (switchControls.current) { switchControls.current.open = true; switchControls.current.querySelector('select')?.focus(); } }} />
         <Rebase status={status} refs={refs} active={active} onPlan={(action, isCurrent) => { void act(action, true, isCurrent); }} />
-        <details><summary>Create branch</summary><label>Name<input value={branchName} onChange={event => setBranchName(event.target.value)} /></label><label><input type="checkbox" checked={switchNew} onChange={event => setSwitchNew(event.target.checked)} /> Switch after creating</label><button title={status.gitState !== 'idle' ? 'Finish the current Git operation before creating a branch.' : undefined} disabled={active || status.gitState !== 'idle' || !branchName || status.head.kind === 'unborn'} onClick={() => { if (status.head.kind !== 'unborn') void act({ kind: 'createBranch', statusSnapshotId: status.snapshotId, name: branchName, startOid: selected ?? status.head.oid, switchAfterCreate: switchNew }, true); }}>Preview create</button><small>Starts at {selected ? selected.slice(0, 8) : 'HEAD'}.</small></details>
+        <details className="create-controls"><summary>Create branch</summary><label>Name<input value={branchName} onChange={event => setBranchName(event.target.value)} /></label><label><input type="checkbox" checked={switchNew} onChange={event => setSwitchNew(event.target.checked)} /> Switch after creating</label><button title={status.gitState !== 'idle' ? 'Finish the current Git operation before creating a branch.' : undefined} disabled={active || status.gitState !== 'idle' || !branchName || status.head.kind === 'unborn'} onClick={() => { if (status.head.kind !== 'unborn') void act({ kind: 'createBranch', statusSnapshotId: status.snapshotId, name: branchName, startOid: selected ?? status.head.oid, switchAfterCreate: switchNew }, true); }}>Preview create</button><small>Starts at {selected ? selected.slice(0, 8) : 'HEAD'}.</small></details>
         <details className="merge-controls"><summary>Merge branches</summary>
           <label>Source branch<select aria-label="Merge source branch" value={mergeSource} onChange={event => setMergeSource(event.target.value)}><option value="">Choose source</option>{refs.filter(ref => (ref.kind === 'local' || ref.kind === 'remote') && (status.head.kind !== 'branch' || ref.fullName !== `refs/heads/${status.head.name}`)).map(ref => <option key={ref.fullName} value={ref.fullName}>{ref.label}</option>)}</select></label>
           <small>Target: {headLabel}. Start with a clean working tree.</small>
@@ -305,42 +375,25 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
         <button className={`working-entry ${selected === null ? 'selected' : ''}`} onClick={working}>Working changes <small>{status.counts.staged} staged · {status.counts.unstaged} unstaged · {status.counts.untracked} untracked · {status.counts.conflicted} conflicts</small></button>
         <HistoryGraph key={`${scope ?? ''}:${search ? `${search.field}:${search.text}` : 'history'}`} rows={graph} selected={selected} onSelect={oid => { void inspect(oid); }} loading={loading} failed={!history} searchResults={search !== null} more={Boolean(history?.nextCursor)} onMore={() => { void loadMore(); }} />
       </section>
-      <section className="repository-details" aria-label={showStashes ? 'Stash workspace' : showCombine ? 'History rewrite' : selected ? 'Commit details' : 'Working changes'}>
+      <section className={`repository-details${!showStashes && !showCombine ? ' commit-inspector' : ''}`} aria-label={showStashes ? 'Stash workspace' : showCombine ? 'History rewrite' : 'Commit details'}>
         {showStashes ? <Stashes repositoryId={id} status={status} files={changes?.files ?? []} active={active} refreshVersion={refreshVersion} onPlan={(action, isCurrent) => { void act(action, true, isCurrent); }} onClose={working} /> : showCombine ? <CombineCommits repositoryId={id} status={status} active={active} refreshVersion={refreshVersion} onPlan={action => { void act(action, true); }} onClose={working} /> : selected ? <>
-          <h2>Commit {selected.slice(0, 8)}</h2>
-          {!details ? <p>Loading commit…</p> : <>
+          {!details ? <p className="empty">Loading commit…</p> : <>
+            <div className="commit-inspector-heading"><h2 title={selected}>Commit {selected.slice(0, 8)}</h2><button aria-expanded={showCommitInfo} onClick={() => setShowCommitInfo(value => !value)}>{showCommitInfo ? 'Hide details' : 'Show details'}</button></div>
+            <div className="commit-overview" hidden={!showCommitInfo}>
+            <pre className="commit-message">{details.message}</pre>
+            <details className="commit-identities"><summary>Commit information</summary>
+            <dl className="commit-metadata"><dt>Author</dt><dd>{details.author.name} &lt;{details.author.email}&gt; · {details.author.at}</dd><dt>Committer</dt><dd>{details.committer.name} &lt;{details.committer.email}&gt; · {details.committer.at}</dd><dt>Commit</dt><dd>{details.oid}</dd></dl>
+            </details>
             <section className="cherry-pick-selection" aria-label="Cherry-pick selected commit">
               <p>Current target: {headLabel}{status.head.kind !== 'unborn' && ` at ${status.head.oid}`}. History scope does not change this target.</p>
               <p>{details.parents.length > 1 ? 'Merge commits are not supported by this single-commit cherry-pick workflow.' : status.head.kind !== 'branch' ? 'Switch to an existing local branch before cherry-picking.' : status.gitState !== 'idle' ? 'Finish the current Git operation before cherry-picking.' : status.dirty || status.submoduleDirty ? 'Cherry-pick requires a clean index and working tree, including untracked files and submodules.' : active ? 'Wait for the current repository operation to finish.' : 'Apply this commit’s changes to the current branch, preserving its message and author.'}</p>
               <button disabled={active || details.parents.length > 1 || status.head.kind !== 'branch' || status.gitState !== 'idle' || status.dirty || status.submoduleDirty} onClick={() => { void act({ kind: 'cherryPick', statusSnapshotId: status.snapshotId, sourceOid: details.oid }, true); }}>Cherry-pick commit</button>
             </section>
-            <pre className="commit-message">{details.message}</pre>
-            <dl className="commit-metadata"><dt>Author</dt><dd>{details.author.name} &lt;{details.author.email}&gt; · {details.author.at}</dd><dt>Committer</dt><dd>{details.committer.name} &lt;{details.committer.email}&gt; · {details.committer.at}</dd><dt>Commit</dt><dd>{details.oid}</dd></dl>
-            {details.parents.length > 0 ? <label>Compare with parent<select aria-label="Compare with parent" value={details.selectedParent ?? ''} onChange={event => { void inspect(details.oid, event.target.value); }}>{details.parents.map((parent, index) => <option key={parent} value={parent}>Parent {index + 1}: {parent}</option>)}</select></label> : <p>Root commit · compared with empty tree</p>}
-            <h3>Changed files ({details.files.length})</h3><ul className="file-list">{details.files.map(file => <li key={file.fileId}><button title={file.displayPath} onClick={() => setDiffRequest({ repositoryId: id, snapshotId: details.snapshotId, fileId: file.fileId, context: 'commit' }, file.displayPath)}>{file.changeKind} · {file.oldDisplayPath ? `${file.oldDisplayPath} → ` : ''}{file.displayPath}</button></li>)}</ul>
+            </div>
+            <div className="commit-comparison">{details.parents.length > 0 ? <label>Compare with parent<select aria-label="Compare with parent" value={details.selectedParent ?? ''} onChange={event => { void inspect(details.oid, event.target.value); }}>{details.parents.map((parent, index) => <option key={parent} value={parent}>Parent {index + 1}: {parent.slice(0, 8)}</option>)}</select></label> : <p>Root commit · compared with empty tree</p>}</div>
+            <CommitFiles key={details.snapshotId} files={details.files} selection={diffRequest} onSelect={file => setDiffRequest({ repositoryId: id, snapshotId: details.snapshotId, fileId: file.fileId, context: 'commit' }, file.displayPath)} diff={workspace === 'history' ? fileDiff : null} />
           </>}
-        </> : <>
-          <h2>Working changes</h2>
-          {!changes ? <p>Loading changes…</p> : <>
-            {(['staged', 'unstaged', 'untracked', 'conflicted'] as const).map(section => {
-              const files = changes.files.filter(file => section === 'conflicted' ? file.conflicted : !file.conflicted && (section === 'untracked' ? file.untracked : section === 'staged' ? hasChange(file.indexStatus) : hasChange(file.worktreeStatus) && !file.untracked));
-              return <div key={section}><h3>{section[0].toUpperCase() + section.slice(1)} ({files.length})</h3><ul className="file-list">{files.map(file => <li key={file.fileId}>
-                <button title={file.displayPath} onClick={() => setDiffRequest({ repositoryId: id, snapshotId: changes.snapshotId, fileId: file.fileId, context: section === 'staged' ? 'staged' : 'unstaged' }, file.displayPath)}>{file.oldDisplayPath ? `${file.oldDisplayPath} → ` : ''}{file.displayPath}{file.submodule ? ' (submodule)' : ''}</button>
-                <button title={operationReviewRequired ? 'Resolve the recorded Git operation context before staging or unstaging files.' : undefined} disabled={active || operationReviewRequired} onClick={() => { void act({ kind: section === 'staged' ? 'unstage' : 'stage', snapshotId: changes.snapshotId, fileIds: [file.fileId] }); }}>{section === 'staged' ? 'Unstage' : file.conflicted ? 'Stage resolution' : 'Stage'}</button>
-              </li>)}</ul></div>;
-            })}
-            {!changes.files.length && <p className="empty">Working tree clean.</p>}
-            <form className="commit-form" onSubmit={event => { event.preventDefault(); void act({ kind: 'commit', statusSnapshotId: status.snapshotId, message: draft }); }}>
-              <label htmlFor="commit-message">Commit message</label><textarea id="commit-message" value={draft} placeholder="Describe the staged changes" onChange={event => { setDraft(event.target.value); drafts.set(id, event.target.value); }} rows={4} />
-              <small>Only staged content is committed. Drafts stay with this repository while the app is open.</small>
-              {status.gitState === 'merge' && <small>Use Continue merge above to finish this merge.</small>}
-              {status.gitState === 'cherryPick' && <small>Use the cherry-pick controls above to continue, skip an empty result, or abort. This draft is retained separately.</small>}
-              {status.gitState === 'rebase' && <small>Use the rebase controls above to continue, skip, or abort. This draft is retained separately.</small>}
-              <button type="submit" disabled={active || operationReviewRequired || !['idle', 'squashMerge'].includes(status.gitState) || status.counts.staged === 0 || status.counts.conflicted > 0 || !draft.trim()}>Commit staged changes ({status.counts.staged})</button>
-            </form>
-          </>}
-        </>}
-        {diffRequest && <WorkingDiff request={diffRequest} displayPath={diffFileName} diff={diff} active={active || loading} blockedReason={operationReviewRequired ? 'Resolve the recorded Git operation context before staging or unstaging hunks.' : null} onAction={action => { void act(action); }} />}
+        </> : <div className="diff-empty"><h2>Select a commit</h2><p>Inspect its message and changed files, or return to Changes to prepare your next commit.</p></div>}
       </section>
     </div>
     <details className="repository-activity"><summary>Activity · {operations.length ? `${operations[operations.length - 1].action}: ${operations[operations.length - 1].state}` : 'No operations this session'}</summary><ol>{operations.slice(-30).reverse().map(operation => <li key={operation.operationId}><strong>{operation.action}: {operation.state}</strong>{operation.reason && ` · ${operation.reason}`}{operation.error && <span role="alert"> · {operation.error.message}</span>}{operation.outcomeUncertain && ' · Outcome uncertain. Refresh and inspect the repository before retrying.'}{operation.outputTruncated && ' · Operation output truncated.'}</li>)}</ol></details>

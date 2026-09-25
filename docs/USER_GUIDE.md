@@ -1,8 +1,10 @@
 # Git View user guide
 
-Reviewed 23 September 2026 for version 0.1.0, including the rebase controls at
-source checkpoint `d9af4e6`, verified and packaged on macOS arm64 and Windows
-11 x64. See [Build status](BUILD_STATUS.md) for exact evidence and checksums.
+Reviewed 24 September 2026 for version 0.1.0, including the workspace redesign and persistent Recent menu
+in the working tree based on `59f0c2f`. The latest collected native packages
+remain rebase checkpoint `d9af4e6` on macOS arm64 and Windows 11 x64; they do not
+include this workspace redesign. See [Build status](BUILD_STATUS.md) for exact
+evidence and checksums.
 This guide describes implemented behavior. See [Feature status](FEATURE_STATUS.md)
 for the remaining roadmap and [Build status](BUILD_STATUS.md) for tested versions,
 packages, and platform limitations.
@@ -96,9 +98,50 @@ launching an older release executable.
 
 ## Open a repository
 
-Choose **Open repository** and select a repository folder or a folder inside it.
+Choose **Workspace → Open repository** and select a repository folder or a folder inside it.
 The app finds the containing worktree. Existing linked worktrees can also be
 opened. Opening reads local state; it does not fetch or pull.
+
+The compact **Workspace** menu also contains **Open project** for a saved JSON
+project and **Discover repositories**. When visiting a project member, **Back to
+the project name** at the top right returns to its dashboard. The **Git View**
+link retains its welcome/dashboard behavior.
+
+The **Recent** dropdown beside Workspace lists the 20 most recently opened
+repositories and projects, newest first. Each entry shows its name, kind, and
+path (hover for the full path). Choose an entry to reopen it without a picker.
+Successful GUI and CLI opens, newly created projects, project **Save as**, and
+repositories opened from a project dashboard are remembered. Opening the same
+kind/path again moves it to the top; background refreshes do not reorder the list.
+Discovery folders are not listed until a project is saved and opened.
+
+Recent items are saved locally in the app webview's storage and survive ordinary
+app restarts. Development-browser and packaged-app lists are separate. No file
+contents, Git credentials, or snapshots are stored in this list, and it is not
+synced. **Clear recent** forgets only the list; it does not delete files or close
+the current workspace. A failed reopen leaves the current view and list intact;
+use **Workspace** to find an item that has moved. Unavailable storage is reported
+in Recent, and the app remains usable with a session-only list. If saving or
+clearing fails, older saved entries may return after restarting.
+
+The repository toolbar shows its short name (hover for the full path), working
+state and last-known upstream counts, and a button showing the current branch.
+Hover a truncated branch name for the full name. That **Branch actions** menu
+opens the existing switch/create/remote checkout/merge/rebase forms in History;
+opening a form does not change Git state. History branch rows still only filter
+history. The circular-arrow **Refresh** button refreshes local state; it does
+not fetch. **Fetch**, **Pull**, and **Push** remain separate reviewed operations.
+
+**Stashes** is next to Changes and History. **More (…) → Combine commits…** opens
+the history rewrite workflow; **More → Find in history…** opens and focuses
+history search. The toolbar stays on one row at the minimum supported width.
+
+Menus close on outside click, focus moving outside, or **Escape**. Escape returns
+focus to the menu button. Use **Enter**, **Space**, or **↓** on a menu button to
+open it, **Tab/Shift+Tab** to move among controls, and **↑/↓** or **Home/End** to
+move among command buttons. Push text fields retain normal text-editing keys
+and keep their values when the menu closes. These are in-app menus, not native
+operating-system menu-bar commands.
 
 The CLI accepts the following arguments after the launcher or executable:
 
@@ -119,7 +162,7 @@ window; navigation waits while an action confirmation or native dialog is open.
 
 A **project** is a saved JSON file describing a **group** of repositories.
 
-1. Choose **Discover repositories** in the top navigation and select the folder
+1. Choose **Workspace → Discover repositories** and select the folder
    containing your checkouts.
 2. Set **Search depth**. The default is 3; 0 checks only the root folder, and the
    maximum is 10. Choose **Scan repositories**.
@@ -143,7 +186,7 @@ checking boxes do not save a project by themselves.
 
 To add discovered repositories to an existing project, use **Discover repositories**
 in that project's dashboard header, then **Add selected to draft (N)** and
-**Save project**. The top navigation discovery button creates a new project.
+**Save project**. The Workspace menu's discovery action creates a new project.
 Repositories already in the project or discovery draft are marked and excluded
 from additions.
 
@@ -228,15 +271,44 @@ and returning. These view preferences are not persisted across app restarts.
 
 ## Browse and search history
 
-The repository view has history scope controls, a graph/list, and details.
+Repositories open in **Changes**, with changed files on the left and a dedicated
+diff preview on the right. Choose **History** below the repository toolbar to
+show history scope controls, the graph/list, commit details, and branch actions.
+The **Changes** count is the number of distinct changed files, including conflicts.
+Stashes and **More → Combine commits…** open within the History layout; their Close controls
+return to Changes. Operation/conflict guidance remains above either workspace.
+
 Choose **All branches and tags**, a local branch, a remote branch, or a tag to
 set the history scope. Selecting a scope does not check out that branch.
 
-Select a commit to see its full message, ID, author/committer, parents, and changed
-files. Select a file to show its unified diff. For a merge commit, use **Compare
-with parent** to select the comparison; a root commit is compared with an empty
-tree. Binary or truncated previews are explicitly labeled. Use **Load older
-commits** for another page.
+Select a commit to see its message and changed files. Expand **Commit information**
+for its full ID and author/committer identities and dates. **Hide details** gives
+the file/diff area more space; **Show details** restores the message, information,
+and cherry-pick controls. This toggle lasts while that repository view stays open.
+The parent comparison remains visible even with details hidden.
+The selected history row stays highlighted with an accent edge while its
+details are open. Select **Changes**, or **Working changes** above the history
+list, to return to the Changes workspace. Select a historical file to show its
+unified diff. For a merge commit, use
+**Compare with parent** to select the comparison; a root commit is compared with
+an empty tree. Binary or truncated previews are explicitly labeled. Use **Load
+older commits** for another page.
+
+The commit file browser shows status markers, filenames, directories, and previous
+paths for renames. **Filter commit files** matches current or previous paths,
+ignoring case. Selecting a row highlights it and opens its read-only diff;
+**↑/↓** and **Home/End** on a filename select the previous/next or first/last
+matching file. Filtering does not clear an already-open diff. Changing commits
+or comparison parents clears the file filter and preview. The file list and diff
+scroll independently, side by side in a wide inspector and stacked in a narrow
+one. At small window sizes, use **Hide details** to give the diff more room.
+
+Text diffs in Changes and History show old/new line-number gutters and full-row
+addition/removal colours, retaining the `+`/`-` markers. Hunk headers and patch
+metadata remain visible; metadata and “no newline” markers have no line number.
+Long lines scroll horizontally without wrapping. The gutters do not alter the
+patch text or staging scope. Binary/unavailable/truncated states keep their
+explicit explanations, and historical diffs never offer staging controls.
 
 To search the selected scope, choose **Search by**, enter a query, and choose
 **Search history**:
@@ -260,13 +332,33 @@ and reject legacy grafts.
 
 ## Stage files and commit
 
-1. Select **Working changes** above the history list.
+1. Select **Changes** below the repository toolbar (the initial workspace).
 2. Inspect the **Staged**, **Unstaged**, **Untracked**, and **Conflicted** sections.
-   Select a file to inspect its available diff.
+   Conflicted is shown first when needed. Select a filename to highlight that
+   version and inspect its diff in the right pane; selection does not stage it.
 3. Choose **Stage** for each whole file to include. **Unstage** removes a file's
    staged changes from the next commit while keeping its working-file content.
-4. Enter a nonblank **Commit message**.
+4. Enter a nonblank **Commit message** in the composer below the file list.
 5. Choose **Commit staged changes (N)**.
+
+The file list and diff scroll independently; the composer has its own area.
+Rows show a status marker, filename, and directory (or status for root files).
+Hover the filename for its complete path. Click a section heading to collapse
+or expand it. With a filename focused, **↑/↓** and **Home/End** select another
+visible filename in the expanded groups without staging it.
+
+Use **Filter changed files** to match the current or previous path, ignoring
+case. **Stage all (N)** or **Unstage all (N)** affects that section only. While
+filtering, these become **Stage visible (N)** / **Unstage visible (N)** and affect
+only matching files in that section. Conflicts require individual **Stage
+resolution** actions; there is no bulk conflict resolution. A filter does not
+limit which already-staged files a commit includes.
+
+Leaving Changes clears its file filter and preview selection; the commit draft
+is retained. Refresh keeps the inspected version when it still exists, using
+fresh snapshot/file identifiers. If staging removes that version, select it in
+its new section to continue reviewing. Code lines scroll horizontally instead
+of wrapping, and the file heading stays visible while scrolling a Changes diff.
 
 A file can have both staged and unstaged changes. Only staged content is
 committed; later unstaged edits remain. Normal commits require staged changes
@@ -285,7 +377,7 @@ native acceptance and package checks are recorded in [Build status](BUILD_STATUS
 A **hunk** is a complete change block in a text diff. To include one block in
 the next commit:
 
-1. In **Working changes**, select a tracked file from **Unstaged**.
+1. In **Changes**, select a tracked file from **Unstaged**.
 2. Check the file path and **Diff · unstaged** heading. Inspect the numbered
    blocks and choose **Stage hunk** beside the desired block.
 3. Wait for the refreshed changes. Select the file under **Staged** to review
@@ -314,12 +406,13 @@ hook/external changes are reported for inspection without an automatic rollback.
 
 ## Fetch, pull, and push
 
-- **Fetch:** select a **Remote**, choose **Fetch**, review the preview, and run it.
+- **Fetch:** choose a remote in the toolbar selector, choose **Fetch**, review the preview, and run it.
   Fetch updates remote-tracking information without merging into the current branch.
-- **Pull:** choose **Pull**, review the configured upstream, and run it. Pull uses
+- **Pull:** choose **Pull**, review the configured upstream, and run it. A badge
+  shows the last-known behind count when nonzero; it can be stale until Fetch. Pull uses
   the current branch's upstream, which may differ from the toolbar's remote
   selection. It requires a clean worktree and fast-forward-compatible history.
-- **Push:** select a **Remote**, expand **Push…**, and check **Destination ref**
+- **Push:** choose a remote in the toolbar selector, open **Push**, and check **Destination ref**
   (for example, `refs/heads/main`). Optionally select **Set upstream**. Choose
   **Preview push**, inspect the destination, then run the action.
 
@@ -332,6 +425,9 @@ remote-service authentication still needs verification in your own environment.
 
 Start with a clean index and worktree and finish any in-progress Git operation;
 both branch creation and switching require this in Git View.
+Open the toolbar's current-branch menu and choose the desired branch action;
+this opens and focuses its form in the History sidebar. You can also choose
+**History** to access the same controls directly.
 
 Expand **Switch branch**, select a local branch, choose **Preview switch**, and
 confirm the target. Git View rechecks repository state before execution.
@@ -374,10 +470,11 @@ Use this to apply one existing commit's changes to the branch currently checked
 out. Begin on a local branch with an existing commit, a clean index/worktree,
 and no operation in progress.
 
-1. Select the source commit in history. You can change history scope to find it;
+1. Choose **History** and select the source commit. You can change history scope to find it;
    the scope does not change the checked-out target branch.
 2. Inspect the source message, author, parent, and changed files, then choose
-   **Cherry-pick commit**.
+   **Cherry-pick commit**. If details are hidden, choose **Show details** first;
+   expand **Commit information** to inspect the author and full commit ID.
 3. Review the source commit and current target branch/HEAD in the preview, then
    confirm. A successful pick adds one commit using the source message and author.
 4. Inspect refreshed history and working changes. No push follows automatically.
@@ -429,7 +526,7 @@ submodule changes also block the start. Move ignored files outside the worktree
 before rebasing; the initial workflow blocks them because directory renames can
 put them at paths Git might overwrite.
 
-1. Expand **Rebase branch** in the branch controls and choose **Onto branch**.
+1. Choose **History**, expand **Rebase branch** in the branch controls, and choose **Onto branch**.
    Use **Fetch** separately if a remote branch is missing or stale. Selecting
    a history scope does not change the current branch or the rebase target.
 2. Choose **Preview rebase**. Check the current branch and original HEAD, exact
@@ -470,7 +567,7 @@ control. See [Feature status](FEATURE_STATUS.md) for platform verification.
 
 ## Save and restore work with stashes
 
-The **Stashes** button opens saved work for the current repository. Linked
+The **Stashes** button beside Changes and History opens saved work for the current repository. Linked
 worktrees share this list. See [Build status](BUILD_STATUS.md) for the verified
 source and packages.
 
@@ -535,7 +632,7 @@ controls.
 ## Merge a branch
 
 1. Switch to the target local branch and ensure the index and worktree are clean.
-2. In **Merge branches**, choose **Source branch** and **Merge branch**.
+2. Choose **History**. In **Merge branches**, choose **Source branch** and **Merge branch**.
 3. Review the source and current target, then confirm the action.
 
 An ordinary merge may fast-forward or create a normal merge commit. If conflicts
@@ -558,10 +655,10 @@ Use this to bring another branch's changes into one new commit on the current
 branch.
 
 1. Start on a clean target local branch.
-2. In **Merge branches**, choose **Source branch**, then **Squash merge branch**.
+2. Choose **History**. In **Merge branches**, choose **Source branch**, then **Squash merge branch**.
 3. Review and confirm. The result remains staged for review.
 4. Resolve any conflicts in your editor, refresh, and **Stage resolution**.
-5. Review **Working changes**, enter the final **Commit message**, and choose
+5. Review **Changes**, enter the final **Commit message**, and choose
    **Commit staged changes (N)** to create the separate normal commit.
 
 The squash operation does not create that commit automatically. Its review state
@@ -571,12 +668,12 @@ the app. The app has no discard/reset UI.
 
 ## Combine existing commits and recover
 
-Use **Combine commits…** to replace commits already on the current branch with
+Use **More (…) → Combine commits…** to replace commits already on the current branch with
 one commit. This changes their commit IDs while retaining the final tree.
 
 1. Start on an existing local branch with a clean index and worktree and no Git
    operation in progress.
-2. Choose **Combine commits…** and set **Newest commits to combine** to at least 2.
+2. Choose **More → Combine commits…** and set **Newest commits to combine** to at least 2.
    The selection is a consecutive sequence ending at HEAD. It cannot contain a
    merge commit, root commit, or shallow boundary, and is limited to the loaded
    current-branch history shown in this panel.
@@ -595,7 +692,7 @@ Remote-tracking information cannot prove that the selected commits are
 unpublished. Combining previously shared commits can make a normal push fail;
 Git View does not force-push them.
 
-To restore the original tip, reopen **Combine commits…**, find its record under
+To restore the original tip, reopen **More → Combine commits…**, find its record under
 **Backups and recovery**, choose **Preview recovery**, and confirm. Eligible
 recovery restores the original tip while preserving later working-file edits.
 A later branch commit, switched branch, changed backup, or inconsistent record
@@ -607,7 +704,11 @@ instead of resetting files. See [Recovery design](REWRITE_RECOVERY.md) for detai
 | Context | Shortcut | Action |
 | --- | --- | --- |
 | Repository view | `⌘R` on macOS / `Ctrl+R` elsewhere | Refresh |
-| Repository view | `⌘F` / `Ctrl+F` | Focus and select the history query |
+| Repository view | `⌘F` / `Ctrl+F` | Open History, then focus and select the history query |
+| Open toolbar/workspace menu | `Escape` | Close and return focus to its menu button |
+| Focused menu command | `↑` / `↓`, `Home` / `End` | Focus another enabled command; Enter activates it |
+| Focused changed filename | `↑` / `↓`, `Home` / `End` | Inspect the previous/next or first/last visible file in expanded groups |
+| Focused historical filename | `↑` / `↓`, `Home` / `End` | Inspect the previous/next or first/last file matching the commit-file filter |
 | History search input or history/results list | `Escape` | Clear the query/search |
 | Focused history/results list | `↑` / `↓` | Select the previous/next loaded commit |
 | Focused history/results list | `Home` / `End` | Select the first/last loaded commit |
@@ -631,7 +732,7 @@ acceptance remains outstanding. A group-filter focus shortcut is not implemented
 
 Not yet available: individual-line staging, side-by-side diffs, blame/file history,
 interactive rebase, batch push, group branch switching, integrated conflict editing,
-multiple windows, group templates, and persisted recent-project/view settings.
+multiple windows, group templates, and persisted view settings other than Recent.
 The broader backlog and verification gaps are tracked in [Feature status](FEATURE_STATUS.md).
 
 The repository's GitHub workflow currently runs only when manually dispatched.

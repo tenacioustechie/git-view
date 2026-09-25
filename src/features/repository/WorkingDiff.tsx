@@ -1,9 +1,5 @@
 import type { DiffRequest, DiffResult, RepositoryAction } from '../../api/types';
-
-function Patch({ text }: { text: string }) {
-  const lines = text.split('\n');
-  return <pre className="unified-diff">{lines.map((line, index) => <span key={index} className={line.startsWith('+') ? 'diff-add' : line.startsWith('-') ? 'diff-remove' : line.startsWith('@@') ? 'diff-hunk' : ''}>{line}{index < lines.length - 1 ? '\n' : ''}</span>)}</pre>;
-}
+import { Patch } from './Patch';
 
 export function WorkingDiff({ request, displayPath, diff, active, blockedReason, onAction }: {
   request: DiffRequest; displayPath: string; diff: DiffResult | null; active: boolean;
@@ -19,8 +15,9 @@ export function WorkingDiff({ request, displayPath, diff, active, blockedReason,
         : actions?.kind === 'unavailable' ? actions.reason
           : !available ? 'Hunk actions are unavailable for this diff. Refresh and inspect the file again.' : null);
   return <section className="diff-panel" aria-label="File diff">
-    <h3>Diff · {request.context}</h3><p className="diff-file-path">{displayPath}</p>
-    {working && <p>Hunk actions change the index only. Working-file contents stay unchanged; whole-file Stage and Unstage remain available above.</p>}
+    <header className="diff-heading"><h3>Diff · {request.context}</h3><p className="diff-file-path" title={displayPath}>{displayPath}</p></header>
+    <div className="diff-body">
+    {working && <p className="diff-guidance">{request.context === 'staged' ? 'Staged changes will be included in your next commit.' : 'Unstaged changes are not included in your next commit.'} Hunk actions keep your working files unchanged.</p>}
     {!diff ? <p>Loading diff…</p> : <>
       {reason && <p role="status">{reason}</p>}
       {diff.kind === 'text' ? <>
@@ -36,5 +33,6 @@ export function WorkingDiff({ request, displayPath, diff, active, blockedReason,
       </> : <p>{diff.kind === 'binary' ? diff.description : diff.reason}</p>}
       {working && !available && <button disabled>{label}</button>}
     </>}
+    </div>
   </section>;
 }
