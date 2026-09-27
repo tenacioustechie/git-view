@@ -67,7 +67,10 @@ pass consolidates opening actions under Workspace, keeps remote operations in
 a single-row toolbar, adds branch-menu navigation to reviewed forms, moves
 Stashes to workspace navigation, and puts history tools under More. The third
 pass adds a filterable historical file browser, independent diff scrolling,
-Show/Hide details, and numbered, full-row-coloured unified diffs. See [Feature status](FEATURE_STATUS.md) for
+Show/Hide details, and numbered, full-row-coloured unified diffs. The next pass
+adds explicit Changed files checkboxes and Stage/Unstage selected actions,
+separate from file preview, with selection invalidation on filtering/refresh.
+See [Feature status](FEATURE_STATUS.md) for
 implemented scope and [Build status](BUILD_STATUS.md) for verification; this
 working-tree redesign is not yet in the collected native packages.
 

@@ -22,10 +22,20 @@ export function ChangesWorkspace({ changes, selection, disabled, blockedReason, 
   onAction: (action: RepositoryAction) => void; composer: ReactNode; diff: ReactNode;
 }) {
   const [filter, setFilter] = useState('');
+  const [checked, setChecked] = useState<{ snapshotId: string | undefined; keys: string[] }>({ snapshotId: changes?.snapshotId, keys: [] });
+  // File tokens belong to exactly one backend snapshot. Never carry a bulk
+  // selection into refreshed content (including a failed operation's refresh).
+  if (checked.snapshotId !== changes?.snapshotId) setChecked({ snapshotId: changes?.snapshotId, keys: [] });
+  const checkedKeys = checked.snapshotId === changes?.snapshotId ? checked.keys : [];
+  const selectionKey = (file: ChangedFile, group: Group) => JSON.stringify([group, file.fileId]);
+  const clearChecked = () => setChecked({ snapshotId: changes?.snapshotId, keys: [] });
   const list = useRef<HTMLDivElement>(null);
   const query = filter.trim().toLocaleLowerCase();
   const matches = (file: ChangedFile) => `${file.displayPath}\n${file.oldDisplayPath ?? ''}`.toLocaleLowerCase().includes(query);
   const filtered = changes?.files.filter(matches) ?? [];
+  const picked = (group: Group) => filtered.filter(file => belongs(file, group) && checkedKeys.includes(selectionKey(file, group)));
+  const toStage = [...picked('unstaged'), ...picked('untracked')];
+  const toUnstage = picked('staged');
   const mutate = (files: ChangedFile[], group: Group) => {
     if (!changes || disabled || blockedReason || !files.length) return;
     onAction({ kind: group === 'staged' ? 'unstage' : 'stage', snapshotId: changes.snapshotId, fileIds: files.map(file => file.fileId) });
@@ -33,8 +43,14 @@ export function ChangesWorkspace({ changes, selection, disabled, blockedReason, 
   return <section className="changes-workspace" aria-label="Working changes">
     <div className="changes-sidebar">
       <div className="changes-list-heading"><h2>Changed files <span className="file-count">{changes?.files.length ?? '…'}</span></h2>
-        <input type="search" aria-label="Filter changed files" placeholder="Filter files…" value={filter} onChange={event => setFilter(event.target.value)} />
+        <input type="search" aria-label="Filter changed files" placeholder="Filter files…" value={filter} onChange={event => { setFilter(event.target.value); clearChecked(); }} />
       </div>
+      {(toStage.length > 0 || toUnstage.length > 0) && <div className="changes-selection" role="region" aria-label="Selected file actions">
+        <span role="status">{toStage.length + toUnstage.length} selected</span>
+        <button className="clear-file-selection" onClick={clearChecked}>Clear selection</button>
+        {toStage.length > 0 && <button disabled={disabled || Boolean(blockedReason)} title={blockedReason ?? undefined} onClick={() => mutate(toStage, 'unstaged')}>Stage selected ({toStage.length})</button>}
+        {toUnstage.length > 0 && <button disabled={disabled || Boolean(blockedReason)} title={blockedReason ?? undefined} onClick={() => mutate(toUnstage, 'staged')}>Unstage selected ({toUnstage.length})</button>}
+      </div>}
       <div className="changes-file-scroll" ref={list} onKeyDown={event => {
         if (!(event.target instanceof HTMLElement) || !event.target.matches('.file-preview') || !['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
         const rows = [...(list.current?.querySelectorAll<HTMLButtonElement>('details[open] .file-preview') ?? [])];
@@ -61,6 +77,11 @@ export function ChangesWorkspace({ changes, selection, disabled, blockedReason, 
                 const slash = file.displayPath.lastIndexOf('/');
                 const [code, meaning] = statusLabel(file, group);
                 return <li key={file.fileId} className={selected ? 'file-selected' : undefined}>
+                  {group !== 'conflicted' && <input className="file-checkbox" type="checkbox" aria-label={`Select ${labels[group].toLowerCase()} file ${file.displayPath}`} checked={checkedKeys.includes(selectionKey(file, group))} disabled={disabled || Boolean(blockedReason)} onChange={event => {
+                    const key = selectionKey(file, group);
+                    const isChecked = event.target.checked;
+                    setChecked(previous => ({ snapshotId: changes.snapshotId, keys: isChecked ? [...previous.keys, key] : previous.keys.filter(value => value !== key) }));
+                  }} />}
                   <button className="file-preview" title={file.displayPath} aria-label={file.displayPath} aria-description={`${meaning}${file.submodule ? ', submodule' : ''}${file.oldDisplayPath ? `, previously ${file.oldDisplayPath}` : ''}`} aria-pressed={selected} onClick={() => onSelect(file, context)}>
                     <span className={`file-status file-status-${code === '!' ? 'conflict' : code}`} title={meaning} aria-hidden="true">{code}</span>
                     <span className="file-name"><span>{file.displayPath.slice(slash + 1)}</span><small>{file.oldDisplayPath ? `${file.oldDisplayPath} → ` : ''}{slash >= 0 ? file.displayPath.slice(0, slash) : meaning}{file.submodule ? ' · submodule' : ''}</small></span>

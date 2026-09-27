@@ -371,6 +371,7 @@ async function runPerformanceSmoke(checks: string[]) {
     return node?.querySelector('.repository-title strong')?.getAttribute('title') === opened.displayPath ? node : null;
   });
   await click('History', repository);
+  await invoke('native_smoke_focus');
   const scroll = await until('first 200 history rows laid out', () => {
     const node = repository.querySelector<HTMLDivElement>('.history-list');
     const layout = node?.firstElementChild as HTMLElement | null;
@@ -591,7 +592,8 @@ async function runRemoteCheckoutSmoke(checks: string[]) {
       assert(actual.head.kind === 'branch' && actual.head.name === fixture.localName && actual.head.oid === fixture.sourceOid && actual.upstream, 'Checkout must create the requested branch at the exact source commit with an actual upstream');
       await until('checkout actual branch and upstream refreshed', () => {
         const text = repository.querySelector('.repository-title small')?.textContent ?? '';
-        return text.includes(fixture.localName) && text.includes(actual.upstream!.ref);
+        const branch = repository.querySelector<HTMLButtonElement>('button[aria-label="Branch actions"]');
+        return branch?.textContent?.trim() === fixture.localName && text.includes(actual.upstream!.ref);
       });
     } else {
       await until('blocked checkout reason', () => panel.textContent?.includes(scenario === 'dirty' ? 'clean index and working tree' : 'already exists at'));
@@ -1103,8 +1105,20 @@ export async function runNativeSmoke(): Promise<void> {
     const workingFile = await until('working file appears', () => [...repository.querySelectorAll<HTMLButtonElement>('.file-list button[title]')].find(node => node.title === prepared.firstFile));
     workingFile.click();
     await assertDiffVisible();
-    const stage = await operation('stage', clean.repositoryId, () => stageFile(prepared.firstFile));
+    for (const path of [prepared.firstFile, prepared.secondFile]) {
+      const checkbox = await until(`bulk selection for ${path}`, () => repository.querySelector<HTMLInputElement>(`input[aria-label="Select unstaged file ${path}"]:not(:disabled)`));
+      checkbox.click();
+    }
+    const stage = await operation('stage', clean.repositoryId, () => click('Stage selected (2)', repository));
     assert(stage.state === 'succeeded', `Stage failed: ${stage.error?.message ?? stage.reason}`);
+    await until('bulk selection clears after stage', () => !repository.querySelector('[aria-label="Selected file actions"]'));
+    const stagedFiles = await api.getChanges(clean.repositoryId);
+    assert(stagedFiles.files.filter(file => file.indexStatus === 'M').length === 2, 'Both checked files must be staged');
+    const secondCheckbox = await until('second file staged checkbox', () => repository.querySelector<HTMLInputElement>(`input[aria-label="Select staged file ${prepared.secondFile}"]:not(:disabled)`));
+    secondCheckbox.click();
+    const unstage = await operation('unstage', clean.repositoryId, () => click('Unstage selected (1)', repository));
+    assert(unstage.state === 'succeeded', 'Checked staged file must unstage successfully');
+    checks.push('Native multi-file selection staged both exact files, cleared after refresh, and unstaged only the checked second file before a first-file-only commit');
     await until('stage reflected in commit control', () => [...repository.querySelectorAll<HTMLButtonElement>('button')].find(node => node.textContent === 'Commit staged changes (1)'));
     const message = `Native smoke staged-only commit ${Date.now()}`;
     const messageInput = await focusCommitEditor(repository);
@@ -1147,7 +1161,7 @@ export async function runNativeSmoke(): Promise<void> {
     await until('hook failure renders', () => [...document.querySelectorAll('[role="alert"]')].some(node => visible(node) && node.textContent?.trim()));
     assert(messageInput.value === failedMessage, 'Draft must survive actual hook failure');
     assert(JSON.stringify((await api.getStatus(clean.repositoryId)).head) === JSON.stringify(committedStatus.head), 'Failed commit must not advance HEAD');
-    await click('← Back', repository);
+    await click(`Back to ${project.name}`);
     const returnedGroup = await region('Repository group');
     assert(returnedGroup.querySelector<HTMLInputElement>('input[type="search"]')?.value === cleanMember.label, 'Group search must survive repository navigation');
     const restoredSelection = [...returnedGroup.querySelectorAll<HTMLTableRowElement>('.group-table-scroll tbody tr')].find(row => row.querySelector('.group-path')?.getAttribute('title') === cleanMember.displayPath)?.querySelector<HTMLInputElement>('input[type="checkbox"]');

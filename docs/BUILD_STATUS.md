@@ -1,5 +1,96 @@
 # Build status
 
+## 2026-09-26: Full macOS native rerun passes
+
+After the user approved closing the open Git View window, the final
+multi-file-selection working tree based on `4a81e31` was rebuilt with
+`VITE_NATIVE_SMOKE=1 pnpm build` and
+`cargo build --manifest-path src-tauri/Cargo.toml --locked --features native-smoke,tauri/custom-protocol`.
+The unsandboxed command
+`python3 scripts/native-smoke.py /tmp/git-view-multiselect-mac-20260926-final.json`
+exited 0 with **all 51 native workflow checks passing**. This supersedes the
+partial macOS run below and matches the final Windows 51-check pass.
+
+The run verifies the actual native renderer/IPC and disposable Git fixtures:
+multi-file stage/selective unstage/staged-only commit, dark/light contrast and
+layout, keyboard history navigation, CLI forwarding, merge/combine/recovery,
+discovery, history search, remote checkout, cherry-pick, stash, hunk staging,
+rebase, and running-operation WebView reload reconciliation. The 10,000-commit
+fixture took 571.0 ms for creation plus navigation to the first 200-row layout;
+scroll plus two animation frames took 27.0 ms, with 20/19 rendered rows.
+
+`cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --features native-smoke -- -D warnings`
+also passes. `pnpm build` restores the normal non-smoke frontend afterward;
+documentation links and `git diff --check` pass. This turn changes verification
+notes only, so no user-guide behavior or executable steps changed. The earlier
+150-test frontend results, full Mac Recent quit/relaunch check, and package
+limitations remain as recorded below. Windows full-process Recent persistence
+and complete narrow-window/Tab/screen-reader acceptance remain unverified.
+Installed apps and user repository contents were not changed; nothing was
+committed, pushed or published.
+
+## 2026-09-25: Multi-file staging selection and redesign verification
+
+Working tree based on `4a81e31` adds explicit Changed files checkboxes, separate
+staged/unstaged version selection, Stage selected across unstaged/untracked
+files, Unstage selected, and Clear selection. Preview selection remains separate.
+Filtering and fresh snapshots clear the checked subset; conflicts remain
+individual Stage resolution actions. Backend snapshot/file-token validation is
+unchanged. Context7's React guidance informed controlled checkboxes and immutable
+selection updates. The native harness now uses the redesigned Back to project
+button and exercises bulk staging followed by selective unstaging and a
+staged-only commit. Native-smoke Recent history uses a separate storage key.
+
+The user reports that the preceding redesign looks good on Windows and Mac.
+Both checkouts were confirmed at `4a81e31` before these edits. The five UI/test
+files were copied to the clean Windows checkout for validation without switching
+branches or committing. After validation, only those exact hash-checked copies
+were reversed, leaving Windows clean; the implementation remains uncommitted
+in the Mac workspace.
+
+`pnpm test` passes **150 tests across 17 files** on both macOS and Windows;
+`pnpm lint`, typechecking/production frontend build, and native-smoke compilation
+pass on both. Windows `cargo clippy --all-targets --features native-smoke -- -D
+warnings` passes. No backend behavior changed; the complete Rust test suite was
+not rerun for this frontend change. Eight added tests cover exact tokens,
+mixed unstaged/untracked selection, independent versions/preview, filter and
+snapshot invalidation, Space/clear behavior, disabled actions and conflict
+exclusion.
+
+`pnpm tauri build --bundles app` built the unsigned macOS bundle at
+`src-tauri/target/release/bundle/macos/Git View.app`. Native visual inspection
+verified the checkboxes, selection count and action bar without mutating the
+working repository. A full Quit and relaunch retained Recent entries; keyboard
+activation reopened the saved repository successfully. Installed apps and the
+collected `d9af4e6` artifacts were not replaced.
+
+Initial acceptance runs exposed a stale Back selector on Windows and a macOS
+appearance timeout under the sandbox. With the selector fixed, the unsandboxed
+macOS run verified 25 checkpoints, including native dark/light contrast/layout,
+keyboard navigation, bulk stage/unstage, staged-only commit, push, hooks, launch
+forwarding, merge and combine/recovery, before the 240-second runner timeout.
+Progress report: `/tmp/git-view-multiselect-mac-20260925.progress.json`.
+This is partial evidence, **not a complete Mac native-suite pass**. A later
+harness change explicitly restores focus before the performance scenario; a
+full Mac rerun was pending permission to close the open app at this checkpoint.
+The approved 26 September rerun above subsequently passed all 51 checks.
+
+Windows initially also exposed an outdated branch assertion: the current branch
+is now in the Branch actions button, while the subtitle retains upstream/status.
+After updating that assertion, `python3 scripts/windows-remote.py
+scripts/windows-native-verify.ps1` passes **all 51 native workflow checks** on
+the final UI/harness source (50 prior workflows plus bulk selection), including
+dark/light appearance, keyboard/history layout, the 10,000-commit fixture,
+discovery, checkout, cherry-pick, stash, hunks, rebase and running-operation
+WebView reload reconciliation. Report:
+`C:\codeme\git-view\.tools\GitViewNativeSmoke-10db9999a8084ca6bd6e0ad5984e5579.json`.
+Windows full-process Recent restart and complete narrow-window/Tab/screen-reader
+acceptance remain unverified. The Windows installer was not rebuilt.
+
+User guide/inventory and shortcut instructions match the controls. All 91 local
+documentation links/anchors checked and `git diff --check` pass. Nothing was committed,
+pushed, installed or published.
+
 ## 2026-09-24: Persistent Recent dropdown
 
 Working-tree frontend changes based on `59f0c2f` add Recent beside Workspace.

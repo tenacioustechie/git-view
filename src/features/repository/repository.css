@@ -139,6 +139,11 @@
 .changes-list-heading { padding:16px 16px 12px; flex-shrink:0; }
 .changes-list-heading h2 { display:flex; align-items:center; justify-content:space-between; font-size:14px; margin-bottom:12px; }
 .changes-list-heading input { width:100%; background:var(--bg); }
+.changes-selection { display:flex; flex-wrap:wrap; align-items:center; gap:6px; padding:0 12px 10px; flex-shrink:0; border-bottom:1px solid var(--border); }
+.changes-selection>span { flex:1; font-size:12px; color:var(--muted); }
+.changes-selection button { font-size:11px; padding:4px 7px; }
+.changes-selection .clear-file-selection { border:0; background:transparent; color:var(--muted); }
+.changes-workspace .file-checkbox { width:14px; height:14px; margin:0 2px 0 5px; flex-shrink:0; accent-color:var(--accent); cursor:pointer; }
 .changes-file-scroll { flex:1; min-height:80px; overflow:auto; padding-bottom:12px; }
 .change-group { position:relative; }
 .change-group>summary { padding:9px 12px; font-size:12px; font-weight:600; color:var(--muted); background:color-mix(in srgb,var(--bg) 60%,var(--panel)); }
@@ -148,7 +153,7 @@
 .changes-workspace .file-list li { margin:0; gap:2px; padding:0 8px 0 4px; border-left:3px solid transparent; min-height:48px; }
 .changes-workspace .file-list li:hover { background:color-mix(in srgb,var(--muted) 6%,transparent); }
 .changes-workspace .file-list li.file-selected { border-left-color:var(--accent); background:color-mix(in srgb,var(--accent) 12%,var(--panel)); }
-.changes-workspace .file-list .file-preview { display:flex; align-items:center; gap:10px; min-width:0; border:0; border-radius:3px; background:transparent; padding:6px; }
+.changes-workspace .file-list .file-preview { display:flex; flex:1; text-align:left; overflow:hidden; align-items:center; gap:10px; min-width:0; border:0; border-radius:3px; background:transparent; padding:6px; }
 .file-name { min-width:0; flex:1; }
 .file-name>span,.file-name>small { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .file-name>span { font-size:13px; font-weight:500; }

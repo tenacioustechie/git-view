@@ -1,7 +1,7 @@
 # Git View user guide
 
-Reviewed 24 September 2026 for version 0.1.0, including the workspace redesign and persistent Recent menu
-in the working tree based on `59f0c2f`. The latest collected native packages
+Reviewed 25 September 2026 for version 0.1.0, including multi-file staging selection
+in the working tree based on `4a81e31`. The latest collected native packages
 remain rebase checkpoint `d9af4e6` on macOS arm64 and Windows 11 x64; they do not
 include this workspace redesign. See [Build status](BUILD_STATUS.md) for exact
 evidence and checksums.
@@ -353,6 +353,20 @@ filtering, these become **Stage visible (N)** / **Unstage visible (N)** and affe
 only matching files in that section. Conflicts require individual **Stage
 resolution** actions; there is no bulk conflict resolution. A filter does not
 limit which already-staged files a commit includes.
+
+To stage a chosen subset, check the boxes beside the files, then choose
+**Stage selected (N)**. This can include both Unstaged and Untracked files.
+Check files in Staged and choose **Unstage selected (N)** to remove just those
+versions from the next commit. A file's staged and unstaged checkboxes are
+independent. Clicking a filename still only previews its diff; checking a box
+does not stage anything or change the preview. **Space** toggles a focused box.
+**Clear selection** unchecks everything without changing Git state. Conflicted
+files have no bulk-selection checkbox; use individual **Stage resolution**.
+
+Changing the file filter, receiving a refreshed repository snapshot (including
+after a staging action), or leaving Changes clears the checked subset. Select
+again against the current list before another bulk action. Collapsing a section
+does not clear its checked files; the selected-action counts still include them.
 
 Leaving Changes clears its file filter and preview selection; the commit draft
 is retained. Refresh keeps the inspected version when it still exists, using
@@ -708,6 +722,7 @@ instead of resetting files. See [Recovery design](REWRITE_RECOVERY.md) for detai
 | Open toolbar/workspace menu | `Escape` | Close and return focus to its menu button |
 | Focused menu command | `↑` / `↓`, `Home` / `End` | Focus another enabled command; Enter activates it |
 | Focused changed filename | `↑` / `↓`, `Home` / `End` | Inspect the previous/next or first/last visible file in expanded groups |
+| Focused changed-file checkbox | `Space` | Check/uncheck that version for Stage selected or Unstage selected; no immediate Git action |
 | Focused historical filename | `↑` / `↓`, `Home` / `End` | Inspect the previous/next or first/last file matching the commit-file filter |
 | History search input or history/results list | `Escape` | Clear the query/search |
 | Focused history/results list | `↑` / `↓` | Select the previous/next loaded commit |

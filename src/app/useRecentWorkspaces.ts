@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 
 export type RecentWorkspace = { kind: 'repository' | 'project'; path: string; name: string };
-export const RECENT_STORAGE_KEY = 'git-view.recent-workspaces.v1';
+// Native acceptance opens disposable paths; never mix them into the user's list.
+export const RECENT_STORAGE_KEY = import.meta.env.VITE_NATIVE_SMOKE === '1'
+  ? 'git-view.native-smoke.recent-workspaces.v1' : 'git-view.recent-workspaces.v1';
 export const RECENT_LIMIT = 20;
 const same = (a: RecentWorkspace, b: RecentWorkspace) => a.kind === b.kind && a.path === b.path;
 const valid = (value: unknown): value is RecentWorkspace => {
