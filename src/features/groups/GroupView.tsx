@@ -5,6 +5,7 @@ import { withNavigationBlock } from '../../api/navigation';
 import type { BatchPlan, DiscoveryCandidate, OperationResult, Project, ProjectContent, RepositoryOpen } from '../../api/types';
 import { DiscoveryPicker } from './DiscoveryView';
 import { branchName, matchesFilters, workingState, type GroupFilters } from './groupState';
+import { primaryShortcut, shortcutAria, shortcutLabel, shortcutsBlocked } from '../../app/shortcuts';
 import './groups.css';
 
 interface Props { project: Project; onOpenRepository: (repository: RepositoryOpen) => void; onProjectChange?: (project: Project) => void }
@@ -30,6 +31,7 @@ export function GroupView({ project: initial, onOpenRepository, onProjectChange 
   const scanInFlight = useRef(false);
   const activityInFlight = useRef(false);
   const root = useRef<HTMLElement>(null);
+  const filterInput = useRef<HTMLInputElement>(null);
   const generation = useRef(0);
   const currentIdentity = useRef(identity(initial));
   const editPaths = useRef(new Map<string, string>());
@@ -89,6 +91,20 @@ export function GroupView({ project: initial, onOpenRepository, onProjectChange 
     window.addEventListener('focus', focus);
     return () => { window.clearInterval(activity); window.clearInterval(status); window.removeEventListener('focus', focus); };
   }, [loadOperations, refresh]);
+  useEffect(() => {
+    const keydown = (event: KeyboardEvent) => {
+      if (shortcutsBlocked() || root.current?.closest('[hidden]') || event.isComposing || event.defaultPrevented) return;
+      if (primaryShortcut(event, 'f')) {
+        event.preventDefault(); filterInput.current?.focus(); filterInput.current?.select();
+      } else if (primaryShortcut(event, 'r')) {
+        event.preventDefault(); if (!busy) void refresh(true);
+      } else if (event.key === 'Escape' && event.target === filterInput.current) {
+        event.preventDefault(); setFilters(current => ({ ...current, search: '' }));
+      }
+    };
+    window.addEventListener('keydown', keydown);
+    return () => window.removeEventListener('keydown', keydown);
+  }, [busy, refresh]);
   const completedCount = operations.filter(terminal).length;
   useEffect(() => { if (completedCount) void refresh(); }, [completedCount, refresh]);
 
@@ -184,7 +200,7 @@ export function GroupView({ project: initial, onOpenRepository, onProjectChange 
     <header className="group-heading"><div><h1>{project.name}</h1><p className="group-path" title={project.displayPath}>{project.displayPath}</p></div>
       <button onClick={startEdit} disabled={busy}>Edit project</button><button onClick={() => void pickFolders()} disabled={busy}>Add repositories</button>
       <button onClick={() => setDiscovering(true)} disabled={busy}>Discover repositories</button>
-      <button onClick={() => void refresh(true)} disabled={busy}>Refresh</button>
+      <button aria-label="Refresh" aria-keyshortcuts={shortcutAria('r')} onClick={() => void refresh(true)} disabled={busy}>Refresh <kbd aria-hidden="true">{shortcutLabel('r')}</kbd></button>
     </header>
     {discovering && <DiscoveryPicker onConfirm={addDiscovered} onCancel={() => setDiscovering(false)} confirmLabel="Add selected to draft" disabled={busy}
       excludedRepositoryIds={new Set([...project.members.flatMap(row => row.kind === 'ready' ? [row.repositoryId] : []), ...(draft?.repositories.flatMap(entry => discoveredIds.current.has(entry.path) ? [discoveredIds.current.get(entry.path)!] : []) ?? [])])}
@@ -208,7 +224,7 @@ export function GroupView({ project: initial, onOpenRepository, onProjectChange 
         <button disabled={busy || !draft.name.trim()} onClick={() => void saveDraft(true)}>Save as</button><button onClick={() => setDraft(null)} disabled={busy}>Cancel editing</button></div>
     </section>}
     <div className="group-filters">
-      <label>Search <input type="search" value={filters.search} placeholder="Name or path" onChange={event => setFilters({ ...filters, search: event.target.value })} /></label>
+      <label>Search <kbd aria-hidden="true">{shortcutLabel('f')}</kbd><input ref={filterInput} aria-label="Search" aria-keyshortcuts={shortcutAria('f')} type="search" value={filters.search} placeholder="Name or path" onChange={event => setFilters({ ...filters, search: event.target.value })} /></label>
       <label>Branch <select value={filters.branch} onChange={event => setFilters({ ...filters, branch: event.target.value })}><option value="">All branches</option>{branches.map(branch => <option key={branch}>{branch}</option>)}</select></label>
       <label>Working state <select value={filters.state} onChange={event => setFilters({ ...filters, state: event.target.value as GroupFilters['state'] })}><option value="all">All states</option><option value="dirty">Dirty</option><option value="behind">Behind upstream</option><option value="attention">Attention needed</option></select></label>
       <button onClick={() => setFilters({ search: '', branch: '', state: 'all' })}>Clear filters</button>

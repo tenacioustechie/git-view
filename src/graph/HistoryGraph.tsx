@@ -11,16 +11,22 @@ export function HistoryGraph({ rows, selected, onSelect, loading, more, onMore, 
   const scroll = useRef<HTMLDivElement>(null);
   const virtual = useVirtualizer({ count: rows.length, getScrollElement: () => scroll.current, estimateSize: () => rowHeight, overscan: 12, initialRect: { width: 640, height: 600 } });
   const width = rows.reduce((max, row) => Math.max(max, row.width * 18 + 20), 60);
+  const selectedCommit = rows.find(row => row.commit.oid === selected)?.commit;
   return <div className={`history-list ${searchResults ? 'search-results' : ''}`} ref={scroll} aria-label={searchResults ? 'Search results' : 'Commit history'} tabIndex={0}
     onKeyDown={event => {
+      if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.nativeEvent.isComposing) return;
+      if (event.target !== event.currentTarget && !(event.target instanceof HTMLElement && event.target.closest('.history-row'))) return;
       if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key) || !rows.length) return;
       event.preventDefault();
+      // A virtual row can disappear when scrolling; keep keyboard focus stable.
+      scroll.current?.focus();
       const current = rows.findIndex(row => row.commit.oid === selected);
       const index = event.key === 'Home' ? 0 : event.key === 'End' ? rows.length - 1
         : event.key === 'ArrowDown' ? Math.min(rows.length - 1, current + 1) : Math.max(0, current - 1);
       virtual.scrollToIndex(index, { align: 'auto' });
       onSelect(rows[index].commit.oid);
     }}>
+    <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">{selectedCommit ? `Selected commit ${selectedCommit.oid.slice(0, 8)}: ${selectedCommit.subject || '(no subject)'}` : ''}</span>
     <div style={{ height: virtual.getTotalSize(), position: 'relative', minWidth: (searchResults ? 0 : width) + 240 }}>
       {virtual.getVirtualItems().map(item => {
         const row = rows[item.index];

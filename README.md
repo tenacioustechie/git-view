@@ -15,6 +15,8 @@ workspace, commit-detail visibility and panel widths; drag or keyboard-adjust th
 panel dividers, or use its sliders and reset control. In compact windows, History's
 branch/scope navigation opens from a button above search, leaving more room for
 the commit inspector. These design passes
+include an app-bar **Shortcuts** reference, menu key hints, and keyboard focus
+improvements for project filters, history and panels. They
 are not yet in the collected native packages.
 See [Feature status](docs/FEATURE_STATUS.md) for what is implemented and what remains.
 Future user-facing changes must update both documents in the same change; see

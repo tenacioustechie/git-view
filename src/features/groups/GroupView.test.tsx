@@ -6,6 +6,7 @@ import { fixtures } from '../../test/fixtures';
 import type { BatchPlan, OperationResult, Project, RepositoryRow } from '../../api/types';
 import { GroupView } from './GroupView';
 import { open, save } from '@tauri-apps/plugin-dialog';
+import { withNavigationBlock } from '../../api/navigation';
 
 vi.mock('../../api/client', () => ({ api: { refreshProject: vi.fn(), openProject: vi.fn(), saveProject: vi.fn(), createProject: vi.fn(), planBatch: vi.fn(), runBatch: vi.fn(), cancelBatch: vi.fn(), getOperations: vi.fn() }, errorMessage: (error: unknown) => error instanceof Error ? error.message : String(error) }));
 vi.mock('@tauri-apps/plugin-dialog', () => ({ open: vi.fn(), save: vi.fn() }));
@@ -23,6 +24,41 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('GroupView renderer', () => {
+  it('focuses/selects the project search with primary-F; Escape clears only its text', async () => {
+    render(<GroupView project={project} onOpenRepository={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText('Branch'), { target: { value: 'main' } });
+    const search = screen.getByRole('searchbox') as HTMLInputElement;
+    fireEvent.change(search, { target: { value: 'api' } });
+    fireEvent.keyDown(window, { key: 'f', ctrlKey: true });
+    expect(document.activeElement).toBe(search);
+    expect([search.selectionStart, search.selectionEnd]).toEqual([0, 3]);
+    fireEvent.keyDown(search, { key: 'Escape' });
+    expect(search.value).toBe('');
+    expect((screen.getByLabelText('Branch') as HTMLSelectElement).value).toBe('main');
+    expect(api.planBatch).not.toHaveBeenCalled();
+  });
+  it('refreshes only the visible project and never performs a batch via shortcuts', async () => {
+    const view = render(<div hidden><GroupView project={project} onOpenRepository={vi.fn()} /></div>);
+    fireEvent.keyDown(window, { key: 'r', ctrlKey: true });
+    fireEvent.keyDown(window, { key: 'f', ctrlKey: true });
+    expect(api.refreshProject).not.toHaveBeenCalled();
+    expect(document.activeElement).not.toBe(screen.getByRole('searchbox', { hidden: true }));
+    view.rerender(<div><GroupView project={project} onOpenRepository={vi.fn()} /></div>);
+    fireEvent.keyDown(window, { key: 'r', metaKey: true });
+    await waitFor(() => expect(api.refreshProject).toHaveBeenCalledTimes(1));
+    expect(api.runBatch).not.toHaveBeenCalled();
+  });
+  it('leaves modified shortcuts, composition and native/confirmation dialogs alone', async () => {
+    render(<GroupView project={project} onOpenRepository={vi.fn()} />);
+    const before = document.activeElement;
+    for (const extra of [{ altKey: true }, { shiftKey: true }, { isComposing: true }]) fireEvent.keyDown(window, { key: 'f', ctrlKey: true, ...extra });
+    await withNavigationBlock(async () => { fireEvent.keyDown(window, { key: 'f', ctrlKey: true }); fireEvent.keyDown(window, { key: 'r', ctrlKey: true }); });
+    const dialog = document.createElement('dialog'); dialog.open = true; document.body.append(dialog);
+    fireEvent.keyDown(window, { key: 'f', ctrlKey: true }); fireEvent.keyDown(window, { key: 'r', ctrlKey: true });
+    dialog.remove();
+    expect(document.activeElement).toBe(before);
+    expect(api.refreshProject).not.toHaveBeenCalled();
+  });
   it('previews every matching member including unavailable and dirty rows; does not run before confirmation', async () => {
     render(<GroupView project={project} onOpenRepository={vi.fn()} />);
     fireEvent.click(screen.getByRole('button', { name: 'Pull all (3)' }));

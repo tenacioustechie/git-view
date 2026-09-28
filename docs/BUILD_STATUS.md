@@ -1,5 +1,67 @@
 # Build status
 
+## 2026-09-29: Keyboard and accessibility polish
+
+Working tree based on `fa49114` adds an app-bar Shortcuts reference, native-platform
+key labels, hinted repository Find/Refresh commands and project filter/refresh
+shortcuts. Menus support first/last opening, eligible-command navigation, normal
+Tab traversal and focused empty/reference panels. History keyboard navigation
+retains a stable focus target and exposes selected-commit live text. Shortcuts
+respect dialogs, composition and handled events. Context7's official React
+guidance informed listener cleanup and ref-based focus management.
+
+`pnpm test` passes **183 tests across 21 files** on macOS and Windows;
+`pnpm lint`, `pnpm typecheck` and production/smoke frontend builds pass. Windows
+also passes strict native-smoke Clippy. Added tests cover real simulated
+Tab/Shift+Tab, menu ordering, hidden/disabled controls, text editing, empty help,
+dialog priority, platform labels, project scope, history focus and responsive
+divider removal. No backend behavior changed; the complete Rust suite was not
+repeated.
+
+An isolated, mutation-disabled browser fixture verified actual keyboard opening,
+Tab exit, Escape focus return, project primary-F and search clearing, More command
+navigation, stable virtual-history focus and accessible selected text. Resizing
+from a focused branch divider to 800×580 restored scope-button focus; the reference
+stayed bounded and keyboard-scrollable. Temporary fixture files, server and tab
+were removed, and browser sizing restored.
+
+Initial native runs on both platforms stopped after 27 checks because the new
+live-status span displaced the virtual spacer expected by the performance test.
+The harness now explicitly selects that spacer. The Windows rerun passes **all
+56 native workflow checks**, including the new keyboard scenarios and divider
+focus restoration, with report
+`C:\codeme\git-view\.tools\GitViewNativeSmoke-8c4bb7ef5ef94075b1dd33e02bd1f6ee.json`.
+Command: `python3 scripts/windows-remote.py scripts/windows-native-verify.ps1`.
+The checkout started clean at `4a81e31`; temporary source copies were hash-checked
+and reversed after testing, leaving it clean. Installed Windows apps and packages
+were not changed.
+
+The second Mac run (`/tmp/git-view-keyboard-mac-20260927-final.json`) reached 54
+checks before failing the divider-to-compact-scope focus assertion. The diagnostic
+rerun (`/tmp/git-view-keyboard-mac-20260929-focus.json`) stopped after 13 checks:
+test-only opening-History preferences left by the prior failure changed the next
+run's starting view. New suites now clear only their isolated preference key;
+reload checkpoints preserve it. The resize test also waits for the View popover
+to close and verifies divider focus before resizing. These incomplete runs are
+not full-suite passes.
+
+The isolated Mac rerun passes **all 56 native checks**, including verified divider
+focus before resizing and visible compact-scope focus afterward:
+`python3 scripts/native-smoke.py /tmp/git-view-keyboard-mac-20260929-isolated.json`.
+Waiting for the View popover to finish closing resolves the earlier resize-test
+failure; no additional product focus change was needed. Both passing platform
+runs use the same product source; the Windows run predates only the harness's
+fresh-suite preference reset and added resize precondition/diagnostics.
+
+The unsigned Mac app was rebuilt with `pnpm tauri build --bundles app` at
+`src-tauri/target/release/bundle/macos/Git View.app`; normal assets are
+`index-CTgda3B6.css` and `index-CAvzbe4O.js`. No installed app was replaced.
+Guide/inventory review date is 29 September; README and product scope are aligned.
+All 124 local documentation links/anchors and `git diff --check` pass.
+Full OS-process preference-restart checks, exhaustive workflow Tab traversal and
+VoiceOver/NVDA acceptance remain unverified. Changes remain uncommitted; nothing
+was pushed or published.
+
 ## 2026-09-27: Compact History navigation
 
 Working tree based on `294fd01`, including the uncommitted view/panel preferences

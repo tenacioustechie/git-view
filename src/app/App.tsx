@@ -8,6 +8,7 @@ import { DiscoveryView } from '../features/groups/DiscoveryView';
 import { RepositoryView } from '../features/repository/RepositoryView';
 import { ToolbarPopover } from './ToolbarPopover';
 import { Icon } from './Icon';
+import { KeyboardShortcuts } from './KeyboardShortcuts';
 import { useRecentWorkspaces, type RecentWorkspace } from './useRecentWorkspaces';
 import './app.css';
 
@@ -140,6 +141,7 @@ export function App() {
           {recent.length > 0 && <><div className="popover-separator" /><button title="Forget this list only; no projects or repository files are deleted" onClick={() => { close(); clearRecent(); }}>Clear recent</button></>}
         </>}</ToolbarPopover>
       </nav>
+      <KeyboardShortcuts />
       {project && repository && <button className="project-back" onClick={back}>Back to {project.name}</button>}
     </header>
     {error && <div className="app-error" role="alert">{error}<button aria-label="Dismiss error" onClick={() => setError(null)}>×</button></div>}

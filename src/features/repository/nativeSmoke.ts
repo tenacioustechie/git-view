@@ -117,8 +117,11 @@ async function checkHistoryKeyboardAndAlignment(repository: HTMLElement, checks:
   await until('initial history selection applied', () => rows[0].getAttribute('aria-pressed') === 'true');
   scroll.focus();
   assert(document.activeElement === scroll, 'History viewport must accept keyboard focus');
-  scroll.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+  rows[0].focus();
+  rows[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
   await until('ArrowDown selects next actual commit', () => scroll.querySelector<HTMLButtonElement>('.history-row[aria-pressed="true"]')?.title.split('\n')[0] === rows[1].title.split('\n')[0]);
+  assert(document.activeElement === scroll, 'Arrow navigation from a virtual row must transfer focus to the stable viewport');
+  assert(scroll.querySelector('[role="status"]')?.textContent?.includes(rows[1].title.split('\n')[0].slice(0, 8)), 'Selected commit must have a live text announcement');
   scroll.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
   await until('Home restores tip selection', () => scroll.querySelector<HTMLButtonElement>('.history-row[aria-pressed="true"]')?.title.split('\n')[0] === firstOid);
   for (const row of rows.slice(0, 5)) {
@@ -131,6 +134,17 @@ async function checkHistoryKeyboardAndAlignment(repository: HTMLElement, checks:
     assert(Math.abs(nodeCenter - (rowBox.top + rowBox.height / 2)) <= 1, 'Graph node must align to the center of its text row');
   }
   checks.push('Native history keyboard ArrowDown/Home selected actual commits; focused viewport and SVG node/edge geometry align with 44px virtual rows');
+  const more = await button('More repository actions', repository);
+  more.focus(); more.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
+  await until('ArrowUp opens More at its last command', () => document.activeElement?.textContent === 'Combine commits…');
+  document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
+  await until('Home selects Find with shortcut hint', () => document.activeElement?.getAttribute('aria-label') === 'Find in history…');
+  assert(document.activeElement?.querySelector('kbd'), 'Find command must display its shortcut');
+  document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  assert(document.activeElement === more, 'Escape must restore More trigger focus');
+  window.dispatchEvent(new KeyboardEvent('keydown', { key: 'f', ctrlKey: true, bubbles: true, cancelable: true }));
+  await until('repository shortcut targets visible history, not hidden project', () => document.activeElement === repository.querySelector('[aria-label="History search query"]'));
+  checks.push('Native More menu opens at last command with ArrowUp, Home reaches hinted Find, Escape returns focus; primary-F focuses visible repository history, and virtual-row arrows preserve stable focus with selected-commit announcement');
 }
 
 function textContrast(foreground: string, background: string) {
@@ -375,7 +389,8 @@ async function runPerformanceSmoke(checks: string[]) {
   await invoke('native_smoke_focus');
   const scroll = await until('first 200 history rows laid out', () => {
     const node = repository.querySelector<HTMLDivElement>('.history-list');
-    const layout = node?.firstElementChild as HTMLElement | null;
+    // The live selected-commit announcement precedes the virtual row spacer.
+    const layout = node?.querySelector<HTMLElement>(':scope > div');
     return node && layout && Number.parseFloat(layout.style.height) >= 200 * 44 && node.querySelector('.history-row') ? node : null;
   });
   const firstRenderMs = performance.now() - started;
@@ -1026,6 +1041,10 @@ async function finishRunningOperationReload(marker: ReloadMarker, checks: string
   const theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
   const saved = localStorage.getItem(VIEW_STORAGE_KEY);
   try {
+    await until('View preferences closed before resize', () => !visible(panel));
+    const branchesDivider = repository.querySelector<HTMLElement>('[role="separator"][aria-label="Resize branches panel"]');
+    if (branchesDivider && visible(branchesDivider)) branchesDivider.focus();
+    if (branchesDivider && originalWidth > 1000) assert(document.activeElement === branchesDivider, `Branch divider must receive focus before resize: ${document.activeElement?.outerHTML.slice(0, 500)}`);
     await invoke('native_smoke_appearance', { theme, width: 800, height: 580 });
     await until('minimum width applied', () => Math.abs(window.innerWidth - 800) <= 5);
     await pause(100);
@@ -1034,6 +1053,7 @@ async function finishRunningOperationReload(marker: ReloadMarker, checks: string
     assert(localStorage.getItem(VIEW_STORAGE_KEY) === saved, 'Window fitting must not replace saved widths');
     const scopePanel = repository.querySelector<HTMLElement>('.repository-refs')!;
     const scopeTrigger = await button('History scope and branches', repository);
+    if (branchesDivider && originalWidth > 1000) assert(document.activeElement === scopeTrigger, `Collapsing the focused branch divider must restore visible scope-button focus: ${document.activeElement?.outerHTML.slice(0, 500)}`);
     assert(!visible(scopePanel) && scopeTrigger.getAttribute('aria-expanded') === 'false', 'Narrow history must initially collapse navigation');
     await click('History scope and branches', repository);
     await until('compact scope opens', () => visible(scopePanel));
@@ -1103,6 +1123,9 @@ export async function runNativeSmoke(): Promise<void> {
       await startRunningOperationReload(checks);
       return;
     }
+    // Failed runs can leave test-only preferences behind. Keep reload checkpoints
+    // intact above, but start a new disposable suite from its known opening view.
+    localStorage.removeItem(VIEW_STORAGE_KEY);
     const context = await invoke<SmokeContext>('native_smoke_context');
     const group = await region('Repository group');
     const project = await api.openProject(context.projectPath);
@@ -1114,6 +1137,23 @@ export async function runNativeSmoke(): Promise<void> {
     const dirtyBefore = JSON.stringify({ head: dirty.status.head, counts: dirty.status.counts, dirty: dirty.status.dirty });
     assert(dirty.status.dirty, 'Dirty fixture must start dirty');
     checks.push('Cold CLI launch rendered real JSON project with all members');
+
+    const filter = group.querySelector<HTMLInputElement>('input[type="search"]')!;
+    type(filter, 'temporary-keyboard-filter');
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'f', ctrlKey: true, bubbles: true, cancelable: true }));
+    await until('project shortcut selects filter', () => document.activeElement === filter && filter.selectionStart === 0 && filter.selectionEnd === filter.value.length);
+    filter.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    await until('project Escape restores all rows', () => filter.value === '' && group.querySelectorAll('.group-table-scroll tbody tr').length === project.members.length);
+    const help = await button('Keyboard shortcuts');
+    help.focus(); help.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    const reference = await until('shortcut reference accepts keyboard focus', () => {
+      const node = document.querySelector<HTMLElement>('[role="region"][aria-label="Keyboard shortcuts"]');
+      return node && visible(node) && document.activeElement === node ? node : null;
+    });
+    assert(reference.textContent?.includes('Does not fetch or pull'), 'Shortcut reference must explain refresh scope');
+    reference.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    assert(document.activeElement === help, 'Escape must return focus from shortcut reference');
+    checks.push('Native project primary-F focuses/selects name-path filter, Escape clears text without Git operations; keyboard opens a focused shortcut reference and Escape restores its trigger');
 
     const oldOperations = new Set((await api.getOperations()).map(item => item.operationId));
     await click(/^Pull all \(/, group);

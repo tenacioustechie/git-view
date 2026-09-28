@@ -1,7 +1,7 @@
 # Git View user guide
 
-Reviewed 27 September 2026 for version 0.1.0, including saved view/panel preferences and compact History navigation
-in the working tree based on `294fd01`. The latest collected native packages
+Reviewed 29 September 2026 for version 0.1.0, including keyboard/accessibility polish
+in the working tree based on `fa49114`. The latest collected native packages
 remain rebase checkpoint `d9af4e6` on macOS arm64 and Windows 11 x64; they do not
 include this workspace redesign. See [Build status](BUILD_STATUS.md) for exact
 evidence and checksums.
@@ -139,10 +139,18 @@ history search. The toolbar stays on one row at the minimum supported width.
 
 Menus close on outside click, focus moving outside, or **Escape**. Escape returns
 focus to the menu button. Use **Enter**, **Space**, or **↓** on a menu button to
-open it, **Tab/Shift+Tab** to move among controls, and **↑/↓** or **Home/End** to
+open at its first available control, or **↑** to open at its last. Use
+**Tab/Shift+Tab** to move among controls, and **↑/↓** or **Home/End** to
 move among command buttons. Push text fields retain normal text-editing keys
 and keep their values when the menu closes. These are in-app menus, not native
 operating-system menu-bar commands.
+
+**Shortcuts** in the top app bar opens a keyboard reference with macOS or
+Windows/Linux key labels. Its scrollable panel receives keyboard focus; use
+Page Up/Down to scroll, Escape to close and return focus, or Tab to continue to
+the next control. Repository **More → Find in history…** and **More → Refresh
+repository** show their shortcut hints. Refresh repository is the same local
+read as the circular-arrow Refresh button, not a fetch or pull.
 
 The CLI accepts the following arguments after the launcher or executable:
 
@@ -244,6 +252,11 @@ you fetch.
 Use **Search** for a name/path, **Branch** for an exact current branch, and
 **Working state** for dirty, behind, or attention-needed repositories. A branch
 filter does not switch branches. **Clear filters** shows all members.
+Press **⌘F** on macOS or **Ctrl+F** elsewhere to focus and select the name/path
+Search text. **Escape** in that field clears only its text, keeping the Branch
+and Working state filters. **⌘R/Ctrl+R** refreshes local project status; it never
+starts Fetch/Pull. These shortcuts do not target a project hidden behind an open
+repository or discovery screen.
 
 | Action | Scope |
 | --- | --- |
@@ -311,6 +324,12 @@ unified diff. For a merge commit, use
 **Compare with parent** to select the comparison; a root commit is compared with
 an empty tree. Binary or truncated previews are explicitly labeled. Use **Load
 older commits** for another page.
+
+Arrow/Home/End navigation from a commit row moves keyboard focus to the stable
+history viewport, so virtualized rows scrolling away do not strand focus.
+The selected commit ID/subject is exposed as a polite accessibility status.
+These navigation keys do not activate or change selection from **Load older
+commits** / **Load more results**; Tab still reaches those buttons normally.
 
 The commit file browser shows status markers, filenames, directories, and previous
 paths for renames. **Filter commit files** matches current or previous paths,
@@ -768,10 +787,17 @@ instead of resetting files. See [Recovery design](REWRITE_RECOVERY.md) for detai
 
 ## Keyboard shortcuts
 
+Open **Shortcuts** in the app bar for an in-app reference. Hints use ⌘ on macOS
+and Ctrl elsewhere; they do not add shortcuts for executing Git mutations.
+
 | Context | Shortcut | Action |
 | --- | --- | --- |
 | Repository view | `⌘R` on macOS / `Ctrl+R` elsewhere | Refresh |
 | Repository view | `⌘F` / `Ctrl+F` | Open History, then focus and select the history query |
+| Visible project dashboard | `⌘F` / `Ctrl+F` | Focus and select the name/path Search filter |
+| Visible project dashboard | `⌘R` / `Ctrl+R` | Refresh local status without Fetch/Pull |
+| Project Search field | `Escape` | Clear only name/path text, preserving other filters |
+| Focused menu button | `↓` / `↑` | Open at the first/last available control |
 | Open toolbar/workspace menu | `Escape` | Close and return focus to its menu button |
 | Open compact History scope panel | `Escape` | Close navigation and focus its scope button; branch-form inputs are retained |
 | Focused menu command | `↑` / `↓`, `Home` / `End` | Focus another enabled command; Enter activates it |
@@ -784,9 +810,13 @@ instead of resetting files. See [Recovery design](REWRITE_RECOVERY.md) for detai
 | Focused history/results list | `↑` / `↓` | Select the previous/next loaded commit |
 | Focused history/results list | `Home` / `End` | Select the first/last loaded commit |
 
-Repository shortcuts defer to open confirmation dialogs. Native buttons and
-inputs can be reached with the keyboard; complete screen-reader and Tab traversal
-acceptance remains outstanding. A group-filter focus shortcut is not implemented.
+Repository/project shortcuts defer to open confirmation and native file dialogs,
+ignore IME composition and already-handled events, and do not intercept extra
+Shift/Alt modifier combinations. Menu arrows leave text fields and sliders to
+their normal editing behavior. Menu/compact-sidebar closing and responsive
+divider removal keep focus on a visible control. Targeted Tab/Shift+Tab paths
+are tested; complete cross-platform screen-reader and every-workflow Tab traversal
+acceptance remain outstanding.
 
 ## Troubleshooting and current limits
 

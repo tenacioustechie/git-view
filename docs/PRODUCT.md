@@ -139,7 +139,7 @@ M2 discovery walks the chosen root to the chosen depth, recognizes `.git` direct
 ## Interaction and performance
 
 - Respect system light/dark mode, platform modifier keys, text selection, and keyboard focus. Use icons/text alongside color.
-- Essential shortcuts: refresh, history row navigation, search/filter focus, open selection, and Escape. Display shortcuts in menus.
+- Essential shortcuts: refresh, history row navigation, search/filter focus, open selection, and Escape. The app-bar Shortcuts reference, repository menu hints and project filter/refresh shortcuts are implemented; complete keyboard/screen-reader acceptance remains outstanding.
 - Show partial results while loading groups. One slow repository must not block navigation or the other rows.
 - Refresh on focus, after operations, and manually. Poll visible group status at a provisional 10-second interval with bounded concurrency; pause when hidden and avoid overlapping scans.
 - Keep operation details available in an activity drawer. Normal workflows use action names, with Git output in expanded details.

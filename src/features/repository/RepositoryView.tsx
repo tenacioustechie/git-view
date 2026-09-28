@@ -17,6 +17,7 @@ import { useViewPreferences, PANEL_LIMITS } from './useViewPreferences';
 import { ViewPreferencesMenu } from './ViewPreferencesMenu';
 import { PanelDivider } from './PanelDivider';
 import { useHistorySidebar } from './useHistorySidebar';
+import { primaryShortcut, shortcutAria, shortcutLabel, shortcutsBlocked } from '../../app/shortcuts';
 import './repository.css';
 
 const drafts = new Map<string, string>();
@@ -142,12 +143,12 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
   useEffect(() => {
     const onFocus = () => { void refresh(); };
     const onKey = (event: KeyboardEvent) => {
-      if (document.querySelector('dialog[open]')) return;
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'f') {
+      if (shortcutsBlocked() || event.isComposing || event.defaultPrevented) return;
+      if (primaryShortcut(event, 'f')) {
         event.preventDefault(); setWorkspace('history'); setShowCombine(false); setShowStashes(false); setDiffRequest(null); setFocusSearch(true);
       } else if (event.key === 'Escape' && (search || searchText) && (event.target === searchInput.current || (event.target instanceof HTMLElement && event.target.closest('.history-list')))) {
         event.preventDefault(); clearSearch();
-      } else if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'r') {
+      } else if (primaryShortcut(event, 'r')) {
         event.preventDefault(); void refresh();
       }
     };
@@ -327,7 +328,7 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
         <button onClick={() => { close(); openBranchPanel('.rebase-controls'); }}>Rebase branch…</button>
       </>}</ToolbarPopover>
       <div className="repository-remote-actions" role="group" aria-label="Remote actions">
-      <button className="refresh-action" aria-label={loading ? 'Refreshing…' : 'Refresh'} title="Refresh (⌘R / Ctrl+R)" disabled={loading} onClick={() => { void refresh(); }}><Icon name="refresh" /></button>
+      <button className="refresh-action" aria-label={loading ? 'Refreshing…' : 'Refresh'} aria-keyshortcuts={shortcutAria('r')} title={`Refresh (${shortcutLabel('r')})`} disabled={loading} onClick={() => { void refresh(); }}><Icon name="refresh" /></button>
       <select className="toolbar-remote" aria-label="Remote" title="Remote for Fetch and Push; Pull uses the current branch’s upstream" value={remoteId} onChange={event => setRemoteId(event.target.value)}><option value="">No remote</option>{remotes.map(remote => <option key={remote.id} value={remote.id}>{remote.name}</option>)}</select>
       <button aria-label="Fetch" title="Fetch the selected remote" disabled={active || !remoteId} onClick={() => { void act({ kind: 'fetch', remoteId }, true); }}><Icon name="fetch" />Fetch</button>
       <button aria-label="Pull" title={status.upstream ? `Pull from ${status.upstream.ref}; last known ${status.upstream.behind ?? 'unknown'} behind` : 'Review pull; no upstream configured'} disabled={active || operationReviewRequired} onClick={() => { void act({ kind: 'pull', statusSnapshotId: status.snapshotId }, true); }}><Icon name="pull" />Pull{status.upstream?.behind !== null && status.upstream?.behind !== undefined && status.upstream.behind > 0 && <span className="toolbar-count" aria-hidden="true">{status.upstream.behind}</span>}</button>
@@ -341,7 +342,8 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
       </div>
       <ToolbarPopover name="More repository actions" className="repository-more" label={<Icon name="more" />}>{close => <>
         <p className="popover-caption">History actions</p>
-        <button onClick={() => { close(); setWorkspace('history'); setShowCombine(false); setShowStashes(false); setDiffRequest(null); setFocusSearch(true); }}>Find in history…</button>
+        <button aria-label="Find in history…" aria-keyshortcuts={shortcutAria('f')} onClick={() => { close(); setWorkspace('history'); setShowCombine(false); setShowStashes(false); setDiffRequest(null); setFocusSearch(true); }}>Find in history… <kbd className="shortcut-hint" aria-hidden="true">{shortcutLabel('f')}</kbd></button>
+        <button aria-label="Refresh repository" aria-keyshortcuts={shortcutAria('r')} onClick={() => { close(); void refresh(); }}>Refresh repository <kbd className="shortcut-hint" aria-hidden="true">{shortcutLabel('r')}</kbd></button>
         <button onClick={() => { close(); detailGeneration.current++; setWorkspace('history'); setShowCombine(true); setShowStashes(false); setDiffRequest(null); }}>Combine commits…</button>
       </>}</ToolbarPopover>
     </header>
@@ -382,7 +384,7 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
         <button ref={sidebar.trigger} hidden={!sidebar.compact} className="history-scope-trigger" aria-label="History scope and branches" aria-expanded={sidebar.expanded} aria-controls={sidebar.id} title={scope ?? 'All branches and tags'} onClick={sidebar.toggle}><Icon name="branch" /><span>{scope ?? 'All branches and tags'}</span><Icon name="chevron" /></button>
         <form className="history-search" aria-label="Search history" onSubmit={event => { event.preventDefault(); submitSearch(); }}>
           <label>Search by<select aria-label="History search field" value={searchField} onChange={event => setSearchField(event.target.value as HistorySearch['field'])}><option value="message">Message</option><option value="author">Author</option><option value="oid">Commit OID</option></select></label>
-          <input ref={searchInput} aria-label="History search query" type="search" maxLength={512} value={searchText} onChange={event => setSearchText(event.target.value)} placeholder={searchField === 'oid' ? 'At least four hex characters' : 'Literal text, case-insensitive'} title="Search history (⌘F / Ctrl+F); Escape clears search" />
+          <input ref={searchInput} aria-label="History search query" aria-keyshortcuts={shortcutAria('f')} type="search" maxLength={512} value={searchText} onChange={event => setSearchText(event.target.value)} placeholder={searchField === 'oid' ? 'At least four hex characters' : 'Literal text, case-insensitive'} title={`Search history (${shortcutLabel('f')}); Escape clears search`} />
           <div><button type="submit" disabled={!searchText.trim()}>Search history</button>{search && <button type="button" onClick={clearSearch}>Clear search</button>}</div>
           {search && <small role="status">{loading ? 'Searching…' : history ? `${history.commits.length} matches loaded` : 'Search unavailable. Retry or clear the search.'} · {search.field}: {search.text} · {scope ?? 'All branches and tags'}. Results omit graph edges.</small>}
         </form>

@@ -1,7 +1,7 @@
 # Feature status
 
-Reviewed 27 September 2026, including saved view/panel preferences and compact History navigation in the working tree
-based on `294fd01` and guided linear rebase at source checkpoint
+Reviewed 29 September 2026, including keyboard/accessibility polish in the working tree
+based on `fa49114` and guided linear rebase at source checkpoint
 `d9af4e6` and the earlier A1–A4 workflows, against the
 [product plan](PRODUCT.md). This is the current completion inventory;
 [Build status](BUILD_STATUS.md) retains dated commands, results, and artifact evidence.
@@ -89,8 +89,15 @@ refer to the delivered runbook workflows on tested platforms.
   navigation or full screen-reader acceptance.
 - Group status reads run with bounded concurrency, but opening/refreshing returns
   a complete snapshot; progressive row delivery during slow reads is absent.
-- Repository refresh/search and history navigation shortcuts exist. Group-filter
-  focus and the planned shortcut/menu presentation remain incomplete.
+- The app-bar Shortcuts reference and repository More menu show platform-specific
+  keyboard hints. Visible project dashboards support primary-F filter focus,
+  primary-R local refresh and Escape clearing only search text. Repository/project
+  shortcuts defer to dialogs, IME composition and modified/handled events. Menus
+  open at first/last controls with Down/Up, skip hidden/disabled commands, preserve
+  native text editing and have targeted Tab/Shift+Tab coverage. Virtual history
+  arrow navigation keeps focus on its stable viewport and exposes selected-commit
+  live text; removing a focused branch divider moves focus to compact navigation.
+  Complete screen-reader and every-workflow keyboard acceptance remain open.
 - Operation results are available in repository and batch activity sections;
   the planned dedicated activity drawer is not implemented.
 - Group table virtualization and larger-scale tuning remain follow-up work.
@@ -127,6 +134,15 @@ checks cover the compact panel at 800×580; browser inspection also verifies
 form retention and focus when widening to 1280×800. The Mac bundle was rebuilt;
 installed apps and collected packages remain unchanged. See Build status for
 the earlier incomplete runs and final-source reports.
+
+The keyboard/accessibility working tree based on `fa49114` passes **183 frontend
+tests and 56 native workflow checks on each platform**. Targeted browser checks
+cover actual Tab/Shift+Tab, the shortcut reference, project search, menu navigation
+and responsive focus. Native checks cover the same product source; subsequent
+Mac harness-only isolation/timing adjustments and exact reports are documented
+in Build status. This does not establish full VoiceOver/NVDA acceptance or an
+exhaustive keyboard-only pass through every workflow. The unsigned Mac bundle
+was rebuilt; installed apps and collected packages remain unchanged.
 
 - Linux and Intel Mac execution, and the hosted GitHub workflow, remain unverified.
 - Stash requires files ref storage; reftable is unsupported. Safe stash Delete

@@ -45,6 +45,16 @@ function mockCompactWindow(initial = true) {
 }
 
 describe('repository workflows (mocked IPC)', () => {
+  it('moves focus from the removed branch divider to the compact scope button', async () => {
+    const resize = mockCompactWindow(false);
+    render(<RepositoryView repository={repository} />);
+    await screen.findByLabelText('Commit message');
+    fireEvent.click(screen.getByRole('button', { name: 'History' }));
+    act(() => screen.getByRole('separator', { name: 'Resize branches panel' }).focus());
+    resize(true);
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'History scope and branches' }));
+    expect(api.planAction).not.toHaveBeenCalled();
+  });
   it('collapses compact history scope, closes with Escape and preserves saved widths', async () => {
     mockCompactWindow();
     localStorage.setItem(VIEW_STORAGE_KEY, JSON.stringify({ version: 1, preferences: { ...DEFAULT_VIEW, openingView: 'history', branchesWidth: 260 } }));

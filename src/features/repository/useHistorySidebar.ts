@@ -31,7 +31,7 @@ export function useHistorySidebar(active: boolean) {
     const focused = beforeResize.current ?? document.activeElement;
     beforeResize.current = null;
     if (!active) return;
-    if (compact && !expanded && panel.current?.contains(focused)) trigger.current?.focus();
+    if (compact && !expanded && (panel.current?.contains(focused) || focused?.matches('[role="separator"][aria-label="Resize branches panel"]'))) trigger.current?.focus();
     if (!compact && (focused === closeButton.current || focused === trigger.current)) panel.current?.querySelector<HTMLButtonElement>('button:not([hidden])')?.focus();
   }, [compact, expanded, active]);
 
