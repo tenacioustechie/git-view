@@ -86,7 +86,16 @@ working-tree redesign is not yet in the collected native packages.
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-Resizable panels; minimum useful desktop window approximately 1000×680. Narrower windows collapse navigation and use a details toggle. History is a virtualized list with aligned graph rows. Branch/tag badges are readable text, and edges retain identity while scrolling and paging. Draw connectors for unloaded parents so page boundaries do not imply false roots.
+Resizable panels; minimum useful desktop window approximately 1000×680. The View
+menu now saves an opening workspace, commit-detail visibility and bounded preferred
+panel widths; pointer/keyboard dividers and sliders share those preferences.
+Narrower windows fit widths without replacing them. At widths up to 1,000 pixels,
+History navigation collapses into a scrollable branch/scope panel opened above
+search; branch-menu actions reveal their forms directly. Wide windows restore
+the inline sidebar, with inputs and preferred widths retained. One-pane/mobile
+navigation remains outside this slice. History is a virtualized list with aligned graph rows. Branch/tag badges
+are readable text, and edges retain identity while scrolling and paging. Draw
+connectors for unloaded parents so page boundaries do not imply false roots.
 
 Selecting a commit shows full OID, message, author/committer and dates, ordered parents, and changed files. Merge diffs say which parent is being compared and offer a parent selector. Root commits show changes against an empty tree. Binary and truncated diffs have explicit states. Files and messages render as text.
 

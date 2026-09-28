@@ -1,5 +1,105 @@
 # Build status
 
+## 2026-09-27: Compact History navigation
+
+Working tree based on `294fd01`, including the uncommitted view/panel preferences
+from 26 September, adds a compact History branch/scope panel at widths up to
+1,000 pixels. A scope button above search opens the scrollable panel; choosing
+a scope closes it without checkout. Close/Escape returns focus, outside
+interaction dismisses it, and Branch actions reveals/focuses its requested form.
+The same sidebar stays mounted across closing/resizing, preserving branch-form
+inputs and saved widths. Confirmation dialogs retain their own keyboard handling.
+
+Context7's official React guidance informed the `useSyncExternalStore` media-query
+subscription and cleanup. Browser review found a narrow-to-wide focus loss;
+capturing focus before the media-query update and restoring it in a layout effect
+fixes it. An isolated mutation-disabled browser fixture verified the 800×580
+collapsed/open layout, scope selection, direct Create branch navigation, Escape,
+retained input on widening to 1280×800, and corrected visible focus restoration.
+Its temporary files/server/tab were removed and browser sizing restored.
+
+Final local `pnpm test` passes **169 tests across 19 files**; `pnpm typecheck`,
+`pnpm lint`, smoke frontend/native compilation and normal production build pass.
+Four added component tests cover collapsed visibility, no mutation, saved widths,
+scope text/dismissal, branch-form retention, responsive focus and dialog priority.
+`pnpm tauri build --bundles app` built the unsigned Mac bundle at
+`src-tauri/target/release/bundle/macos/Git View.app`. No installed app was replaced.
+Normal assets: `index-TPbzkMf7.css` and `index-BmH6dD1y.js`.
+No backend behavior changed, so the complete Rust suite was not repeated.
+
+An initial Mac native run reached 26 checks, then timed out waiting for discovery
+candidates; a rerun reached 25 checks before the runner timeout during the
+performance workflow. Reports/progress use `/tmp/git-view-compact-mac-20260927`
+and `/tmp/git-view-compact-mac-20260927-rerun`. These are incomplete runs, not
+full-suite passes. The first Windows run passed 169 tests and all 54 native checks
+before the final responsive-focus fix, with report
+`C:\codeme\git-view\.tools\GitViewNativeSmoke-c1273bf605bb4fcabf1f249342c71b90.json`.
+Final-source runs pass **all 54 native checks on both platforms**, including the
+new 800×580 compact panel scenario: collapse, scope selection/dismissal, direct
+branch-form navigation, Escape focus return, retained branch input and unchanged
+Git state/preferences. Mac command/report:
+`python3 scripts/native-smoke.py /tmp/git-view-compact-mac-20260927-final.json`.
+Windows command: `python3 scripts/windows-remote.py scripts/windows-native-verify.ps1`;
+report: `C:\codeme\git-view\.tools\GitViewNativeSmoke-a7cc43ec8c2b4ab0b18e23f65be9514c.json`.
+The final Windows source also passes **169 frontend tests**, lint, typechecking,
+smoke build and native-smoke Clippy. Its checkout began clean at `4a81e31`; the
+temporary source delta is hash-checked and reversed after testing. Installed
+Windows apps and installers are unchanged.
+
+Guide/inventory review date is 27 September; README and product scope describe
+the compact controls. The full-process preference restart check and complete
+screen-reader/Tab acceptance remain open; browser/component checks do not close
+those gaps. All 124 local documentation links/anchors and `git diff --check` pass.
+Changes remain uncommitted, with nothing pushed or published.
+
+## 2026-09-26: Saved view and panel preferences
+
+Committed the preceding multi-file selection/redesign work as `294fd01`
+(`Add multi-file staging selection and validate redesigned native workflows`).
+The new working tree on that baseline adds the repository **View** popover:
+opening Changes/History preference, commit-detail visibility, three bounded
+panel widths, pointer/keyboard dividers, and display-only Reset. Versioned local
+storage validates values and reports read/write failures; native smoke uses an
+isolated key. React guidance consulted through Context7 informed pure state
+updates and effect-based persistence. No backend Git behavior changed.
+
+`pnpm test` passes **165 tests across 19 files on both macOS and Windows**.
+The 15 added tests cover malformed/unavailable storage, bounds, remount/reset,
+keyboard/pointer resizing, opening-view semantics, draft preservation and Recent
+isolation. Typechecking, lint and frontend builds pass. Mac
+`pnpm tauri build --bundles app` produced the unsigned bundle at
+`src-tauri/target/release/bundle/macos/Git View.app`; installed apps are unchanged.
+The complete backend suite was not repeated for this frontend-only change.
+
+Native-smoke builds and **all 53 native workflow checks pass on both platforms**.
+The added checks save view/details/width preferences, use keyboard resizing,
+restore preferences after full WebView reload during a genuine running commit,
+fit panels at 800×580 without rewriting saved widths, and reset display settings.
+Mac command/report:
+`python3 scripts/native-smoke.py /tmp/git-view-preferences-mac-20260926-final.json`.
+Windows command: `python3 scripts/windows-remote.py scripts/windows-native-verify.ps1`;
+report: `C:\codeme\git-view\.tools\GitViewNativeSmoke-f7ca359e0ea6451eb5670b6db1bec473.json`.
+The Windows script also passes lint, all frontend tests, build and native-smoke
+Clippy. Windows started at clean `4a81e31`; the exact source delta was copied for
+testing, then hash-checked and reversed, restoring the original clean checkout.
+No Windows installer was rebuilt.
+
+An initial Mac run timed out in appearance setup. Subsequent Mac/Windows runs
+reached 50 checks but exposed a new harness selector matching the View trigger
+instead of its region; the corrected selector passes the final suites above.
+An isolated browser preview visually verified wide and 800×580 Changes/History
+layouts, pointer resize, reload persistence, controls and Reset. Its fixture
+disabled Git mutations; temporary preview files/server/tab were removed.
+Native manual inspection could not attach to the built Mac window, so preference
+persistence across a full OS-process quit/relaunch remains unverified on both
+platforms. WebView reload coverage is not a substitute for that acceptance check.
+Complete narrow-window navigation and screen-reader/Tab acceptance remain open.
+
+Guide, inventory, README and product scope now describe the actual controls.
+Final normal frontend build restores non-smoke assets; local documentation links
+and `git diff --check` pass. New preferences remain uncommitted for review.
+Nothing was pushed, installed or published.
+
 ## 2026-09-26: Full macOS native rerun passes
 
 After the user approved closing the open Git View window, the final

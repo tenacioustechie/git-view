@@ -1,7 +1,7 @@
 # Feature status
 
-Reviewed 26 September 2026, including multi-file staging selection in the working tree
-based on `4a81e31` and guided linear rebase at source checkpoint
+Reviewed 27 September 2026, including saved view/panel preferences and compact History navigation in the working tree
+based on `294fd01` and guided linear rebase at source checkpoint
 `d9af4e6` and the earlier A1–A4 workflows, against the
 [product plan](PRODUCT.md). This is the current completion inventory;
 [Build status](BUILD_STATUS.md) retains dated commands, results, and artifact evidence.
@@ -73,11 +73,20 @@ refer to the delivered runbook workflows on tested platforms.
   warning. Browser reload/component remount and a full macOS bundle Quit/relaunch
   are verified. Windows full-process restart persistence remains unverified;
   current native-suite results and limitations are recorded in Build status.
-- Other persisted view preferences are not implemented. Group filters/selection
-  and commit drafts are retained during the session only.
-- Repository panels have CSS resize support and adapt their widths. Commit
-  details can be hidden to expand the preview; narrow-window navigation collapse
-  is still absent.
+- The repository View menu saves an opening Changes/History choice, commit-detail
+  visibility, and Changed files/Branches/History preferred widths, shared across
+  repositories in local webview storage. Pointer/keyboard dividers and sliders
+  adjust bounded widths; narrow-window fitting does not overwrite preferences.
+  Reset affects display preferences only. Invalid/unavailable storage has safe
+  defaults and warnings. Group filters/selection and commit drafts remain
+  session-only; window size/position is not persisted.
+- At widths up to 1,000 pixels, History's branch/scope sidebar starts collapsed
+  behind a scope button, opening as a scrollable panel. Scope selection,
+  Close/Escape and outside interaction dismiss it; direct branch-menu navigation
+  reveals the requested form. Inputs and preferred widths survive closing and
+  resizing, with focus moved to visible navigation controls when needed. Wide
+  windows retain the inline sidebar. This does not implement one-pane/mobile
+  navigation or full screen-reader acceptance.
 - Group status reads run with bounded concurrency, but opening/refreshing returns
   a complete snapshot; progressive row delivery during slow reads is absent.
 - Repository refresh/search and history navigation shortcuts exist. Group-filter
@@ -97,12 +106,27 @@ workflow checks on each**. The unsigned macOS arm64 app and Windows x64 NSIS
 installer were built, launched/installed, and collected with passing reports.
 Exact commands, checksums, and historical A1–A4 evidence remain in Build status.
 
-The current redesign/multi-file-selection working tree has **150 frontend tests
+The redesign/multi-file-selection checkpoint `294fd01` has **150 frontend tests
 passing on each platform**, **51 native workflow checks passing on each
 platform**, an updated unsigned Mac app, and a verified Mac Recent quit/relaunch
 check. Exact working-tree evidence and incomplete checks are listed separately
 in Build status; these checks do not establish full accessibility acceptance or
 Windows full-process Recent persistence.
+
+The view/panel preferences working tree based on `294fd01` passes **165 frontend
+tests and 53 native workflow checks on each platform**, including native WebView
+reload persistence and bounded 800×580 panel fitting. An updated unsigned Mac app
+was built; installed apps were not replaced. Browser preview verified pointer
+resizing and controls. Full OS-process restart persistence of these new
+preferences remains unverified on both platforms; this is separate from the
+earlier Mac Recent restart check.
+
+The 27 September compact-navigation working tree on the same baseline passes
+**169 frontend tests and 54 native workflow checks on each platform**. Native
+checks cover the compact panel at 800×580; browser inspection also verifies
+form retention and focus when widening to 1280×800. The Mac bundle was rebuilt;
+installed apps and collected packages remain unchanged. See Build status for
+the earlier incomplete runs and final-source reports.
 
 - Linux and Intel Mac execution, and the hosted GitHub workflow, remain unverified.
 - Stash requires files ref storage; reftable is unsupported. Safe stash Delete

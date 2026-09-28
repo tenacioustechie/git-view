@@ -1,7 +1,7 @@
 # Git View user guide
 
-Reviewed 25 September 2026 for version 0.1.0, including multi-file staging selection
-in the working tree based on `4a81e31`. The latest collected native packages
+Reviewed 27 September 2026 for version 0.1.0, including saved view/panel preferences and compact History navigation
+in the working tree based on `294fd01`. The latest collected native packages
 remain rebase checkpoint `d9af4e6` on macOS arm64 and Windows 11 x64; they do not
 include this workspace redesign. See [Build status](BUILD_STATUS.md) for exact
 evidence and checksums.
@@ -17,6 +17,7 @@ packages, and platform limitations.
 - [Create and edit project files](#create-and-edit-project-files)
 - [Check and update a group](#check-and-update-a-group)
 - [Browse and search history](#browse-and-search-history)
+- [View and panel preferences](#view-and-panel-preferences)
 - [Stage files and commit](#stage-files-and-commit)
 - [Fetch, pull, and push](#fetch-pull-and-push)
 - [Create and switch branches](#create-and-switch-branches)
@@ -267,11 +268,11 @@ inspection before retrying.
 
 Visible group status refreshes on focus and approximately every ten seconds;
 **Refresh** is also available. Filters and selection survive opening a member
-and returning. These view preferences are not persisted across app restarts.
+and returning. These group filters and selections are not persisted across app restarts.
 
 ## Browse and search history
 
-Repositories open in **Changes**, with changed files on the left and a dedicated
+Repositories open in **Changes** by default (or **History** if chosen under **View**), with changed files on the left and a dedicated
 diff preview on the right. Choose **History** below the repository toolbar to
 show history scope controls, the graph/list, commit details, and branch actions.
 The **Changes** count is the number of distinct changed files, including conflicts.
@@ -281,10 +282,27 @@ return to Changes. Operation/conflict guidance remains above either workspace.
 Choose **All branches and tags**, a local branch, a remote branch, or a tag to
 set the history scope. Selecting a scope does not check out that branch.
 
+At window widths of 1,000 pixels or less, the branch/scope sidebar starts
+collapsed to leave room for history and the inspector. Above history search,
+the **History scope and branches** button shows the current scope (initially
+**All branches and tags**). Open it to show the scrollable navigation panel.
+Selecting a scope closes the panel; **Close history scope (×)**, **Escape**, an
+outside click, or moving focus outside also closes it. Close/Escape returns
+keyboard focus to the scope button. Confirmation dialogs handle their own keys.
+The toolbar's **Branch actions** menu opens and focuses the requested form
+directly, including when this sidebar is collapsed.
+
+Closing the panel or resizing does not discard branch-form inputs, change the
+current branch, or rewrite preferred widths. Widening the window restores the
+inline sidebar and its resize divider. If resizing hides the focused navigation
+control, focus moves to its visible counterpart. The compact panel's open/closed
+state is session-only; it is not another saved View preference.
+
 Select a commit to see its message and changed files. Expand **Commit information**
 for its full ID and author/committer identities and dates. **Hide details** gives
 the file/diff area more space; **Show details** restores the message, information,
-and cherry-pick controls. This toggle lasts while that repository view stays open.
+and cherry-pick controls. This toggle is saved for all repositories on this device,
+and is also available as **View → Show commit details**.
 The parent comparison remains visible even with details hidden.
 The selected history row stays highlighted with an accent edge while its
 details are open. Select **Changes**, or **Working changes** above the history
@@ -330,9 +348,42 @@ parent relationships. **Clear search** restores the graph. Refresh if Git View
 reports an expired history snapshot. Historical views ignore replacement refs
 and reject legacy grafts.
 
+## View and panel preferences
+
+Open **View** at the right of the Changes/History/Stashes navigation row:
+
+- **Opening view** chooses Changes or History for the next repository you open.
+  It does not switch your current workspace or change branch/history scope.
+- **Show commit details** shows or hides the commit overview immediately, matching
+  the inspector's **Show details** / **Hide details** button. The parent comparison
+  and file diff remain available when the overview is hidden.
+- **Changed files width**, **Branches width**, and **History width** set preferred
+  widths in pixels. Ranges are 280–480, 155–320, and 240–600 respectively.
+  The rest of the space belongs to the diff or commit inspector.
+
+Drag the vertical divider beside a panel to resize it. With a divider focused,
+**←/→** changes its preferred width by 10 pixels, and **Home/End** sets its
+minimum/maximum. **Escape** during a drag restores its starting preference.
+The sliders in View offer the same settings using ordinary keyboard controls.
+Smaller windows fit panels into the available space without replacing saved
+widths; enlarge the window to make more of the preferred width available.
+
+**Reset view preferences** restores Changes as the opening view, visible commit
+details, and widths of 350/200/360 pixels. It keeps the currently active workspace,
+commit draft, file selection, and Recent list; it performs no Git action.
+
+These preferences save automatically in local webview storage and apply to all
+repositories in that app profile, including after restart. Development-browser
+and packaged-app settings are separate; settings are not synced between devices.
+Only these display choices are stored—not drafts, checked files, search queries,
+branch selections, Git-operation inputs, or window position/size. If reading or
+writing storage fails, View shows a warning. Controls remain usable in the current
+view, but older settings may return after reopening a repository or restarting.
+Invalid settings fall back to defaults; numeric widths are bounded to safe ranges.
+
 ## Stage files and commit
 
-1. Select **Changes** below the repository toolbar (the initial workspace).
+1. Select **Changes** below the repository toolbar (the default opening workspace).
 2. Inspect the **Staged**, **Unstaged**, **Untracked**, and **Conflicted** sections.
    Conflicted is shown first when needed. Select a filename to highlight that
    version and inspect its diff in the right pane; selection does not stage it.
@@ -442,6 +493,8 @@ both branch creation and switching require this in Git View.
 Open the toolbar's current-branch menu and choose the desired branch action;
 this opens and focuses its form in the History sidebar. You can also choose
 **History** to access the same controls directly.
+In a compact window, open **History scope and branches** above the history search
+first; the toolbar's branch menu is a direct alternative.
 
 Expand **Switch branch**, select a local branch, choose **Preview switch**, and
 confirm the target. Git View rechecks repository state before execution.
@@ -720,9 +773,12 @@ instead of resetting files. See [Recovery design](REWRITE_RECOVERY.md) for detai
 | Repository view | `⌘R` on macOS / `Ctrl+R` elsewhere | Refresh |
 | Repository view | `⌘F` / `Ctrl+F` | Open History, then focus and select the history query |
 | Open toolbar/workspace menu | `Escape` | Close and return focus to its menu button |
+| Open compact History scope panel | `Escape` | Close navigation and focus its scope button; branch-form inputs are retained |
 | Focused menu command | `↑` / `↓`, `Home` / `End` | Focus another enabled command; Enter activates it |
 | Focused changed filename | `↑` / `↓`, `Home` / `End` | Inspect the previous/next or first/last visible file in expanded groups |
 | Focused changed-file checkbox | `Space` | Check/uncheck that version for Stage selected or Unstage selected; no immediate Git action |
+| Focused panel divider | `←` / `→`, `Home` / `End` | Adjust preferred width by 10 pixels, or use its minimum/maximum |
+| Panel divider during a drag | `Escape` | Restore its pre-drag preferred width |
 | Focused historical filename | `↑` / `↓`, `Home` / `End` | Inspect the previous/next or first/last file matching the commit-file filter |
 | History search input or history/results list | `Escape` | Clear the query/search |
 | Focused history/results list | `↑` / `↓` | Select the previous/next loaded commit |
@@ -747,7 +803,7 @@ acceptance remains outstanding. A group-filter focus shortcut is not implemented
 
 Not yet available: individual-line staging, side-by-side diffs, blame/file history,
 interactive rebase, batch push, group branch switching, integrated conflict editing,
-multiple windows, group templates, and persisted view settings other than Recent.
+multiple windows, group templates, and persisted group filters or commit drafts.
 The broader backlog and verification gaps are tracked in [Feature status](FEATURE_STATUS.md).
 
 The repository's GitHub workflow currently runs only when manually dispatched.

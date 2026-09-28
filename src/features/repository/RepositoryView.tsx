@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { api, errorMessage } from '../../api/client';
 import type { Changes, CommitDetails, DiffRequest, DiffResult, GitRef, HistoryPage, HistorySearch, OperationResult, Remote, RepositoryAction, RepositoryActionPlan, RepositoryOpen } from '../../api/types';
 import { HistoryGraph } from '../../graph/HistoryGraph';
@@ -13,6 +13,10 @@ import { ChangesWorkspace } from './ChangesWorkspace';
 import { CommitFiles } from './CommitFiles';
 import { ToolbarPopover } from '../../app/ToolbarPopover';
 import { Icon } from '../../app/Icon';
+import { useViewPreferences, PANEL_LIMITS } from './useViewPreferences';
+import { ViewPreferencesMenu } from './ViewPreferencesMenu';
+import { PanelDivider } from './PanelDivider';
+import { useHistorySidebar } from './useHistorySidebar';
 import './repository.css';
 
 const drafts = new Map<string, string>();
@@ -31,6 +35,8 @@ export function RepositoryView(props: { repository: RepositoryOpen; onBack?: () 
 
 function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; onBack?: () => void }) {
   const id = repository.repositoryId;
+  const view = useViewPreferences();
+  const { preferences } = view;
   const [status, setStatus] = useState(repository.status);
   const [changes, setChanges] = useState<Changes | null>(null);
   const [refs, setRefs] = useState<GitRef[]>([]);
@@ -44,8 +50,9 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
-  const [showCommitInfo, setShowCommitInfo] = useState(true);
-  const [workspace, setWorkspace] = useState<'changes' | 'history'>('changes');
+  const showCommitInfo = preferences.showCommitDetails;
+  const [workspace, setWorkspace] = useState<'changes' | 'history'>(preferences.openingView);
+  const sidebar = useHistorySidebar(workspace === 'history');
   const [focusSearch, setFocusSearch] = useState(false);
   const [details, setDetails] = useState<CommitDetails | null>(null);
   const [diff, setDiff] = useState<DiffResult | null>(null);
@@ -79,7 +86,7 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
   const seenOperations = useRef(new Map<string, string>());
   const dialog = useRef<HTMLDialogElement>(null);
   const switchControls = useRef<HTMLDetailsElement>(null);
-  const branchSidebar = useRef<HTMLElement>(null);
+  const branchSidebar = sidebar.panel;
   const [branchPanel, setBranchPanel] = useState<string | null>(null);
   const executing = useRef(false);
   const planning = useRef(false);
@@ -95,6 +102,7 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
     generation.current++; setSearch(null); setSearchText(''); setHistory(null); setLoading(true); setError(null);
   }, [search]);
   const changeScope = (next: string | null) => {
+    if (sidebar.compact) sidebar.close();
     if (next === scope) return;
     generation.current++; setHistory(null); setLoading(true); setScope(next);
   };
@@ -161,7 +169,7 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
       control.scrollIntoView?.({ block: 'nearest' });
     }
     setBranchPanel(null);
-  }, [branchPanel, workspace]);
+  }, [branchPanel, workspace, branchSidebar]);
   useEffect(() => {
     const remote = remotes.find(item => item.id === remoteId);
     setDestination(remote?.destinationRef ?? (status.head.kind === 'branch' ? `refs/heads/${status.head.name}` : ''));
@@ -292,6 +300,7 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
   const openBranchPanel = (selector: string) => {
     // Navigating to a form does not change history selection or Git state.
     if (showCombine || showStashes) { detailGeneration.current++; setSelected(null); setDetails(null); }
+    sidebar.reveal();
     setWorkspace('history'); setShowCombine(false); setShowStashes(false); setDiffRequest(null); setBranchPanel(selector);
   };
   const fileDiff = diffRequest ? <WorkingDiff request={diffRequest} displayPath={diffFileName} diff={diff} active={active || loading} blockedReason={operationReviewRequired ? 'Resolve the recorded Git operation context before staging or unstaging hunks.' : null} onAction={action => { void act(action); }} /> : null;
@@ -304,7 +313,7 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
     <button className="primary-action" type="submit" disabled={active || loading || !changes || operationReviewRequired || !['idle', 'squashMerge'].includes(status.gitState) || status.counts.staged === 0 || status.counts.conflicted > 0 || !draft.trim()}>Commit staged changes ({status.counts.staged})</button>
   </form>;
 
-  return <section className="repository-screen" aria-label="Repository">
+  return <section className="repository-screen" aria-label="Repository" style={{ '--changes-width': `${preferences.changesWidth}px`, '--branches-width': `${preferences.branchesWidth}px`, '--history-width': `${preferences.historyWidth}px` } as CSSProperties}>
     <header className="repository-toolbar">
       {onBack && <button onClick={onBack}>← Back</button>}
       <div className="repository-title"><strong title={repository.displayPath}>{repositoryName}</strong><small title={statusSummary}>{statusSummary}</small></div>
@@ -341,17 +350,20 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
       <button aria-pressed={workspace === 'history' && !showStashes} onClick={browseHistory}>History</button>
       <button aria-pressed={workspace === 'history' && showStashes} onClick={() => { detailGeneration.current++; setWorkspace('history'); setShowStashes(true); setShowCombine(false); setDiffRequest(null); }}>Stashes</button>
       <small>{workspace === 'changes' ? 'Review · stage · commit' : 'Browse commits and manage branches'}</small>
+      <ViewPreferencesMenu {...view} />
     </nav>
     {error && <div role="alert" className="repository-error">{error}<button onClick={() => setError(null)} aria-label="Dismiss error">×</button></div>}
     <OperationContext status={status} files={changes?.files ?? null} active={active} onPlan={action => { void act(action, true); }} onReview={working} />
     {status.submoduleDirty && <div className="repository-notice">A submodule has working changes. Open the submodule separately to review it.</div>}
     {workspace === 'changes' && <ChangesWorkspace changes={changes} selection={diffRequest} disabled={active || loading}
+      sidebarWidth={preferences.changesWidth} onResize={width => view.update({ changesWidth: width })}
       blockedReason={operationReviewRequired ? 'Resolve the recorded Git operation context before staging or unstaging files.' : null}
       onSelect={(file, context) => { if (changes) setDiffRequest({ repositoryId: id, snapshotId: changes.snapshotId, fileId: file.fileId, context }, file.displayPath); }}
       onAction={action => { void act(action); }} composer={composer} diff={fileDiff} />}
-    <div className="repository-panels" hidden={workspace !== 'history'}>
-      <aside className="repository-refs" ref={branchSidebar}>
-        <h2>History scope</h2><button className={scope === null ? 'selected' : ''} onClick={() => changeScope(null)}>All branches and tags</button>
+    <div className={`repository-panels${sidebar.compact ? ' compact-history' : ''}`} hidden={workspace !== 'history'}>
+      <aside id={sidebar.id} aria-label="History scope and branches" className="repository-refs" ref={branchSidebar} hidden={sidebar.compact && !sidebar.expanded}>
+        <div className="history-scope-heading"><h2>History scope</h2><button ref={sidebar.closeButton} hidden={!sidebar.compact} aria-label="Close history scope" onClick={sidebar.close}>×</button></div>
+        <button className={scope === null ? 'selected' : ''} onClick={() => changeScope(null)}>All branches and tags</button>
         {(['local', 'remote', 'tag'] as const).map(kind => <div key={kind}><h3>{kind === 'local' ? 'Local branches' : kind === 'remote' ? 'Remote branches' : 'Tags'}</h3>{refs.filter(ref => ref.kind === kind).map(ref => <button title={ref.fullName} key={ref.fullName} className={scope === ref.fullName ? 'selected' : ''} onClick={() => changeScope(ref.fullName)}>{ref.label}</button>)}</div>)}
         <details className="switch-controls" ref={switchControls}><summary>Switch branch</summary><label>Local branch<select value={branchTarget} onChange={event => setBranchTarget(event.target.value)}><option value="">Choose branch</option>{refs.filter(ref => ref.kind === 'local').map(ref => <option key={ref.fullName} value={ref.fullName}>{ref.label}</option>)}</select></label><button title={status.gitState !== 'idle' ? 'Finish the current Git operation before switching branches.' : undefined} disabled={active || status.gitState !== 'idle' || !branchTarget} onClick={() => { void act({ kind: 'switchBranch', statusSnapshotId: status.snapshotId, localRef: branchTarget }, true); }}>Preview switch</button></details>
         <RemoteCheckout repositoryId={id} status={status} refs={refs} active={active} refreshVersion={refreshVersion} onPlan={action => { void act(action, true); }} onSwitch={localRef => { setBranchTarget(localRef); if (switchControls.current) { switchControls.current.open = true; switchControls.current.querySelector('select')?.focus(); } }} />
@@ -365,7 +377,9 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
           <small>Squash merge stages the branch changes for review and an explicit commit.</small>
         </details>
       </aside>
+      {!sidebar.compact && <PanelDivider name="Resize branches panel" value={preferences.branchesWidth} min={PANEL_LIMITS.branchesWidth[0]} max={PANEL_LIMITS.branchesWidth[1]} onChange={width => view.update({ branchesWidth: width })} />}
       <section className="repository-history" aria-label="History">
+        <button ref={sidebar.trigger} hidden={!sidebar.compact} className="history-scope-trigger" aria-label="History scope and branches" aria-expanded={sidebar.expanded} aria-controls={sidebar.id} title={scope ?? 'All branches and tags'} onClick={sidebar.toggle}><Icon name="branch" /><span>{scope ?? 'All branches and tags'}</span><Icon name="chevron" /></button>
         <form className="history-search" aria-label="Search history" onSubmit={event => { event.preventDefault(); submitSearch(); }}>
           <label>Search by<select aria-label="History search field" value={searchField} onChange={event => setSearchField(event.target.value as HistorySearch['field'])}><option value="message">Message</option><option value="author">Author</option><option value="oid">Commit OID</option></select></label>
           <input ref={searchInput} aria-label="History search query" type="search" maxLength={512} value={searchText} onChange={event => setSearchText(event.target.value)} placeholder={searchField === 'oid' ? 'At least four hex characters' : 'Literal text, case-insensitive'} title="Search history (⌘F / Ctrl+F); Escape clears search" />
@@ -375,10 +389,11 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
         <button className={`working-entry ${selected === null ? 'selected' : ''}`} onClick={working}>Working changes <small>{status.counts.staged} staged · {status.counts.unstaged} unstaged · {status.counts.untracked} untracked · {status.counts.conflicted} conflicts</small></button>
         <HistoryGraph key={`${scope ?? ''}:${search ? `${search.field}:${search.text}` : 'history'}`} rows={graph} selected={selected} onSelect={oid => { void inspect(oid); }} loading={loading} failed={!history} searchResults={search !== null} more={Boolean(history?.nextCursor)} onMore={() => { void loadMore(); }} />
       </section>
+      <PanelDivider name="Resize history panel" value={preferences.historyWidth} min={PANEL_LIMITS.historyWidth[0]} max={PANEL_LIMITS.historyWidth[1]} onChange={width => view.update({ historyWidth: width })} />
       <section className={`repository-details${!showStashes && !showCombine ? ' commit-inspector' : ''}`} aria-label={showStashes ? 'Stash workspace' : showCombine ? 'History rewrite' : 'Commit details'}>
         {showStashes ? <Stashes repositoryId={id} status={status} files={changes?.files ?? []} active={active} refreshVersion={refreshVersion} onPlan={(action, isCurrent) => { void act(action, true, isCurrent); }} onClose={working} /> : showCombine ? <CombineCommits repositoryId={id} status={status} active={active} refreshVersion={refreshVersion} onPlan={action => { void act(action, true); }} onClose={working} /> : selected ? <>
           {!details ? <p className="empty">Loading commit…</p> : <>
-            <div className="commit-inspector-heading"><h2 title={selected}>Commit {selected.slice(0, 8)}</h2><button aria-expanded={showCommitInfo} onClick={() => setShowCommitInfo(value => !value)}>{showCommitInfo ? 'Hide details' : 'Show details'}</button></div>
+            <div className="commit-inspector-heading"><h2 title={selected}>Commit {selected.slice(0, 8)}</h2><button aria-expanded={showCommitInfo} onClick={() => view.update({ showCommitDetails: !showCommitInfo })}>{showCommitInfo ? 'Hide details' : 'Show details'}</button></div>
             <div className="commit-overview" hidden={!showCommitInfo}>
             <pre className="commit-message">{details.message}</pre>
             <details className="commit-identities"><summary>Commit information</summary>

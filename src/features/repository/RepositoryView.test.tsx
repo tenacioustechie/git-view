@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { api } from '../../api/client';
 import { fixtures } from '../../test/fixtures';
 import { RepositoryView } from './RepositoryView';
+import { DEFAULT_VIEW, VIEW_STORAGE_KEY } from './useViewPreferences';
 import type { ChangedFile, RepositoryOpen } from '../../api/types';
 
 vi.mock('../../api/client', () => ({
@@ -13,6 +14,7 @@ const file: ChangedFile = { fileId: 'opaque-file', displayPath: 'file with space
 let repository: RepositoryOpen;
 let sequence = 0;
 beforeEach(() => {
+  localStorage.clear();
   vi.resetAllMocks();
   vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(600);
   vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(600);
@@ -32,9 +34,140 @@ beforeEach(() => {
   HTMLDialogElement.prototype.showModal = function () { this.open = true; };
   HTMLDialogElement.prototype.close = function () { this.open = false; };
 });
-afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+
+function mockCompactWindow(initial = true) {
+  let matches = initial;
+  const listeners = new Set<() => void>();
+  const media = { get matches() { return matches; }, addEventListener: (_: string, listener: () => void) => listeners.add(listener), removeEventListener: (_: string, listener: () => void) => listeners.delete(listener) };
+  vi.stubGlobal('matchMedia', () => media);
+  return (compact: boolean) => act(() => { matches = compact; listeners.forEach(listener => listener()); });
+}
 
 describe('repository workflows (mocked IPC)', () => {
+  it('collapses compact history scope, closes with Escape and preserves saved widths', async () => {
+    mockCompactWindow();
+    localStorage.setItem(VIEW_STORAGE_KEY, JSON.stringify({ version: 1, preferences: { ...DEFAULT_VIEW, openingView: 'history', branchesWidth: 260 } }));
+    const saved = localStorage.getItem(VIEW_STORAGE_KEY);
+    render(<RepositoryView repository={repository} />);
+    await screen.findByRole('button', { name: /Merge feature/ });
+    const trigger = screen.getByRole('button', { name: 'History scope and branches' });
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByRole('complementary', { name: 'History scope and branches' })).toBeNull();
+    expect(screen.queryByRole('separator', { name: 'Resize branches panel' })).toBeNull();
+    fireEvent.click(trigger);
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Close history scope' }));
+    fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+    expect(document.activeElement).toBe(trigger);
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+    expect(localStorage.getItem(VIEW_STORAGE_KEY)).toBe(saved);
+    expect(api.planAction).not.toHaveBeenCalled();
+  });
+  it('opens branch actions in compact layout and retains form inputs across closing and resizing', async () => {
+    const resize = mockCompactWindow();
+    render(<RepositoryView repository={repository} />);
+    await screen.findByLabelText('Commit message');
+    fireEvent.click(screen.getByRole('button', { name: 'Branch actions' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Create branch…' }));
+    const name = screen.getByLabelText('Name');
+    expect(document.activeElement).toBe(name.closest('details')!.querySelector('summary'));
+    fireEvent.change(name, { target: { value: 'retain-branch-name' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Close history scope' }));
+    expect(screen.queryByRole('textbox', { name: 'Name' })).toBeNull();
+    resize(false);
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'All branches and tags' }));
+    expect(screen.getByLabelText('Name')).toBe(name);
+    expect((name as HTMLInputElement).value).toBe('retain-branch-name');
+    expect(screen.getByRole('separator', { name: 'Resize branches panel' })).toBeTruthy();
+    act(() => { name.focus(); });
+    resize(true);
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'History scope and branches' }));
+    fireEvent.click(screen.getByRole('button', { name: 'History scope and branches' }));
+    expect(screen.getByLabelText('Name')).toBe(name);
+    expect(api.planAction).not.toHaveBeenCalled();
+  });
+  it('shows the chosen compact scope without checkout and dismisses on outside focus', async () => {
+    mockCompactWindow();
+    vi.mocked(api.listRefs).mockResolvedValue([{ kind: 'local', fullName: 'refs/heads/topic', label: 'topic', oid: fixtures.history.commits[0].oid }]);
+    render(<RepositoryView repository={repository} />);
+    await screen.findByLabelText('Commit message');
+    fireEvent.click(screen.getByRole('button', { name: 'History' }));
+    const trigger = screen.getByRole('button', { name: 'History scope and branches' });
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole('button', { name: 'topic' }));
+    await waitFor(() => expect(api.getHistory).toHaveBeenLastCalledWith(repository.repositoryId, 'refs/heads/topic'));
+    expect(trigger.textContent).toContain('refs/heads/topic');
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(trigger);
+    act(() => { screen.getByLabelText('History search query').focus(); });
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+    expect(document.activeElement).toBe(screen.getByLabelText('History search query'));
+    expect(api.planAction).not.toHaveBeenCalled();
+    expect(api.runAction).not.toHaveBeenCalled();
+  });
+  it('keeps compact scope open for confirmation dialogs and restores usable focus at wide size', async () => {
+    const resize = mockCompactWindow();
+    render(<RepositoryView repository={repository} />);
+    await screen.findByLabelText('Commit message');
+    fireEvent.click(screen.getByRole('button', { name: 'History' }));
+    const trigger = screen.getByRole('button', { name: 'History scope and branches' });
+    fireEvent.click(trigger);
+    const modal = document.createElement('dialog');
+    modal.open = true; document.body.append(modal);
+    fireEvent.keyDown(modal, { key: 'Escape' });
+    expect(trigger.getAttribute('aria-expanded')).toBe('true');
+    modal.remove();
+    resize(false);
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'All branches and tags' }));
+    expect(screen.queryByRole('button', { name: 'History scope and branches' })).toBeNull();
+  });
+  it('restores opening view, details visibility and widths from saved preferences', async () => {
+    localStorage.setItem(VIEW_STORAGE_KEY, JSON.stringify({ version: 1, preferences: { ...DEFAULT_VIEW, openingView: 'history', showCommitDetails: false, branchesWidth: 250 } }));
+    render(<RepositoryView repository={repository} />);
+    expect(screen.getByRole('button', { name: 'History' }).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByRole('region', { name: 'Repository' }).style.getPropertyValue('--branches-width')).toBe('250px');
+    fireEvent.click(await screen.findByRole('button', { name: /Merge feature/ }));
+    await screen.findByRole('button', { name: 'Show details' });
+    expect(screen.queryByRole('button', { name: 'Cherry-pick commit' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Show details' }));
+    expect(JSON.parse(localStorage.getItem(VIEW_STORAGE_KEY)!).preferences.showCommitDetails).toBe(true);
+    expect(api.planAction).not.toHaveBeenCalled();
+  });
+  it('saves View controls for future repositories without navigating or losing the draft; reset preserves Recent', async () => {
+    localStorage.setItem('git-view.recent-workspaces.v1', 'keep');
+    const view = render(<RepositoryView repository={repository} />);
+    const editor = await screen.findByLabelText('Commit message');
+    fireEvent.change(editor, { target: { value: 'Keep my draft' } });
+    fireEvent.click(screen.getByRole('button', { name: 'View preferences' }));
+    fireEvent.change(screen.getByLabelText('Opening view'), { target: { value: 'history' } });
+    fireEvent.change(screen.getByRole('slider', { name: 'Changed files width' }), { target: { value: '420' } });
+    expect(screen.getByLabelText('Commit message')).toBe(editor);
+    expect((editor as HTMLTextAreaElement).value).toBe('Keep my draft');
+    expect(screen.getByRole('region', { name: 'Repository' }).style.getPropertyValue('--changes-width')).toBe('420px');
+    fireEvent.keyDown(screen.getByLabelText('Opening view'), { key: 'Escape' });
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'View preferences' }));
+    view.unmount();
+    render(<RepositoryView repository={repository} />);
+    expect(screen.getByRole('button', { name: 'History' }).getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(screen.getByRole('button', { name: 'View preferences' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Reset view preferences' }));
+    expect(localStorage.getItem(VIEW_STORAGE_KEY)).toBeNull();
+    expect(localStorage.getItem('git-view.recent-workspaces.v1')).toBe('keep');
+    expect(screen.getByRole('button', { name: 'History' }).getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(screen.getByRole('button', { name: /^Changes / }));
+    expect((screen.getByLabelText('Commit message') as HTMLTextAreaElement).value).toBe('Keep my draft');
+    expect(api.planAction).not.toHaveBeenCalled();
+  });
+  it('saves divider keyboard sizes and exposes storage failure inside View', async () => {
+    render(<RepositoryView repository={repository} />);
+    await screen.findByLabelText('Commit message');
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('Quota'); });
+    fireEvent.keyDown(screen.getByRole('separator', { name: 'Resize changed files panel' }), { key: 'ArrowRight' });
+    expect(screen.getByRole('region', { name: 'Repository' }).style.getPropertyValue('--changes-width')).toBe('360px');
+    fireEvent.click(screen.getByRole('button', { name: 'View preferences' }));
+    expect(within(screen.getByRole('region', { name: 'View preferences' })).getByText(/View preferences could not be saved/).getAttribute('role')).toBe('status');
+    expect(api.planAction).not.toHaveBeenCalled();
+  });
   it('opens the requested branch form from Changes without planning a Git mutation', async () => {
     render(<RepositoryView repository={repository} />);
     await screen.findByRole('button', { name: 'Stage' });

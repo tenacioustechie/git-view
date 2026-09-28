@@ -3,6 +3,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { api, errorMessage } from '../../api/client';
 import type { OperationResult } from '../../api/types';
+import { VIEW_STORAGE_KEY } from './useViewPreferences';
 
 interface SmokeContext { projectPath: string; cleanPath: string; dirtyPath: string; mergePath: string; m2?: boolean; m3?: boolean; performance?: boolean; discovery?: boolean; historySearch?: boolean; remoteCheckout?: boolean; cherryPick?: boolean; stash?: boolean; hunks?: boolean; rebase?: boolean }
 interface SmokeResult { passed: boolean; checks: string[]; error?: string; body?: string }
@@ -956,6 +957,28 @@ async function runRebaseSmoke(checks: string[]) {
 }
 
 async function startRunningOperationReload(checks: string[]) {
+  const repository = await region('Repository');
+  await refreshRepository();
+  await click('History', repository);
+  await click('View preferences', repository);
+  const panel = await until('View preferences form opens', () => {
+    const node = repository.querySelector<HTMLElement>('[role="region"][aria-label="View preferences"]');
+    return node && visible(node) ? node : null;
+  });
+  const opening = panel.querySelector<HTMLSelectElement>('[aria-label="Opening view"]')!;
+  opening.value = 'history'; opening.dispatchEvent(new Event('change', { bubbles: true }));
+  const details = panel.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
+  if (details.checked) details.click();
+  for (const [name, value] of [['Changed files width', '400'], ['Branches width', '230'], ['History width', '420']]) {
+    type(panel.querySelector<HTMLInputElement>(`input[aria-label="${name}"]`)!, value);
+  }
+  await click('View preferences', repository);
+  await until('view widths applied before reload', () => repository.style.getPropertyValue('--history-width') === '420px');
+  const divider = repository.querySelector<HTMLElement>('[aria-label="Resize history panel"]')!;
+  divider.focus(); divider.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+  await until('keyboard width saved', () => repository.style.getPropertyValue('--history-width') === '430px'
+    && JSON.parse(localStorage.getItem(VIEW_STORAGE_KEY)!).preferences.historyWidth === 430);
+  checks.push('Native View menu saved opening History, hidden commit details and three preferred widths; keyboard divider increment applied without Git mutation');
   const fixture = await invoke<{ repositoryId: string; operationId: string; path: string }>('native_smoke_slow_commit');
   await until('slow commit actually running before full reload', async () => {
     const operation = (await api.getOperations()).find(item => item.operationId === fixture.operationId);
@@ -989,6 +1012,55 @@ async function finishRunningOperationReload(marker: ReloadMarker, checks: string
   assert(history.commits.length >= 2 && history.commits[0].oid === status.head.oid, 'Reloaded repository must expose the actual newly committed history');
   await until('reloaded UI refreshes actual clean state', () => repository.querySelector('.repository-title')?.textContent?.includes('Clean'));
   checks.push('Full native WebView reload during a running commit preserved the original backend operation; restarted renderer queried success, restored repository navigation, and displayed committed clean state');
+  assert((await button('History', repository)).getAttribute('aria-pressed') === 'true', 'Reload must use the saved opening view');
+  assert(repository.style.getPropertyValue('--changes-width') === '400px' && repository.style.getPropertyValue('--branches-width') === '230px'
+    && repository.style.getPropertyValue('--history-width') === '430px', 'Reload must restore preferred widths');
+  await click('View preferences', repository);
+  const panel = await until('restored View preferences form opens', () => {
+    const node = repository.querySelector<HTMLElement>('[role="region"][aria-label="View preferences"]');
+    return node && visible(node) ? node : null;
+  });
+  assert(panel.querySelector<HTMLInputElement>('input[type="checkbox"]')?.checked === false, 'Reload must restore hidden commit details');
+  await click('View preferences', repository);
+  const originalWidth = window.innerWidth, originalHeight = window.innerHeight;
+  const theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  const saved = localStorage.getItem(VIEW_STORAGE_KEY);
+  try {
+    await invoke('native_smoke_appearance', { theme, width: 800, height: 580 });
+    await until('minimum width applied', () => Math.abs(window.innerWidth - 800) <= 5);
+    await pause(100);
+    const layout = repository.querySelector<HTMLElement>('.repository-panels')!;
+    assert(layout.scrollWidth <= layout.clientWidth + 1, 'Preferred panels must fit at minimum window width');
+    assert(localStorage.getItem(VIEW_STORAGE_KEY) === saved, 'Window fitting must not replace saved widths');
+    const scopePanel = repository.querySelector<HTMLElement>('.repository-refs')!;
+    const scopeTrigger = await button('History scope and branches', repository);
+    assert(!visible(scopePanel) && scopeTrigger.getAttribute('aria-expanded') === 'false', 'Narrow history must initially collapse navigation');
+    await click('History scope and branches', repository);
+    await until('compact scope opens', () => visible(scopePanel));
+    await click('All branches and tags', scopePanel);
+    await until('scope selection closes navigation', () => !visible(scopePanel) && document.activeElement === scopeTrigger);
+    await click('Branch actions', repository);
+    await click('Create branch…', repository);
+    const create = scopePanel.querySelector<HTMLDetailsElement>('.create-controls')!;
+    await until('compact branch menu reveals requested form', () => visible(create) && create.open && document.activeElement === create.querySelector('summary'));
+    const name = create.querySelector<HTMLInputElement>('input:not([type="checkbox"])')!;
+    type(name, 'compact-draft-not-created');
+    name.focus();
+    name.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await until('compact Escape restores focus', () => !visible(scopePanel) && document.activeElement === scopeTrigger);
+    await click('History scope and branches', repository);
+    assert(name.value === 'compact-draft-not-created', 'Closing compact navigation must retain branch form input');
+    await click('Close history scope', scopePanel);
+    assert(localStorage.getItem(VIEW_STORAGE_KEY) === saved, 'Compact navigation must preserve all saved panel preferences');
+    const unchanged = await api.getStatus(marker.repositoryId);
+    assert(unchanged.head.kind === 'branch' && status.head.kind === 'branch' && unchanged.head.oid === status.head.oid && unchanged.head.name === status.head.name && !unchanged.dirty, 'Compact navigation must not change Git state');
+    checks.push('Native 800×580 History scope collapses, selection closes it, branch menu reveals its form, Escape returns focus and reopening retains form input without Git mutation or preference changes');
+  } finally { await invoke('native_smoke_appearance', { theme, width: originalWidth, height: originalHeight }); }
+  await click('View preferences', repository);
+  await click('Reset view preferences', panel);
+  await until('preference reset saved', () => localStorage.getItem(VIEW_STORAGE_KEY) === null);
+  assert(repository.style.getPropertyValue('--history-width') === '360px', 'Reset must restore default widths');
+  checks.push('Native WebView reload restored opening view/detail visibility/widths; 800×580 panels fit without rewriting preferences; Reset removed only view settings');
 }
 
 export async function runNativeSmoke(): Promise<void> {

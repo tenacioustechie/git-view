@@ -1,5 +1,7 @@
 import { useRef, useState, type ReactNode } from 'react';
 import type { ChangedFile, Changes, DiffRequest, RepositoryAction } from '../../api/types';
+import { PanelDivider } from './PanelDivider';
+import { DEFAULT_VIEW, PANEL_LIMITS } from './useViewPreferences';
 
 const hasChange = (status: string | null) => Boolean(status?.trim() && status !== '.' && status !== '?');
 const groups = ['conflicted', 'staged', 'unstaged', 'untracked'] as const;
@@ -16,10 +18,11 @@ function statusLabel(file: ChangedFile, group: Group) {
   return [code, ({ A: 'Added', D: 'Deleted', R: 'Renamed', C: 'Copied', T: 'Type changed', M: 'Modified' } as Record<string, string>)[code] ?? 'Changed'];
 }
 
-export function ChangesWorkspace({ changes, selection, disabled, blockedReason, onSelect, onAction, composer, diff }: {
+export function ChangesWorkspace({ changes, selection, disabled, blockedReason, onSelect, onAction, composer, diff, sidebarWidth = DEFAULT_VIEW.changesWidth, onResize }: {
   changes: Changes | null; selection: DiffRequest | null; disabled: boolean; blockedReason: string | null;
   onSelect: (file: ChangedFile, context: 'staged' | 'unstaged') => void;
   onAction: (action: RepositoryAction) => void; composer: ReactNode; diff: ReactNode;
+  sidebarWidth?: number; onResize?: (width: number) => void;
 }) {
   const [filter, setFilter] = useState('');
   const [checked, setChecked] = useState<{ snapshotId: string | undefined; keys: string[] }>({ snapshotId: changes?.snapshotId, keys: [] });
@@ -40,7 +43,7 @@ export function ChangesWorkspace({ changes, selection, disabled, blockedReason, 
     if (!changes || disabled || blockedReason || !files.length) return;
     onAction({ kind: group === 'staged' ? 'unstage' : 'stage', snapshotId: changes.snapshotId, fileIds: files.map(file => file.fileId) });
   };
-  return <section className="changes-workspace" aria-label="Working changes">
+  return <section className={`changes-workspace${onResize ? ' resizable' : ''}`} aria-label="Working changes">
     <div className="changes-sidebar">
       <div className="changes-list-heading"><h2>Changed files <span className="file-count">{changes?.files.length ?? '…'}</span></h2>
         <input type="search" aria-label="Filter changed files" placeholder="Filter files…" value={filter} onChange={event => { setFilter(event.target.value); clearChecked(); }} />
@@ -97,6 +100,7 @@ export function ChangesWorkspace({ changes, selection, disabled, blockedReason, 
       </div>
       <div className="changes-composer">{composer}</div>
     </div>
+    {onResize && <PanelDivider name="Resize changed files panel" value={sidebarWidth} min={PANEL_LIMITS.changesWidth[0]} max={PANEL_LIMITS.changesWidth[1]} onChange={onResize} />}
     <div className="changes-diff" aria-label="Change preview">{diff ?? <div className="diff-empty"><span aria-hidden="true">±</span><h2>{changes?.files.length === 0 ? 'Working tree clean' : 'Select a file to review'}</h2><p>{changes?.files.length === 0 ? 'There are no local file changes to review.' : 'Review its diff here, then stage a file or an individual hunk.'}</p></div>}</div>
   </section>;
 }
