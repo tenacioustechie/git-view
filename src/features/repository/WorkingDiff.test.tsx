@@ -5,6 +5,7 @@ import type { ChangedFile, DiffResult, RepositoryOpen } from '../../api/types';
 import { fixtures } from '../../test/fixtures';
 import { RepositoryView } from './RepositoryView';
 import { WorkingDiff } from './WorkingDiff';
+import { VIEW_STORAGE_KEY } from './useViewPreferences';
 
 vi.mock('../../api/client', () => ({ errorMessage: (error: unknown) => error instanceof Error ? error.message : String(error), api: Object.fromEntries(['getStatus', 'getChanges', 'listRefs', 'listRemotes', 'getHistory', 'getOperations', 'getDiff', 'planAction', 'runAction'].map(name => [name, vi.fn()])) }));
 const file: ChangedFile = { fileId: 'file-token', displayPath: 'Unicode β file.txt', oldDisplayPath: null, changeKind: 'modified', indexStatus: 'M', worktreeStatus: 'M', untracked: false, conflicted: false, submodule: false };
@@ -15,6 +16,7 @@ function diff(context: 'staged' | 'unstaged', token = 'diff-token'): DiffResult 
 let repository: RepositoryOpen;
 let sequence = 0;
 beforeEach(() => {
+  localStorage.clear();
   vi.resetAllMocks();
   repository = { repositoryId: `hunks-${sequence++}`, displayPath: '/fixture/hunks', status: { ...fixtures.mixed } };
   repository.status.repositoryId = repository.repositoryId;
@@ -35,6 +37,38 @@ async function open(context: 'staged' | 'unstaged' = 'unstaged') {
 }
 
 describe('working hunk actions (mocked IPC)', () => {
+  it('saves split layout without refetching or mutating, navigates hunks and retains exact staging tokens', async () => {
+    await open();
+    const reads = vi.mocked(api.getDiff).mock.calls.length;
+    fireEvent.change(screen.getByRole('combobox', { name: 'Diff layout' }), { target: { value: 'split' } });
+    expect(JSON.parse(localStorage.getItem(VIEW_STORAGE_KEY)!).preferences.diffLayout).toBe('split');
+    expect(screen.getByLabelText('Hunk 2').querySelector('.split-diff')).toBeTruthy();
+    expect(api.getDiff).toHaveBeenCalledTimes(reads); expect(api.planAction).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Next hunk' }));
+    expect(screen.getByLabelText('Hunk 1').contains(document.activeElement)).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Next hunk' }));
+    expect(screen.getByLabelText('Hunk 2').contains(document.activeElement)).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Previous hunk' }));
+    expect(screen.getByLabelText('Hunk 1').contains(document.activeElement)).toBe(true);
+    fireEvent.click(within(screen.getByLabelText('Hunk 2')).getByRole('button', { name: 'Stage hunk' }));
+    await waitFor(() => expect(api.planAction).toHaveBeenCalledWith(repository.repositoryId, { kind: 'stageHunk', diffSnapshotId: 'diff-token', fileId: 'file-token', hunkId: 'second-token' }));
+  });
+  it('limits large previews and disables hunk mutation despite supplied backend capabilities', () => {
+    const onAction = vi.fn();
+    render(<WorkingDiff request={{ repositoryId: 'repo', snapshotId: 'changes', fileId: 'file', context: 'unstaged' }} displayPath={file.displayPath} diff={{ ...diff('unstaged'), kind: 'text', text: '+line\n'.repeat(10001), truncated: false }} active={false} blockedReason={null} onAction={onAction} layout="split" />);
+    expect((screen.getByRole('button', { name: 'Stage hunk' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByLabelText('Hunk 1')).toBeNull(); expect(onAction).not.toHaveBeenCalled();
+  });
+  it('keeps historical diffs read-only while switching layout and navigating', () => {
+    const onAction = vi.fn(), onLayoutChange = vi.fn();
+    render(<WorkingDiff request={{ repositoryId: 'repo', snapshotId: 'history', fileId: 'file', context: 'commit' }} displayPath={file.displayPath} diff={{ kind: 'text', text: patch, truncated: true }} active={false} blockedReason={null} onAction={onAction} layout="split" onLayoutChange={onLayoutChange} />);
+    expect(screen.getByText('Preview truncated: this is not the full patch.')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Diff layout'), { target: { value: 'unified' } });
+    expect(onLayoutChange).toHaveBeenCalledWith('unified');
+    fireEvent.click(screen.getByRole('button', { name: 'Next hunk' }));
+    expect(document.activeElement?.hasAttribute('data-diff-hunk')).toBe(true);
+    expect(screen.queryByRole('button', { name: 'Stage hunk' })).toBeNull(); expect(onAction).not.toHaveBeenCalled();
+  });
   it('uses the exact opaque second hunk token for duplicate-looking hunks, without sending patch text', async () => {
     await open();
     const panel = screen.getByLabelText('File diff');

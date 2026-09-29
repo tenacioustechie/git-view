@@ -14,7 +14,7 @@ describe('view preference persistence', () => {
   });
   it('persists only display preferences and restores them on remount', () => {
     const first = renderHook(useViewPreferences, { wrapper: StrictMode });
-    act(() => first.result.current.update({ openingView: 'history', showCommitDetails: false, changesWidth: 420 }));
+    act(() => first.result.current.update({ openingView: 'history', showCommitDetails: false, diffLayout: 'split', changesWidth: 420 }));
     const saved = first.result.current.preferences;
     expect(JSON.parse(localStorage.getItem(VIEW_STORAGE_KEY)!)).toEqual({ version: 1, preferences: saved });
     first.unmount();
@@ -26,6 +26,11 @@ describe('view preference persistence', () => {
       openingView: 'stashes', showCommitDetails: 'false', changesWidth: 9999, branchesWidth: -20, historyWidth: 340.5, draft: 'Do not save this',
     } }))).toEqual({ ...DEFAULT_VIEW, changesWidth: 480, branchesWidth: 155, historyWidth: 341 });
     expect(decodeViewPreferences(JSON.stringify({ version: 1, preferences: { changesWidth: '400', branchesWidth: null } }))).toEqual(DEFAULT_VIEW);
+  });
+  it('loads older settings with unified diffs and rejects unknown layout values', () => {
+    for (const diffLayout of [undefined, 'unknown', null, 3]) {
+      expect(decodeViewPreferences(JSON.stringify({ version: 1, preferences: { diffLayout, openingView: 'history' } }))).toEqual({ ...DEFAULT_VIEW, openingView: 'history' });
+    }
   });
   it.each(['{bad', '{"version":2,"preferences":{}}', '{"version":1,"preferences":[]}', 'x'.repeat(4097)])('preserves malformed/unsupported storage until an explicit edit (%#)', raw => {
     localStorage.setItem(VIEW_STORAGE_KEY, raw);

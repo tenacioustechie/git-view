@@ -18,7 +18,9 @@ the commit inspector. These design passes
 include an app-bar **Shortcuts** reference, menu key hints, and keyboard focus
 improvements for project filters, history and panels. A read-only repository
 **Activity** drawer adds attention filtering, operation times and expandable
-diagnostics. They
+diagnostics. **Diff layout** switches working/history/stash text previews between
+Unified and Side-by-side; working/history previews also offer hunk navigation.
+These changes
 are not yet in the collected native packages.
 See [Feature status](docs/FEATURE_STATUS.md) for what is implemented and what remains.
 Future user-facing changes must update both documents in the same change; see

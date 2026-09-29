@@ -15,6 +15,9 @@ export function ViewPreferencesMenu({ preferences, update, reset, warning }: {
         <option value="changes">Changes</option><option value="history">History</option>
       </select></label>
       <small>Used the next time you open a repository.</small>
+      <label>Diff layout<select aria-label="Preferred diff layout" value={preferences.diffLayout} onChange={event => update({ diffLayout: event.target.value as ViewPreferences['diffLayout'] })}>
+        <option value="unified">Unified</option><option value="split">Side-by-side</option>
+      </select></label>
       <label><input type="checkbox" checked={preferences.showCommitDetails} onChange={event => update({ showCommitDetails: event.target.checked })} /> Show commit details</label>
       <div className="popover-separator" />
       {(Object.keys(panelLabels) as PanelWidth[]).map(key => <label className="panel-width-control" key={key}>

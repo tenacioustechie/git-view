@@ -305,7 +305,7 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
     sidebar.reveal();
     setWorkspace('history'); setShowCombine(false); setShowStashes(false); setDiffRequest(null); setBranchPanel(selector);
   };
-  const fileDiff = diffRequest ? <WorkingDiff request={diffRequest} displayPath={diffFileName} diff={diff} active={active || loading} blockedReason={operationReviewRequired ? 'Resolve the recorded Git operation context before staging or unstaging hunks.' : null} onAction={action => { void act(action); }} /> : null;
+  const fileDiff = diffRequest ? <WorkingDiff key={`${diffRequest.snapshotId}:${diffRequest.fileId}:${diffRequest.context}`} request={diffRequest} displayPath={diffFileName} diff={diff} layout={preferences.diffLayout} onLayoutChange={diffLayout => view.update({ diffLayout })} active={active || loading} blockedReason={operationReviewRequired ? 'Resolve the recorded Git operation context before staging or unstaging hunks.' : null} onAction={action => { void act(action); }} /> : null;
   const composer = <form className="commit-form" onSubmit={event => { event.preventDefault(); void act({ kind: 'commit', statusSnapshotId: status.snapshotId, message: draft }); }}>
     <label htmlFor="commit-message">Commit message</label><textarea id="commit-message" value={draft} placeholder="Describe the staged changes" onChange={event => { setDraft(event.target.value); drafts.set(id, event.target.value); }} rows={3} />
     <small>Only staged content is committed. Draft kept for this session.</small>
@@ -394,7 +394,7 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
       </section>
       <PanelDivider name="Resize history panel" value={preferences.historyWidth} min={PANEL_LIMITS.historyWidth[0]} max={PANEL_LIMITS.historyWidth[1]} onChange={width => view.update({ historyWidth: width })} />
       <section className={`repository-details${!showStashes && !showCombine ? ' commit-inspector' : ''}`} aria-label={showStashes ? 'Stash workspace' : showCombine ? 'History rewrite' : 'Commit details'}>
-        {showStashes ? <Stashes repositoryId={id} status={status} files={changes?.files ?? []} active={active} refreshVersion={refreshVersion} onPlan={(action, isCurrent) => { void act(action, true, isCurrent); }} onClose={working} /> : showCombine ? <CombineCommits repositoryId={id} status={status} active={active} refreshVersion={refreshVersion} onPlan={action => { void act(action, true); }} onClose={working} /> : selected ? <>
+        {showStashes ? <Stashes repositoryId={id} status={status} files={changes?.files ?? []} active={active} refreshVersion={refreshVersion} diffLayout={preferences.diffLayout} onDiffLayoutChange={diffLayout => view.update({ diffLayout })} onPlan={(action, isCurrent) => { void act(action, true, isCurrent); }} onClose={working} /> : showCombine ? <CombineCommits repositoryId={id} status={status} active={active} refreshVersion={refreshVersion} onPlan={action => { void act(action, true); }} onClose={working} /> : selected ? <>
           {!details ? <p className="empty">Loading commit…</p> : <>
             <div className="commit-inspector-heading"><h2 title={selected}>Commit {selected.slice(0, 8)}</h2><button aria-expanded={showCommitInfo} onClick={() => view.update({ showCommitDetails: !showCommitInfo })}>{showCommitInfo ? 'Hide details' : 'Show details'}</button></div>
             <div className="commit-overview" hidden={!showCommitInfo}>

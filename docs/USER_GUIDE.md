@@ -1,7 +1,7 @@
 # Git View user guide
 
-Reviewed 29 September 2026 for version 0.1.0, including the repository activity drawer
-in the working tree based on `dd38547`. The latest collected native packages
+Reviewed 29 September 2026 for version 0.1.0, including side-by-side diffs
+in the working tree based on `7703dc3`. The latest collected native packages
 remain rebase checkpoint `d9af4e6` on macOS arm64 and Windows 11 x64; they do not
 include this workspace redesign. See [Build status](BUILD_STATUS.md) for exact
 evidence and checksums.
@@ -321,7 +321,7 @@ The parent comparison remains visible even with details hidden.
 The selected history row stays highlighted with an accent edge while its
 details are open. Select **Changes**, or **Working changes** above the history
 list, to return to the Changes workspace. Select a historical file to show its
-unified diff. For a merge commit, use
+diff in the preferred layout. For a merge commit, use
 **Compare with parent** to select the comparison; a root commit is compared with
 an empty tree. Binary or truncated previews are explicitly labeled. Use **Load
 older commits** for another page.
@@ -347,6 +347,38 @@ metadata remain visible; metadata and “no newline” markers have no line numb
 Long lines scroll horizontally without wrapping. The gutters do not alter the
 patch text or staging scope. Binary/unavailable/truncated states keep their
 explicit explanations, and historical diffs never offer staging controls.
+
+Use **Diff layout → Side-by-side** above a text preview to compare **Old** on the
+left with **New** on the right. **Unified** restores the original single patch
+column. This choice is saved for all repositories, is also available under
+**View → Diff layout**, and applies to working, historical and saved-stash text
+previews. Binary/unavailable previews retain their explanations instead of a
+layout control. Changing layout does not refetch content, stage files, switch
+branches, or change the selected comparison parent.
+
+Side-by-side pairs adjacent removed/added blocks by position; it does not infer
+word-level matches. Unequal blocks leave a blank counterpart. Line numbers,
+`+`/`-` markers and “no newline” notes stay with their old/new side. Context appears
+on both sides. Use Unified when selecting/copying the original patch text; copying
+across split columns can include both versions. Combined Git diff headers fall
+back to unified text with an explanation. Syntax highlighting and editing are
+not included.
+
+In working and historical previews, **Next hunk** / **Previous hunk** moves focus
+to a change-block header, wrapping at the ends. Initially Next selects the first
+header and Previous selects the last. Use Tab to reach controls normally. Each
+diff scrolls horizontally as needed; narrow windows keep the chosen layout rather
+than silently changing the saved preference. Unified is often easier to read
+in a narrow inspector. Saved-stash previews share the layout selector but not
+the hunk-navigation buttons.
+
+Both layouts render at most **10,000 patch lines per preview**, including headers
+and metadata, and explicitly warn when the display is limited. Backend byte
+limits and truncation warnings still apply. Display-limited working previews do
+not offer hunk staging: review the complete change in Git/an external editor,
+then use whole-file staging or Git. Ordinary supported **Stage hunk / Unstage
+hunk** uses the same exact backend hunk in either layout; paired display rows are
+never converted into a mutation patch.
 
 To search the selected scope, choose **Search by**, enter a query, and choose
 **Search history**:
@@ -377,6 +409,8 @@ Open **View** at the right of the Changes/History/Stashes navigation row:
 - **Show commit details** shows or hides the commit overview immediately, matching
   the inspector's **Show details** / **Hide details** button. The parent comparison
   and file diff remain available when the overview is hidden.
+- **Diff layout** saves Unified (the default) or Side-by-side, and immediately
+  updates open text previews without changing repository content.
 - **Changed files width**, **Branches width**, and **History width** set preferred
   widths in pixels. Ranges are 280–480, 155–320, and 240–600 respectively.
   The rest of the space belongs to the diff or commit inspector.
@@ -388,8 +422,8 @@ The sliders in View offer the same settings using ordinary keyboard controls.
 Smaller windows fit panels into the available space without replacing saved
 widths; enlarge the window to make more of the preferred width available.
 
-**Reset view preferences** restores Changes as the opening view, visible commit
-details, and widths of 350/200/360 pixels. It keeps the currently active workspace,
+**Reset view preferences** restores Changes as the opening view, Unified diffs,
+visible commit details, and widths of 350/200/360 pixels. It keeps the currently active workspace,
 commit draft, file selection, and Recent list; it performs no Git action.
 
 These preferences save automatically in local webview storage and apply to all
@@ -865,7 +899,7 @@ acceptance remain outstanding.
 | Operation canceled or outcome uncertain | Refresh and inspect local/remote state before retrying; cancellation does not undo completed work. |
 | External project edit conflicts with a draft | Save the draft separately with **Save edits as**, or **Reload project** to use the disk version. |
 
-Not yet available: individual-line staging, side-by-side diffs, blame/file history,
+Not yet available: individual-line staging, syntax highlighting, blame/file history,
 interactive rebase, batch push, group branch switching, integrated conflict editing,
 multiple windows, group templates, and persisted group filters or commit drafts.
 The broader backlog and verification gaps are tracked in [Feature status](FEATURE_STATUS.md).

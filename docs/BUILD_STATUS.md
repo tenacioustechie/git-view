@@ -1,5 +1,72 @@
 # Build status
 
+## 2026-09-29: C1 side-by-side diffs and hunk navigation
+
+Committed the preceding activity drawer as `7703dc3` (`Add read-only repository
+activity drawer`), retaining its Windows acceptance gap. The new working-tree
+C1 slice adds saved Unified/Side-by-side layouts for working, historical and stash
+text previews, plus working/history Previous/Next hunk navigation. Split rows
+pair adjacent removal/addition blocks by position, leaving explicit gaps. Notes,
+line numbers and text stay on their original side; combined diff headers fall
+back to unified text. Mutation patches are never reconstructed from display rows.
+
+Both layouts cap rendering at 10,000 patch lines with an explicit warning.
+Display-limited working previews disable hunk mutation; existing backend limits,
+binary/truncated states and exact hunk tokens remain authoritative. Layout is an
+additive version-1 View preference: older settings default to Unified and Reset
+restores it. Syntax highlighting, intraline matching and editable conflict views
+remain deferred. Context7's official React guidance informed parent-controlled
+layout state and memoized pure display calculations.
+
+`pnpm test` passes **202 tests across 22 files on macOS and Windows**. The 13 new
+tests cover unequal blocks, insertions/deletions, multiple hunks, no-newline notes,
+literal markup/CRLF, combined fallback, both rendering bounds, older preferences,
+saved layout without refetch/mutation, keyboard hunk focus and exact staging tokens.
+Typechecking, lint, smoke builds and Windows strict native-smoke Clippy pass.
+No backend execution changed; the complete Rust suite was not repeated.
+
+Browser review of an isolated mutation-disabled repository preview found and
+fixed a CSS class collision that expanded blank split cells. Final inspection
+verified compact aligned rows, retained markers, layout switching and keyboard
+hunk focus. At 800×580 the diff scrolls horizontally without body overflow and
+the layout/navigation controls remain usable. Temporary fixture files/server/tab
+were removed and the viewport override reset. Screen-reader acceptance remains
+unverified.
+
+`pnpm tauri build --bundles app` rebuilt the unsigned Mac app at
+`src-tauri/target/release/bundle/macos/Git View.app`, using normal assets
+`index-CIOd1mBS.css` and `index-DRtlNcPy.js`. The user closed the installed Mac app
+before native testing. The first Mac run reached 21 checks, including historical
+split alignment/navigation, before the 240-second runner timeout; its checkpoint
+is `/tmp/git-view-split-mac-20260929.progress.json`. This is not a full-suite pass.
+The unchanged retry passes **all 59 native workflow checks** with
+`python3 scripts/native-smoke.py /tmp/git-view-split-mac-20260929-final.json`.
+It verifies the same split-view, exact mutation and reload scenarios as Windows
+below. The initial timeout's cause was not established. The normal frontend
+build was restored after compiling the smoke-only binary; final local lint,
+202 tests and the normal production build pass.
+
+The first Windows run reached 48 checks before an older hunk-test selector looked
+only for `pre` markup. Its incomplete report is
+`C:\codeme\git-view\.tools\GitViewNativeSmoke-f1104619632342538e9ed9908d1a1397.json`.
+The selector now accepts either actual diff layout without weakening backend
+index/content assertions. The corrected Windows suite passes **all 59 native
+workflow checks**, including historical alignment, hunk focus, saved layout across
+WebView reload, exact hunk stage/unstage/partial-commit contents and the activity
+drawer. Report:
+`C:\codeme\git-view\.tools\GitViewNativeSmoke-805b102e35fe452dabee977cf22047b2.json`.
+This closes the preceding activity slice's Windows native acceptance gap for the
+current working tree. Verification used temporary renderer source copies over
+clean Windows baseline `4a81e31c5a2ac9d3b7176a1adf26fd4a196dc7f8` and the existing
+`scripts/windows-native-verify.ps1` through a direct encoded PowerShell invocation.
+Both attempts verified exact copied-file hashes before reversing the patches;
+the Windows checkout is clean. No Windows installer was rebuilt.
+
+The guide, feature inventory, README, product scope and C1 plan describe the
+implemented controls and limits. All 125 local documentation links/anchors and
+`git diff --check` pass. New C1 changes remain uncommitted; nothing was pushed or
+published and no installed app was replaced.
+
 ## 2026-09-29: Repository activity drawer
 
 Committed keyboard/accessibility polish as `dd38547` (`Polish keyboard navigation

@@ -409,6 +409,12 @@ rebase stage.
 
 ## Candidate track C: inspection
 
+29 September implementation continuation: C1 is now implemented in the working
+tree based on `7703dc3`; platform evidence and remaining gates are in Build status.
+The initial slice uses plain text (syntax highlighting deferred), saved layouts,
+positional old/new alignment, working/history hunk navigation and explicit bounded
+previews. C2/C3 remain candidates, not implemented features.
+
 | Slice | Proposed behavior | Acceptance focus / decision needed |
 | --- | --- | --- |
 | C1: side-by-side diffs and navigation | Toggle unified/side-by-side views for working and historical text changes, with clear file and parent context | Insertions/deletions, line alignment, binary/truncated states, keyboard navigation, narrow windows and bounded rendering. Decide whether syntax highlighting is essential initially. |

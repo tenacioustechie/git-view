@@ -3,13 +3,14 @@ import { useCallback, useEffect, useState } from 'react';
 export interface ViewPreferences {
   openingView: 'changes' | 'history';
   showCommitDetails: boolean;
+  diffLayout: 'unified' | 'split';
   changesWidth: number;
   branchesWidth: number;
   historyWidth: number;
 }
 export const VIEW_STORAGE_KEY = import.meta.env.VITE_NATIVE_SMOKE === '1'
   ? 'git-view.native-smoke.view-preferences.v1' : 'git-view.view-preferences.v1';
-export const DEFAULT_VIEW: ViewPreferences = { openingView: 'changes', showCommitDetails: true, changesWidth: 350, branchesWidth: 200, historyWidth: 360 };
+export const DEFAULT_VIEW: ViewPreferences = { openingView: 'changes', showCommitDetails: true, diffLayout: 'unified', changesWidth: 350, branchesWidth: 200, historyWidth: 360 };
 export const PANEL_LIMITS = { changesWidth: [280, 480], branchesWidth: [155, 320], historyWidth: [240, 600] } as const;
 export type PanelWidth = keyof typeof PANEL_LIMITS;
 
@@ -17,6 +18,7 @@ function normalize(value: Partial<ViewPreferences>): ViewPreferences {
   const next = { ...DEFAULT_VIEW };
   if (value.openingView === 'changes' || value.openingView === 'history') next.openingView = value.openingView;
   if (typeof value.showCommitDetails === 'boolean') next.showCommitDetails = value.showCommitDetails;
+  if (value.diffLayout === 'split') next.diffLayout = 'split';
   for (const key of Object.keys(PANEL_LIMITS) as PanelWidth[]) {
     const width = value[key];
     if (typeof width === 'number' && Number.isFinite(width)) {

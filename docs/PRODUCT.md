@@ -99,6 +99,13 @@ connectors for unloaded parents so page boundaries do not imply false roots.
 
 Selecting a commit shows full OID, message, author/committer and dates, ordered parents, and changed files. Merge diffs say which parent is being compared and offer a parent selector. Root commits show changes against an empty tree. Binary and truncated diffs have explicit states. Files and messages render as text.
 
+Text inspection now offers saved Unified/Side-by-side layouts for working,
+historical and stash previews. Split rows align adjacent removal/addition blocks
+by position, with explicit gaps; working/history controls navigate hunk headers.
+Both layouts cap display at 10,000 patch lines and preserve backend preview
+limits. Display-limited previews have no hunk mutation controls. Syntax
+highlighting, intraline matching and editable conflict resolution remain deferred.
+
 The Changes navigation control, or the pinned Working changes row in History,
 opens the Changes workspace. Its Staged, Unstaged, Untracked, and conditional
 Conflicted groups share a separate diff pane; the commit composer sits outside

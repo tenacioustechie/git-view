@@ -76,8 +76,16 @@ async function refreshRepository() {
 }
 async function assertDiffVisible() {
   const diff = await region('File diff');
-  await until('text diff renders', () => diff.querySelector('.unified-diff'));
-  assert(diff.querySelector('.unified-diff')!.textContent?.trim(), 'Selected file must render an actual patch');
+  await until('text diff renders', () => diff.querySelector('.unified-diff,.split-diff'));
+  assert(diff.querySelector('.unified-diff,.split-diff')!.textContent?.trim(), 'Selected file must render an actual patch');
+}
+
+async function chooseDiffLayout(panel: HTMLElement, value: 'split' | 'unified') {
+  const select = panel.querySelector<HTMLSelectElement>('[aria-label="Diff layout"]')!;
+  assert(select && visible(select), 'Text preview must expose its layout control');
+  select.value = value; select.dispatchEvent(new Event('change', { bubbles: true }));
+  await until(`${value} layout rendered`, () => panel.querySelector(value === 'split' ? '.split-diff' : '.unified-diff'));
+  assert(JSON.parse(localStorage.getItem(VIEW_STORAGE_KEY)!).preferences.diffLayout === value, 'Diff layout must be saved');
 }
 
 async function focusCommitEditor(repository: HTMLElement) {
@@ -878,7 +886,7 @@ async function runHunkSmoke(checks: string[]) {
     const count = () => [...repository.querySelectorAll('.repository-activity li')].filter(node => node.querySelector('strong')?.textContent === action.replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase() && node.querySelector('.activity-state')?.textContent === 'succeeded').length;
     const previousCount = count();
     const completed = await operation(action, fixture.repositoryId, async () => {
-      const block = await until(`complete hunk containing ${contents}`, () => [...panel.querySelectorAll<HTMLElement>('.diff-hunk-block')].find(node => node.querySelector('pre')?.textContent?.includes(contents)));
+      const block = await until(`complete hunk containing ${contents}`, () => [...panel.querySelectorAll<HTMLElement>('.diff-hunk-block')].find(node => node.querySelector('.unified-diff, .split-diff')?.textContent?.includes(contents)));
       await click(label, block);
     });
     assert(completed.state === 'succeeded', `${label} failed: ${JSON.stringify(completed.error) ?? completed.reason}`);
@@ -892,6 +900,15 @@ async function runHunkSmoke(checks: string[]) {
   };
   const draft = await until('partial commit draft', () => repository.querySelector<HTMLTextAreaElement>('#commit-message'));
   type(draft, fixture.message);
+  const splitWorking = await inspectFile('unstaged');
+  await chooseDiffLayout(splitWorking, 'split');
+  await click('Next hunk', splitWorking);
+  assert(document.activeElement?.hasAttribute('data-diff-hunk'), 'Hunk navigation must focus a hunk header');
+  await click('Next hunk', splitWorking);
+  assert(splitWorking.querySelectorAll('.diff-hunk-block')[1]?.contains(document.activeElement), 'Next hunk must reach the second actual block');
+  await click('Previous hunk', splitWorking);
+  assert(splitWorking.querySelectorAll('.diff-hunk-block')[0]?.contains(document.activeElement), 'Previous hunk must return to the first block');
+  checks.push('Native split working diff saves layout and navigates actual hunk headers before unchanged-token staging/index verification');
   await mutate('unstaged', fixture.firstText);
   await verify('stagedFirst');
   const staged = await inspectFile('staged');
@@ -912,6 +929,7 @@ async function runHunkSmoke(checks: string[]) {
   const remaining = await inspectFile('unstaged');
   assert(remaining.textContent?.includes(fixture.secondText) && !remaining.textContent.includes(fixture.firstText), 'Remaining working diff must contain only the uncommitted second edit');
   checks.push('Native partial commit contains only the first hunk with exact parent/message; second edit remains uncommitted and visible, unrelated index and every working-file byte preserved');
+  await chooseDiffLayout(remaining, 'unified');
 }
 
 interface RebaseFixture { repositoryId: string; path: string; originalOid: string; targetOid: string; scenario: string }
@@ -982,6 +1000,8 @@ async function startRunningOperationReload(checks: string[]) {
   });
   const opening = panel.querySelector<HTMLSelectElement>('[aria-label="Opening view"]')!;
   opening.value = 'history'; opening.dispatchEvent(new Event('change', { bubbles: true }));
+  const layout = panel.querySelector<HTMLSelectElement>('[aria-label="Preferred diff layout"]')!;
+  layout.value = 'split'; layout.dispatchEvent(new Event('change', { bubbles: true }));
   const details = panel.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
   if (details.checked) details.click();
   for (const [name, value] of [['Changed files width', '400'], ['Branches width', '230'], ['History width', '420']]) {
@@ -1036,6 +1056,7 @@ async function finishRunningOperationReload(marker: ReloadMarker, checks: string
     return node && visible(node) ? node : null;
   });
   assert(panel.querySelector<HTMLInputElement>('input[type="checkbox"]')?.checked === false, 'Reload must restore hidden commit details');
+  assert(panel.querySelector<HTMLSelectElement>('[aria-label="Preferred diff layout"]')?.value === 'split', 'Reload must restore side-by-side diff preference');
   await click('View preferences', repository);
   const originalWidth = window.innerWidth, originalHeight = window.innerHeight;
   const theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
@@ -1198,6 +1219,17 @@ export async function runNativeSmoke(): Promise<void> {
     historicalFile.click();
     await assertDiffVisible();
     checks.push('Opened repository from dashboard; selected real history row and rendered commit file patch');
+    const historicalDiff = await region('File diff');
+    await chooseDiffLayout(historicalDiff, 'split');
+    const pair = historicalDiff.querySelector('.split-row')!;
+    assert(pair && pair.children.length === 2, 'Historical split diff must show old/new counterparts');
+    const oldBox = pair.children[0].getBoundingClientRect(), newBox = pair.children[1].getBoundingClientRect();
+    assert(Math.abs(oldBox.top - newBox.top) < 1 && Math.abs(oldBox.height - newBox.height) < 1, 'Native split counterparts must align vertically');
+    await click('Next hunk', historicalDiff);
+    assert(document.activeElement?.hasAttribute('data-diff-hunk'), 'Historical hunk navigation must focus a header');
+    assert(![...historicalDiff.querySelectorAll('button')].some(node => /^(Unstage|Stage) hunk$/.test(node.textContent ?? '')), 'Historical split diff must remain read-only');
+    await chooseDiffLayout(historicalDiff, 'unified');
+    checks.push('Native historical diff toggles unified/split with aligned old/new rows, keyboard hunk focus and no staging controls');
 
     const mergeRepo = await api.openRepository(context.mergePath);
     const mergeHistory = await api.getHistory(mergeRepo.repositoryId);

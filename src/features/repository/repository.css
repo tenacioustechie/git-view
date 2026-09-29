@@ -203,7 +203,22 @@
 .diff-heading .diff-file-path { margin:0; font-size:13px; font-weight:600; }
 .diff-body { padding:0 20px 20px; }
 .diff-guidance { color:var(--muted); font-size:12px; margin:12px 0; }
-.diff-panel .unified-diff { white-space:pre; overflow-wrap:normal; tab-size:4; font-family:ui-monospace,SFMono-Regular,Consolas,monospace; }
+.patch-view .unified-diff { white-space:pre; overflow-wrap:normal; tab-size:4; font-family:ui-monospace,SFMono-Regular,Consolas,monospace; }
+.diff-view-tools { display:flex; flex-wrap:wrap; align-items:center; gap:8px 16px; margin-top:10px; }
+.repository-screen .diff-layout-control,.diff-view-tools button { font-size:12px; }
+.diff-view-tools [role=group] { display:flex; gap:6px; }
+.split-scroll { overflow:auto; max-width:100%; font:12px/1.7 ui-monospace,SFMono-Regular,Consolas,monospace; tab-size:4; }
+.split-diff { display:grid; grid-template-columns:repeat(2,minmax(max-content,1fr)); width:max-content; min-width:100%; }
+.split-row { display:contents; }
+.split-cell { display:grid; grid-template-columns:var(--gutter-width) 1fr; min-width:300px; min-height:1.7em; white-space:pre; overflow-wrap:normal; border-right:1px solid var(--border); }
+.split-cell.diff-add { background:color-mix(in srgb,#22884c 14%,var(--panel)); }
+.split-cell.diff-remove { background:color-mix(in srgb,#cf4545 13%,var(--panel)); }
+.split-cell.diff-gap { background:var(--bg); }
+.split-heading { background:var(--bg); color:var(--muted); padding:4px 10px; border-bottom:1px solid var(--border); border-right:1px solid var(--border); }
+.split-meta { grid-column:1 / -1; white-space:pre; overflow-wrap:normal; color:var(--muted); padding:0 10px; }
+.split-meta.diff-hunk { background:color-mix(in srgb,var(--accent) 8%,var(--panel)); }
+.diff-limit { padding:8px 10px; font:12px/1.5 sans-serif; color:var(--muted); }
+[data-diff-hunk] { scroll-margin-top:140px; }
 /* A bounded inspector: commit context, file navigation, and the diff each keep
    their own scroll position instead of becoming one long details document. */
 .repository-details.commit-inspector { display:flex; flex-direction:column; min-width:0; padding:0; overflow:hidden; background:var(--panel); container-type:inline-size; }

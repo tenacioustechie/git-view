@@ -1,7 +1,7 @@
 # Feature status
 
-Reviewed 29 September 2026, including the repository activity drawer in the working tree
-based on `dd38547` and guided linear rebase at source checkpoint
+Reviewed 29 September 2026, including side-by-side diffs in the working tree
+based on `7703dc3` and guided linear rebase at source checkpoint
 `d9af4e6` and the earlier A1–A4 workflows, against the
 [product plan](PRODUCT.md). This is the current completion inventory;
 [Build status](BUILD_STATUS.md) retains dated commands, results, and artifact evidence.
@@ -34,7 +34,7 @@ refer to the delivered runbook workflows on tested platforms.
 | --- | --- | --- |
 | Launch | Repository/nested-path CLI, JSON project CLI, discovery CLI, help/version, local wrappers, one-window forwarding with navigation guards | Installed PATH integration, further installation polish, additional windows, group templates |
 | History | Virtualized paged graph, persistent selected-row highlight, parent continuity, refs, branch/tag scopes, message/body and author/email search, full/prefix commit-ID search, snapshot paging | Advanced revision-query UI |
-| Details | Full messages/identities/parents, parent-specific filterable file browser with keyboard selection, collapsible commit information, independently scrolling unified diffs with line numbers/full-row colours, binary/truncation states | Side-by-side diffs, blame and file history |
+| Details | Full messages/identities/parents, parent-specific filterable file browser with keyboard selection, collapsible commit information, independently scrolling unified/side-by-side diffs with line numbers/full-row colours, hunk navigation, binary/truncation states | Syntax highlighting, blame and file history |
 | Working changes | Staged/unstaged/untracked/conflicted states, whole-file and explicit selected-subset stage/unstage, supported complete text-hunk stage/unstage, staged-only commit, session draft retention, hook/signing failure handling; named stash creation/inspection, retained Apply, reviewed exact-entry Delete and recovery | Individual-line staging; expanded hunk support for excluded file types |
 | Remotes | Fetch, clean-only fast-forward pull, explicit normal single-repository push, optional upstream setup | Explicit batch push; hosting integrations only if requested |
 | Branches | Local create/switch with previews, explicit remote tracking checkout, ordinary merge, squash merge from local or remote refs, reviewed single non-merge cherry-pick; guided linear rebase onto an existing local or fetched remote branch with Continue, reviewed Skip, Abort, backup and stopped-state guidance | Merge-preserving or arbitrary interactive rebase; multi-commit and merge-commit cherry-pick excluded from A2 |
@@ -73,13 +73,21 @@ refer to the delivered runbook workflows on tested platforms.
   warning. Browser reload/component remount and a full macOS bundle Quit/relaunch
   are verified. Windows full-process restart persistence remains unverified;
   current native-suite results and limitations are recorded in Build status.
-- The repository View menu saves an opening Changes/History choice, commit-detail
+- The repository View menu saves an opening Changes/History choice, diff layout, commit-detail
   visibility, and Changed files/Branches/History preferred widths, shared across
   repositories in local webview storage. Pointer/keyboard dividers and sliders
   adjust bounded widths; narrow-window fitting does not overwrite preferences.
   Reset affects display preferences only. Invalid/unavailable storage has safe
   defaults and warnings. Group filters/selection and commit drafts remain
   session-only; window size/position is not persisted.
+- C1 adds saved Unified/Side-by-side text previews in Changes, History and Stashes.
+  Adjacent removed/added blocks pair by position with blank counterparts; markers
+  and old/new numbering remain explicit. Working/history hunk-navigation buttons
+  focus block headers; staging still uses backend tokens. Both layouts are capped
+  at 10,000 patch lines per preview with an explicit warning; display-limited
+  previews disable hunk mutation. Combined headers fall back to unified text.
+  Narrow panes scroll instead of changing the preference. Syntax highlighting,
+  intraline matching and editable/three-way diffs are not part of this slice.
 - At widths up to 1,000 pixels, History's branch/scope sidebar starts collapsed
   behind a scope button, opening as a scrollable panel. Scope selection,
   Close/Escape and outside interaction dismiss it; direct branch-menu navigation
@@ -152,9 +160,17 @@ was rebuilt; installed apps and collected packages remain unchanged.
 - Linux and Intel Mac execution, and the hosted GitHub workflow, remain unverified.
 - The repository activity-drawer working tree on `dd38547` passes **189 frontend
   tests and 57 native workflow checks on macOS**, with a rebuilt unsigned Mac app.
-  Windows verification of this new slice is pending: its remote runner stalled
-  before producing test output. Earlier Windows keyboard-polish results do not
-  validate the activity drawer. Full screen-reader acceptance remains open.
+  Its initial Windows verification stalled before producing test output. The
+  subsequent C1 gate below verifies the drawer on Windows too. Full screen-reader
+  acceptance remains open.
+- The C1 side-by-side working tree on `7703dc3` passes **202 frontend tests and
+  59 native workflow checks on each platform**. Native checks cover
+  historical alignment/read-only behavior, working hunk focus and exact staging,
+  unstaging and partial-commit contents, plus layout persistence across WebView
+  reload. The Mac retry passed after an incomplete 21-check timeout; both reports
+  are recorded in Build status. The unsigned Mac bundle was rebuilt; installed apps and collected
+  packages remain unchanged. Full OS-process restart persistence of the new diff
+  preference and screen-reader acceptance remain unverified.
 - Stash requires files ref storage; reftable is unsupported. Safe stash Delete
   is implemented only on macOS and Windows. Changed submodules/gitlinks and
   stashes beyond 1,000 entries or an 8 MiB reflog are excluded from this slice.

@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, errorMessage } from '../../api/client';
 import type { ChangedFile, CommitDetails, DiffResult, RepositoryAction, RepositoryStatus, StashList } from '../../api/types';
+import { DiffLayoutControl, Patch, type DiffLayout } from './Patch';
 
 const messages = new Map<string, string>();
 type Section = 'worktree' | 'index' | 'untracked';
-export function Stashes({ repositoryId, status, files, active, refreshVersion, onPlan, onClose }: {
+export function Stashes({ repositoryId, status, files, active, refreshVersion, onPlan, onClose, diffLayout = 'unified', onDiffLayoutChange }: {
   repositoryId: string; status: RepositoryStatus; files: ChangedFile[]; active: boolean; refreshVersion: number;
   onPlan: (action: RepositoryAction, isCurrent: () => boolean) => void; onClose: () => void;
+  diffLayout?: DiffLayout; onDiffLayoutChange?: (layout: DiffLayout) => void;
 }) {
   const [list, setList] = useState<StashList | null>(null);
   const [loading, setLoading] = useState(true);
@@ -93,7 +95,7 @@ export function Stashes({ repositoryId, status, files, active, refreshVersion, o
       {detailError && <p role="alert">{detailError} Refresh and review the selected entry again.</p>}
       {!details && !detailError && !entry.unavailableReason && <p>Loading saved changes…</p>}
       {details && loadedSection === section && <div data-loaded-section={loadedSection}><p>{details.files.length} changed files in this section.</p><ul className="file-list">{details.files.map(file => <li key={file.fileId}><button title={file.displayPath} onClick={() => { void inspect(file.fileId); }}>{file.changeKind} · {file.displayPath}</button></li>)}</ul></div>}
-      {(diffLoading || diff) && <section aria-label="Stash file diff"><h3>Saved file diff</h3>{diffLoading ? <p>Loading diff…</p> : diff?.kind === 'text' ? <>{diff.truncated && <p>Preview truncated: this is not the full patch.</p>}<pre className="unified-diff">{diff.text || 'No text changes.'}</pre></> : <p>{diff?.kind === 'binary' ? diff.description : diff?.reason}</p>}</section>}
+      {(diffLoading || diff) && <section aria-label="Stash file diff"><h3>Saved file diff</h3>{diffLoading ? <p>Loading diff…</p> : diff?.kind === 'text' ? <>{onDiffLayoutChange && <DiffLayoutControl value={diffLayout} onChange={onDiffLayoutChange} />}{diff.truncated && <p>Preview truncated: this is not the full patch.</p>}<Patch text={diff.text} layout={diffLayout} />{!diff.text && <p>No text changes.</p>}</> : <p>{diff?.kind === 'binary' ? diff.description : diff?.reason}</p>}</section>}
       <p>Current target: {status.head.kind === 'detached' ? `detached at ${status.head.oid}` : status.head.name}. Applying always retains this stash.</p>
       <label><input type="checkbox" checked={restoreIndex} disabled={active} onChange={event => { selectionVersion.current++; setRestoreIndex(event.target.checked); }} /> Restore staged state</label>
       <p>{restoreIndex ? 'Restore the saved index as well as working-file contents.' : 'Use Git’s default apply behavior; some newly added files may be staged. Review the resulting index.'}</p>
