@@ -112,9 +112,7 @@
 .rewrite-record dl { font-size:12px; }
 .rewrite-record dt { color:var(--muted); }
 .rewrite-record dd { margin:2px 0 10px; }
-.repository-activity { border-top:1px solid var(--border); padding:10px 16px; max-height:180px; overflow:auto; }
 .repository-screen summary { cursor:pointer; }
-.repository-activity li { padding:5px 0; font-size:13px; }
 .repository-screen dialog { max-width:540px; padding:24px; border:1px solid var(--border); border-radius:10px; color:var(--text); background:var(--panel); overflow-wrap:anywhere; }
 .repository-screen dialog::backdrop { background:#0008; }
 .dialog-actions { display:flex; gap:8px; justify-content:flex-end; margin-top:24px; }

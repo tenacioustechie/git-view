@@ -16,7 +16,9 @@ panel dividers, or use its sliders and reset control. In compact windows, Histor
 branch/scope navigation opens from a button above search, leaving more room for
 the commit inspector. These design passes
 include an app-bar **Shortcuts** reference, menu key hints, and keyboard focus
-improvements for project filters, history and panels. They
+improvements for project filters, history and panels. A read-only repository
+**Activity** drawer adds attention filtering, operation times and expandable
+diagnostics. They
 are not yet in the collected native packages.
 See [Feature status](docs/FEATURE_STATUS.md) for what is implemented and what remains.
 Future user-facing changes must update both documents in the same change; see

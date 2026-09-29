@@ -767,7 +767,7 @@ async function runStashSmoke(checks: string[]) {
       assert(created.state === 'succeeded', `Create stash failed: ${created.error?.message ?? created.reason}`);
       // Backend completion precedes the renderer's operation poll. Wait until
       // that poll has observed success before starting multi-section inspection.
-      await until('renderer reconciles completed stash creation', () => [...repository.querySelectorAll('.repository-activity li strong')].some(node => node.textContent === 'createStash: succeeded'));
+      await until('renderer reconciles completed stash creation', () => [...repository.querySelectorAll('.repository-activity li')].some(node => node.querySelector('strong')?.textContent === 'create stash' && node.querySelector('.activity-state')?.textContent === 'succeeded'));
       await button('Refresh', repository);
       const verified = await invoke<{ verified: boolean }>('native_smoke_stash_verify', { repositoryId: fixture.repositoryId, scenario, stage: 'created' });
       assert(verified.verified, 'Created stash must preserve exact saved contents and inclusion behavior');
@@ -875,7 +875,7 @@ async function runHunkSmoke(checks: string[]) {
     const panel = await inspectFile(context);
     const action = context === 'staged' ? 'unstageHunk' : 'stageHunk';
     const label = context === 'staged' ? 'Unstage hunk' : 'Stage hunk';
-    const count = () => [...repository.querySelectorAll('.repository-activity li strong')].filter(node => node.textContent === `${action}: succeeded`).length;
+    const count = () => [...repository.querySelectorAll('.repository-activity li')].filter(node => node.querySelector('strong')?.textContent === action.replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase() && node.querySelector('.activity-state')?.textContent === 'succeeded').length;
     const previousCount = count();
     const completed = await operation(action, fixture.repositoryId, async () => {
       const block = await until(`complete hunk containing ${contents}`, () => [...panel.querySelectorAll<HTMLElement>('.diff-hunk-block')].find(node => node.querySelector('pre')?.textContent?.includes(contents)));
@@ -906,7 +906,7 @@ async function runHunkSmoke(checks: string[]) {
   const committed = await operation('commit', fixture.repositoryId, () => click(/^Commit staged changes \(/, repository));
   assert(committed.state === 'succeeded', `Partial commit failed: ${JSON.stringify(committed.error) ?? committed.reason}`);
   await verify('committed');
-  await until('partial commit reconciled in renderer', () => [...repository.querySelectorAll('.repository-activity li strong')].some(node => node.textContent === 'commit: succeeded'));
+  await until('partial commit reconciled in renderer', () => [...repository.querySelectorAll('.repository-activity li')].some(node => node.querySelector('strong')?.textContent === 'commit' && node.querySelector('.activity-state')?.textContent === 'succeeded'));
   await button('Refresh', repository);
   await refreshRepository();
   const remaining = await inspectFile('unstaged');
@@ -1273,6 +1273,21 @@ export async function runNativeSmoke(): Promise<void> {
     await until('hook failure renders', () => [...document.querySelectorAll('[role="alert"]')].some(node => visible(node) && node.textContent?.trim()));
     assert(messageInput.value === failedMessage, 'Draft must survive actual hook failure');
     assert(JSON.stringify((await api.getStatus(clean.repositoryId)).head) === JSON.stringify(committedStatus.head), 'Failed commit must not advance HEAD');
+    await click('Repository activity', repository);
+    const activityDrawer = await region('Repository activity details');
+    const activityClose = await button('Close activity', activityDrawer);
+    await until('activity opening focuses close', () => document.activeElement === activityClose);
+    const activityFilter = activityDrawer.querySelector<HTMLSelectElement>('[aria-label="Activity filter"]')!;
+    activityFilter.value = 'attention'; activityFilter.dispatchEvent(new Event('change', { bubbles: true }));
+    const failureRow = await until('failed commit appears in filtered drawer', () => [...activityDrawer.querySelectorAll('li')].find(node => node.textContent?.includes(failed.operationId)));
+    assert(failureRow.textContent?.includes(failed.error?.message ?? ''), 'Activity must explain the real failure');
+    failureRow.querySelector('summary')!.click();
+    assert(failureRow.querySelector('details')!.open, 'Native operation details must expand');
+    if (failed.error?.details) assert(failureRow.querySelector('pre')?.textContent === failed.error.details, 'Activity must show exact backend diagnostic text');
+    activityClose.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    await until('activity Escape restores visible trigger', () => !visible(activityDrawer) && document.activeElement === repository.querySelector('[aria-label="Repository activity"]'));
+    assert(messageInput.value === failedMessage && JSON.stringify((await api.getStatus(clean.repositoryId)).head) === JSON.stringify(committedStatus.head), 'Inspecting activity must preserve draft and HEAD');
+    checks.push('Native read-only activity drawer filters to actual failed commit, expands backend diagnostics, and restores focus with Escape without changing draft or HEAD');
     await click(`Back to ${project.name}`);
     const returnedGroup = await region('Repository group');
     assert(returnedGroup.querySelector<HTMLInputElement>('input[type="search"]')?.value === cleanMember.label, 'Group search must survive repository navigation');

@@ -1,7 +1,7 @@
 # Feature status
 
-Reviewed 29 September 2026, including keyboard/accessibility polish in the working tree
-based on `fa49114` and guided linear rebase at source checkpoint
+Reviewed 29 September 2026, including the repository activity drawer in the working tree
+based on `dd38547` and guided linear rebase at source checkpoint
 `d9af4e6` and the earlier A1–A4 workflows, against the
 [product plan](PRODUCT.md). This is the current completion inventory;
 [Build status](BUILD_STATUS.md) retains dated commands, results, and artifact evidence.
@@ -98,8 +98,13 @@ refer to the delivered runbook workflows on tested platforms.
   arrow navigation keeps focus on its stable viewport and exposes selected-commit
   live text; removing a focused branch divider moves focus to compact navigation.
   Complete screen-reader and every-workflow keyboard acceptance remain open.
-- Operation results are available in repository and batch activity sections;
-  the planned dedicated activity drawer is not implemented.
+- Repository results now have a dedicated, read-only bottom activity drawer:
+  latest/active/attention summary, All/Needs attention filtering, bounded recent
+  entries with older active work retained, timestamps and expandable backend
+  diagnostics. Keyboard closing restores focus; updates do not open the drawer.
+  Records remain backend-session-only. The project Batch activity section keeps
+  its existing cancellation/retry controls; a unified project/global drawer and
+  persisted operation history are not implemented.
 - Group table virtualization and larger-scale tuning remain follow-up work.
   Passing the 25-repository measurement does not establish performance at the
   project format's 1,000-member limit.
@@ -145,6 +150,11 @@ exhaustive keyboard-only pass through every workflow. The unsigned Mac bundle
 was rebuilt; installed apps and collected packages remain unchanged.
 
 - Linux and Intel Mac execution, and the hosted GitHub workflow, remain unverified.
+- The repository activity-drawer working tree on `dd38547` passes **189 frontend
+  tests and 57 native workflow checks on macOS**, with a rebuilt unsigned Mac app.
+  Windows verification of this new slice is pending: its remote runner stalled
+  before producing test output. Earlier Windows keyboard-polish results do not
+  validate the activity drawer. Full screen-reader acceptance remains open.
 - Stash requires files ref storage; reftable is unsupported. Safe stash Delete
   is implemented only on macOS and Windows. Changed submodules/gitlinks and
   stashes beyond 1,000 entries or an 8 MiB reflog are excluded from this slice.

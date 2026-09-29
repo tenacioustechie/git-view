@@ -1,7 +1,7 @@
 # Git View user guide
 
-Reviewed 29 September 2026 for version 0.1.0, including keyboard/accessibility polish
-in the working tree based on `fa49114`. The latest collected native packages
+Reviewed 29 September 2026 for version 0.1.0, including the repository activity drawer
+in the working tree based on `dd38547`. The latest collected native packages
 remain rebase checkpoint `d9af4e6` on macOS arm64 and Windows 11 x64; they do not
 include this workspace redesign. See [Build status](BUILD_STATUS.md) for exact
 evidence and checksums.
@@ -18,6 +18,7 @@ packages, and platform limitations.
 - [Check and update a group](#check-and-update-a-group)
 - [Browse and search history](#browse-and-search-history)
 - [View and panel preferences](#view-and-panel-preferences)
+- [Inspect repository activity](#inspect-repository-activity)
 - [Stage files and commit](#stage-files-and-commit)
 - [Fetch, pull, and push](#fetch-pull-and-push)
 - [Create and switch branches](#create-and-switch-branches)
@@ -399,6 +400,38 @@ branch selections, Git-operation inputs, or window position/size. If reading or
 writing storage fails, View shows a warning. Controls remain usable in the current
 view, but older settings may return after reopening a repository or restarting.
 Invalid settings fall back to defaults; numeric widths are bounded to safe ranges.
+
+## Inspect repository activity
+
+Choose **Activity** at the bottom of a repository to expand the read-only drawer.
+The collapsed bar shows the latest recorded action/state, queued/running count,
+and number needing attention. The drawer does not open automatically or take
+focus when a result changes. It is available in Changes, History and Stashes.
+
+- **Show → All** lists the latest 30 recorded operations, newest first, plus any
+  older queued/running operations. The shown/total count explains the scope.
+- **Show → Needs attention** filters the backend session snapshot to failed,
+  stopped, skipped, canceled, errored or uncertain outcomes, then shows the latest
+  30 matches. This can reveal an older failure absent from the All list.
+- Each entry shows its state, recorded time, reason/error, and any uncertain or
+  truncated-output warning. **Operation details** expands the ID, recorded start
+  and finish times, exit code, optional batch/error IDs, and available bounded
+  diagnostic text. Not every operation records output; missing values are labeled.
+
+Times use your device's locale. The drawer reads Git View's existing backend
+operation records; it is not a complete log of external terminal commands and is
+not saved across app-process restarts. Opening/filtering/closing it does not run,
+retry, cancel, or undo Git operations. Use the normal reviewed workflow to retry
+after inspecting the current state. Project **Batch activity** keeps its existing
+separate controls.
+
+Opening focuses **Close activity**. Tab/Shift+Tab moves normally between controls;
+the results area supports keyboard scrolling. **Close activity**, or **Escape**
+while focused inside the drawer, closes it and returns focus to Activity. The
+drawer does not trap focus or dismiss on an outside click. Confirmation dialogs
+retain their own Escape behavior. Expanded details and the filter survive
+closing/reopening within the same repository screen, but reset when that screen
+is remounted. The drawer fits the window without changing saved panel widths.
 
 ## Stage files and commit
 
@@ -800,6 +833,7 @@ and Ctrl elsewhere; they do not add shortcuts for executing Git mutations.
 | Focused menu button | `↓` / `↑` | Open at the first/last available control |
 | Open toolbar/workspace menu | `Escape` | Close and return focus to its menu button |
 | Open compact History scope panel | `Escape` | Close navigation and focus its scope button; branch-form inputs are retained |
+| Inside the repository activity drawer | `Escape` | Close the drawer and return focus to Activity |
 | Focused menu command | `↑` / `↓`, `Home` / `End` | Focus another enabled command; Enter activates it |
 | Focused changed filename | `↑` / `↓`, `Home` / `End` | Inspect the previous/next or first/last visible file in expanded groups |
 | Focused changed-file checkbox | `Space` | Check/uncheck that version for Stage selected or Unstage selected; no immediate Git action |

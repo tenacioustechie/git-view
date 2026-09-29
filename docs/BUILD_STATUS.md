@@ -1,5 +1,57 @@
 # Build status
 
+## 2026-09-29: Repository activity drawer
+
+Committed keyboard/accessibility polish as `dd38547` (`Polish keyboard navigation
+and shortcut discoverability`). The following uncommitted frontend slice adds a
+read-only repository activity drawer: collapsed latest/active/attention summary,
+All/Needs attention filtering, the latest 30 matches plus older active work,
+state/time context, explicit uncertainty/truncation warnings and expandable
+backend diagnostics. Project batch controls and Git execution are unchanged.
+Context7's official React guidance informed ref-based focus and lifecycle handling.
+
+Local `pnpm test` passes **189 tests across 22 files**, including six new drawer
+tests for keyboard focus/Tab/Escape, filtering, plain-text diagnostics, bounded
+lists retaining active work, live updates/expanded details and dialog priority.
+An existing squash-status assertion was scoped to the named Git-operation status
+now that the footer also exposes a status. Typechecking, lint and smoke builds
+pass; no backend behavior changed, so the full Rust suite was not repeated.
+
+An isolated mutation-disabled repository preview verified the actual drawer at
+the default desktop size and 800×580: keyboard opening, attention filtering,
+expanded details, keyboard scrolling and Escape dismissal. Results remain
+bounded and independently scrollable while repository controls remain available.
+Temporary preview files/server/tab were removed and viewport sizing restored.
+
+The first Mac native run passes the new real failed-commit drawer check, then
+stops after 41 checks because older stash/hunk assertions expected the previous
+combined action/status markup. Those assertions now read the separate humanized
+action and status fields. The incomplete report is
+`/tmp/git-view-activity-mac-20260929.json`; it is not a full-suite pass.
+
+The corrected Mac suite passes **all 57 native workflow checks** with
+`python3 scripts/native-smoke.py /tmp/git-view-activity-mac-20260929-final.json`.
+The new check opens a real failed commit in the drawer, filters and expands its
+backend diagnostics, closes with Escape/focus return, and verifies the draft
+and actual HEAD are unchanged. Existing reload, stash, hunk and rebase workflows
+also pass. `pnpm tauri build --bundles app` rebuilt the unsigned Mac app at
+`src-tauri/target/release/bundle/macos/Git View.app`; normal assets are
+`index-DqSr8mzx.css` and `index-DUb9RZa6.js`. No installed app was replaced.
+
+Windows verification was attempted from a clean `4a81e31` checkout using a
+temporary source delta and `scripts/windows-native-verify.ps1`. Its SSH runner
+stalled before returning test output; a diagnostic probe found no active
+Git View/Cargo/Node process and no new native report. The identified test SSH
+connection was stopped so the orchestrator could hash-check and reverse its
+source copy. Exact hash verification and reversal completed successfully, leaving
+the Windows checkout clean. No installed Windows app was changed, and no Windows
+test pass is claimed for this activity slice.
+
+Guide/inventory review date is 29 September. All 125 local documentation
+links/anchors and `git diff --check` pass. Full screen-reader acceptance, persisted
+operation history and a unified project/global activity drawer remain outside
+this slice. New activity changes are uncommitted; nothing was pushed or published.
+
 ## 2026-09-29: Keyboard and accessibility polish
 
 Working tree based on `fa49114` adds an app-bar Shortcuts reference, native-platform

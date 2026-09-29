@@ -398,8 +398,8 @@ describe('repository workflows (mocked IPC)', () => {
     vi.mocked(api.getStatus).mockResolvedValue(repository.status);
     render(<RepositoryView repository={repository} />);
     expect(screen.getByText('Squash merge review')).toBeTruthy();
-    expect(screen.getByRole('status').textContent).toContain('Original HEAD: original-tip');
-    expect(screen.getByRole('status').textContent).toContain('does not create MERGE_HEAD');
+    expect(screen.getByRole('status', { name: 'Git operation' }).textContent).toContain('Original HEAD: original-tip');
+    expect(screen.getByRole('status', { name: 'Git operation' }).textContent).toContain('does not create MERGE_HEAD');
     expect(screen.queryByRole('button', { name: 'Abort merge' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Continue merge' })).toBeNull();
     fireEvent.change(await screen.findByLabelText('Commit message'), { target: { value: 'Reviewed squash result' } });
