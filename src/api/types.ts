@@ -74,6 +74,9 @@ export interface HistoryPage {
   nextCursor: string | null;
 }
 export interface HistorySearch { field: 'message' | 'author' | 'oid'; text: string }
+export interface FileHistorySource { snapshotId: string; fileId: string; path: 'current' | 'previous' }
+export interface FileHistoryRequest { repositoryId: string; source: FileHistorySource; historySnapshotId?: string | null; cursor?: string | null }
+export interface FileHistoryPage { displayPath: string; startOid: string | null; shallow: boolean; history: HistoryPage }
 
 export interface CommitDetails {
   snapshotId: SnapshotId; // context for the returned file IDs and selected parent

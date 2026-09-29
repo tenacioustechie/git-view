@@ -562,6 +562,22 @@ async function runHistorySearchSmoke(checks: string[]) {
   await assertDiffVisible();
   checks.push('Native scoped literal message search returned exact nonadjacent commit OIDs, excluded matching side branch, omitted DAG SVG, and opened actual commit details and file patch');
 
+  const historyTrigger = await button('File history', await region('File diff'));
+  historyTrigger.focus(); historyTrigger.click();
+  const fileHistory = await until('file history dialog', () => repository.querySelector<HTMLDialogElement>('dialog.file-history-dialog[open]'));
+  const fileRows = await until('four ancestor path commits', () => {
+    const rows = [...fileHistory.querySelectorAll<HTMLButtonElement>('.history-row')];
+    return rows.length === 4 ? rows : null;
+  });
+  assert(!fileRows.some(row => row.title.startsWith(fixture.otherOid)), 'File history must exclude the disconnected side branch');
+  assert(!fileHistory.querySelector('svg'), 'File history must not infer DAG edges');
+  fileRows.find(row => row.title.startsWith(fixture.bodyOid))!.click();
+  await until('file-history actual older patch', () => fileHistory.querySelector('.unified-diff,.split-diff')?.textContent?.includes('+older match'));
+  assert(![...fileHistory.querySelectorAll('button')].some(node => /^(Unstage|Stage) hunk$/.test(node.textContent ?? '')), 'File history remains inspection-only');
+  await click('Close file history', fileHistory);
+  await until('file history closes with focus return', () => !repository.querySelector('dialog.file-history-dialog') && document.activeElement === historyTrigger);
+  checks.push('Native file history opens from an exact historical file, excludes side-branch commits, loads real older patch without mutation controls or false graph edges, and closes with focus return');
+
   await search('author', fixture.author, fixture.matchOids);
   await search('message', fixture.body, [fixture.bodyOid]);
   await search('oid', fixture.matchOids[0].slice(0, 8), [fixture.matchOids[0]]);

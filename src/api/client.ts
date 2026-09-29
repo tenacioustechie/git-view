@@ -23,6 +23,8 @@ export const api = {
   searchHistory: (repositoryId: string, query: T.HistorySearch, scope: string | null = null, snapshotId: string | null = null, cursor: string | null = null) => invoke<T.HistoryPage>('search_history', { repositoryId, query, scope, snapshotId, cursor }),
   getCommit: (repositoryId: string, oid: string, parentOid: string | null = null) => invoke<T.CommitDetails>('get_commit', { repositoryId, oid, parentOid }),
   getDiff: (request: T.DiffRequest) => invoke<T.DiffResult>('get_diff', { request }),
+  getFileHistory: (request: T.FileHistoryRequest) => invoke<T.FileHistoryPage>('get_file_history', { request }),
+  getFileHistoryCommit: (repositoryId: string, historySnapshotId: string, oid: string, parentOid: string | null = null) => invoke<T.CommitDetails>('get_file_history_commit', { repositoryId, historySnapshotId, oid, parentOid }),
   planAction: (repositoryId: string, action: T.RepositoryAction) => invoke<T.RepositoryActionPlan>('plan_repository_action', { repositoryId, action }),
   runAction: (planId: string) => invoke<T.OperationResult>('run_repository_action', { planId }),
   planBatch: (request: T.BatchRequest) => invoke<T.BatchPlan>('plan_batch', { request }),

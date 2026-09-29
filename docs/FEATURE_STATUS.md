@@ -1,7 +1,7 @@
 # Feature status
 
-Reviewed 29 September 2026, including side-by-side diffs in the working tree
-based on `7703dc3` and guided linear rebase at source checkpoint
+Reviewed 29 September 2026, including file history in the working tree
+based on `5df7c24` and guided linear rebase at source checkpoint
 `d9af4e6` and the earlier A1–A4 workflows, against the
 [product plan](PRODUCT.md). This is the current completion inventory;
 [Build status](BUILD_STATUS.md) retains dated commands, results, and artifact evidence.
@@ -34,7 +34,7 @@ refer to the delivered runbook workflows on tested platforms.
 | --- | --- | --- |
 | Launch | Repository/nested-path CLI, JSON project CLI, discovery CLI, help/version, local wrappers, one-window forwarding with navigation guards | Installed PATH integration, further installation polish, additional windows, group templates |
 | History | Virtualized paged graph, persistent selected-row highlight, parent continuity, refs, branch/tag scopes, message/body and author/email search, full/prefix commit-ID search, snapshot paging | Advanced revision-query UI |
-| Details | Full messages/identities/parents, parent-specific filterable file browser with keyboard selection, collapsible commit information, independently scrolling unified/side-by-side diffs with line numbers/full-row colours, hunk navigation, binary/truncation states | Syntax highlighting, blame and file history |
+| Details | Full messages/identities/parents, parent-specific filterable file browser with keyboard selection, collapsible commit information, independently scrolling unified/side-by-side diffs with line numbers/full-row colours, hunk navigation, binary/truncation states; read-only literal-path file history from a selected working/historical file | Syntax highlighting, blame, automatic rename-following and arbitrary-path history browsing |
 | Working changes | Staged/unstaged/untracked/conflicted states, whole-file and explicit selected-subset stage/unstage, supported complete text-hunk stage/unstage, staged-only commit, session draft retention, hook/signing failure handling; named stash creation/inspection, retained Apply, reviewed exact-entry Delete and recovery | Individual-line staging; expanded hunk support for excluded file types |
 | Remotes | Fetch, clean-only fast-forward pull, explicit normal single-repository push, optional upstream setup | Explicit batch push; hosting integrations only if requested |
 | Branches | Local create/switch with previews, explicit remote tracking checkout, ordinary merge, squash merge from local or remote refs, reviewed single non-merge cherry-pick; guided linear rebase onto an existing local or fetched remote branch with Continue, reviewed Skip, Abort, backup and stopped-state guidance | Merge-preserving or arbitrary interactive rebase; multi-commit and merge-commit cherry-pick excluded from A2 |
@@ -88,6 +88,14 @@ refer to the delivered runbook workflows on tested platforms.
   previews disable hunk mutation. Combined headers fall back to unified text.
   Narrow panes scroll instead of changing the preference. Syntax highlighting,
   intraline matching and editable/three-way diffs are not part of this slice.
+- C2's initial file-history window uses the selected file's backend path token,
+  anchored to the selected commit or working snapshot's HEAD. It pages 200 commits
+  at a time with a 30-second page deadline, filters previews by raw path, supports
+  real merge-parent comparisons, and labels shallow history. Explicit current/
+  previous paths handle a recorded rename; automatic lineage tracking, arbitrary
+  path entry and stash launch points are deferred. Reused paths and former
+  directory descendants are explained. This is read-only; opening/closing keeps
+  the repository workspace and draft. React cleanup rejects stale async results.
 - At widths up to 1,000 pixels, History's branch/scope sidebar starts collapsed
   behind a scope button, opening as a scrollable panel. Scope selection,
   Close/Escape and outside interaction dismiss it; direct branch-menu navigation
@@ -171,6 +179,12 @@ was rebuilt; installed apps and collected packages remain unchanged.
   are recorded in Build status. The unsigned Mac bundle was rebuilt; installed apps and collected
   packages remain unchanged. Full OS-process restart persistence of the new diff
   preference and screen-reader acceptance remain unverified.
+- C2's initial literal-path file-history working tree on `5df7c24` passes **208
+  frontend tests, the full Rust suite (one explicit performance measurement
+  ignored), and 60 native workflow checks on both macOS and Windows**. Browser review covers a
+  compact 800×580 dialog and targeted keyboard/focus paths. The unsigned Mac
+  bundle was rebuilt; installed apps and collected packages remain unchanged. Automatic
+  rename following and full screen-reader acceptance are not claimed.
 - Stash requires files ref storage; reftable is unsupported. Safe stash Delete
   is implemented only on macOS and Windows. Changed submodules/gitlinks and
   stashes beyond 1,000 entries or an 8 MiB reflog are excluded from this slice.

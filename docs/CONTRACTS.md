@@ -4,6 +4,37 @@ The coordinator translates these proposed contracts into Rust serde types and Ty
 
 ## Essential data
 
+### File-history inspection (C2)
+
+`get_file_history({ request })` accepts `repositoryId`,
+`source: { snapshotId, fileId, path: 'current' | 'previous' }`, and optional
+`historySnapshotId` / `cursor`. Source fields reject unknown keys. No display
+path or renderer revision expression becomes a Git argument. The backend resolves
+raw path bytes from a repository-bound working/commit file snapshot and anchors
+the traversal to its recorded HEAD or commit. An unborn HEAD yields an explicit
+empty result with `startOid: null`. Missing previous paths are errors.
+
+The response is `{ displayPath, startOid, shallow, history: HistoryPage }`.
+History uses `rev-list --full-history --topo-order` with literal pathspecs and
+replacement objects disabled, retaining real commit parents. Results are not a
+connected DAG and do not automatically follow renames. Git's path traversal can
+include descendants if the path was once a directory; the UI explains this.
+Pages contain at most 200 commits, have a 30-second total deadline, and use opaque
+snapshot-bound cursors. The cache retains at most 32 file-history snapshots;
+expired selection/cursor errors require reopening. Repeated valid cursors are
+stable against branch movement; shallow ancestry drift and legacy grafts reject
+the read. The backend retains loaded OIDs for membership validation.
+
+`get_file_history_commit(repositoryId, historySnapshotId, oid, parentOid)`
+accepts only a returned commit in the matching file-history snapshot. Parent
+validation is the existing actual-parent check. The returned `CommitDetails`
+filters files by raw current/old-path identity, not lossy display text, and its
+new opaque file IDs work with existing read-only `get_diff` commit requests.
+An unchanged merge-parent comparison can return zero exact-path files. Neither
+command observes/reconciles operation journals, refreshes the index, changes
+refs, nor invokes a mutation action. Existing preview and missing-object limits
+remain authoritative.
+
 ```ts
 type RepositoryId = string;
 type ProjectId = string;
@@ -182,6 +213,8 @@ Errors such as missing Git, inaccessible repository, stale precondition, authent
 | `list_rewrites` | repository ID | Durable Combine commits records with reconciled recovery eligibility |
 | `get_history` | repository ID, scope; or snapshot ID + cursor | `HistoryPage` |
 | `search_history` | repository ID, `{ field: 'message' \| 'author' \| 'oid', text }`, scope, optional snapshot ID/cursor | `HistoryPage` of matches, with original ordered parents |
+| `get_file_history` | request with repository ID, source snapshot/file/path choice, optional history snapshot/cursor | `FileHistoryPage`: display path, frozen start OID, shallow flag and history page |
+| `get_file_history_commit` | repository ID, file-history snapshot ID, returned OID, optional parent OID | `CommitDetails` filtered to raw current/old-path matches |
 | `get_commit` | repository ID, OID, optional parent OID | `CommitDetails`, including file/diff context snapshot |
 | `get_diff` | repository ID, snapshot/file ID, staged/unstaged/commit context | `DiffResult` |
 | `get_operations` | optional batch ID, cursor | Current snapshots and bounded output |

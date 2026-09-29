@@ -141,6 +141,26 @@ pub async fn search_history(
         .await
 }
 #[tauri::command]
+pub async fn get_file_history(
+    state: State<'_, AppState>,
+    request: FileHistoryRequest,
+) -> AppResult<FileHistoryPage> {
+    state.engine.get_file_history(request).await
+}
+#[tauri::command]
+pub async fn get_file_history_commit(
+    state: State<'_, AppState>,
+    repository_id: String,
+    history_snapshot_id: String,
+    oid: String,
+    parent_oid: Option<String>,
+) -> AppResult<CommitDetails> {
+    state
+        .engine
+        .get_file_history_commit(&repository_id, &history_snapshot_id, &oid, parent_oid)
+        .await
+}
+#[tauri::command]
 pub async fn get_commit(
     state: State<'_, AppState>,
     repository_id: String,

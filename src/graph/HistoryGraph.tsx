@@ -4,15 +4,15 @@ import type { GraphRow } from './layout';
 
 const rowHeight = 44;
 const colors = ['#68aaf9', '#a994f5', '#58bfa7', '#e6ad69', '#e584a2'];
-export function HistoryGraph({ rows, selected, onSelect, loading, more, onMore, searchResults = false, failed = false }: {
+export function HistoryGraph({ rows, selected, onSelect, loading, more, onMore, searchResults = false, failed = false, label, emptyMessage }: {
   rows: GraphRow[]; selected: string | null; onSelect: (oid: string) => void;
-  loading: boolean; more: boolean; onMore: () => void; searchResults?: boolean; failed?: boolean;
+  loading: boolean; more: boolean; onMore: () => void; searchResults?: boolean; failed?: boolean; label?: string; emptyMessage?: string;
 }) {
   const scroll = useRef<HTMLDivElement>(null);
   const virtual = useVirtualizer({ count: rows.length, getScrollElement: () => scroll.current, estimateSize: () => rowHeight, overscan: 12, initialRect: { width: 640, height: 600 } });
   const width = rows.reduce((max, row) => Math.max(max, row.width * 18 + 20), 60);
   const selectedCommit = rows.find(row => row.commit.oid === selected)?.commit;
-  return <div className={`history-list ${searchResults ? 'search-results' : ''}`} ref={scroll} aria-label={searchResults ? 'Search results' : 'Commit history'} tabIndex={0}
+  return <div className={`history-list ${searchResults ? 'search-results' : ''}`} ref={scroll} aria-label={label ?? (searchResults ? 'Search results' : 'Commit history')} tabIndex={0}
     onKeyDown={event => {
       if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.nativeEvent.isComposing) return;
       if (event.target !== event.currentTarget && !(event.target instanceof HTMLElement && event.target.closest('.history-row'))) return;
@@ -48,6 +48,6 @@ export function HistoryGraph({ rows, selected, onSelect, loading, more, onMore, 
       })}
     </div>
     {more && <button className="load-more" disabled={loading} onClick={onMore}>{loading ? 'Loading…' : searchResults ? 'Load more results' : 'Load older commits'}</button>}
-    {!rows.length && !loading && !failed && <p className="empty">{searchResults ? 'No commits match this search.' : 'No commits in this scope.'}</p>}
+    {!rows.length && !loading && !failed && <p className="empty">{emptyMessage ?? (searchResults ? 'No commits match this search.' : 'No commits in this scope.')}</p>}
   </div>;
 }

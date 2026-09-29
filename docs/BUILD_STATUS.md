@@ -1,5 +1,67 @@
 # Build status
 
+## 2026-09-29: C2 initial literal-path file history
+
+The preceding diff slice is committed as `5df7c24` (`Add saved side-by-side diffs
+and hunk navigation`). The new working tree adds File history above working and
+historical diffs. Its read-only dialog preserves the underlying workspace/draft,
+uses backend-issued source/file IDs, freezes the selected commit or observed
+working HEAD, and pages 200 commits at a time with a 30-second page deadline.
+Current/previous paths at recorded renames are explicit choices; automatic rename
+following and arbitrary-path entry are not implemented. The inspector uses real
+commit parents and raw path matching, with inherited binary/large-diff limits.
+Shallow ancestry, reused filenames and former-directory descendants have explicit
+scope guidance. C3 blame remains the next inspection candidate.
+
+Git 2.51.2 was used locally. Git's official log documentation informed the explicit
+rename-following limitation; Context7's official React effect-cleanup guidance
+informed rejection of stale history, commit and diff responses. Five new real-Git
+integration tests cover literal Unicode/pattern-looking paths, deletion/root
+history, excluded side branches, recorded renames and previous-path previews,
+205-commit stable pagination after branch movement, invalid cursors/membership,
+unborn/shallow/graft handling, real merge parents and unchanged index/HEAD bytes.
+Six new renderer tests cover opaque request IDs, parents/read-only previews,
+out-of-order results, paging failure/retry, empty/shallow states and keyboard focus.
+
+Local `pnpm test` passes **208 tests in 23 files**; lint, typecheck/normal and smoke
+builds, `cargo test --manifest-path src-tauri/Cargo.toml --locked`, and strict
+all-target native-smoke Clippy pass. The full Rust run keeps the existing explicit
+performance-measurement test ignored; it was not silently treated as passed.
+Initial renderer checks exposed an unsupported test event helper and a real
+focus-return bug: the opening control is now captured before React autofocus.
+
+An isolated mutation-disabled browser fixture verified the desktop and 800×580
+layouts, real keyboard opening/Tab/Escape/focus return, previous-path selection,
+split layout and hunk focus. Review removed a redundant file-list column that
+crowded the compact patch; the final compact diff has a 219px scrollable viewport
+without body overflow. The preview files, server and tab were removed and the
+viewport override reset. Full screen-reader acceptance remains unverified.
+
+`python3 scripts/native-smoke.py /tmp/git-view-file-history-mac-20260929.json`
+passes **all 60 Mac native workflow checks**. The new check opens historical file
+history, verifies four actual ancestor commits while excluding a side branch,
+loads an older real patch without staging controls or false graph edges, then
+closes with focus return.
+
+Windows also passes **208 frontend tests, all 167 Rust tests** (one separate
+performance measurement ignored), typecheck, lint, strict all-target Clippy,
+the smoke build and **all 60 native workflow checks**. The local full Rust run
+passes 176 tests, with the same explicit ignored measurement. Windows report:
+`C:\codeme\git-view\.tools\GitViewNativeSmoke-a967016deaed4dba9540af0090a5cec6.json`.
+The existing `scripts/windows-verify.ps1` was invoked through direct encoded
+PowerShell, with temporary renderer/backend/test source copies over clean Windows
+baseline `4a81e31c5a2ac9d3b7176a1adf26fd4a196dc7f8`. Exact copied-file hashes were
+verified before reversing the patch, leaving the Windows checkout clean. No
+Windows installer was rebuilt or installed. The final native checks use the same
+product source on both platforms.
+
+`pnpm tauri build --bundles app` rebuilt the unsigned Mac bundle at
+`src-tauri/target/release/bundle/macos/Git View.app`, with normal assets
+`index-BVDSHNE_.css` and `index-CVZIDfCk.js`. The installed app was not replaced.
+The guide, inventory, contracts, README and roadmap describe the initial scope;
+126 local documentation links/anchors and `git diff --check` pass. The new slice
+remains uncommitted; nothing was pushed or published.
+
 ## 2026-09-29: C1 side-by-side diffs and hunk navigation
 
 Committed the preceding activity drawer as `7703dc3` (`Add read-only repository

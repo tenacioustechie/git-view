@@ -281,6 +281,35 @@ pub struct HistoryPage {
 }
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct FileHistorySource {
+    pub snapshot_id: String,
+    pub file_id: String,
+    pub path: FileHistoryPath,
+}
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum FileHistoryPath {
+    Current,
+    Previous,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct FileHistoryRequest {
+    pub repository_id: String,
+    pub source: FileHistorySource,
+    pub history_snapshot_id: Option<String>,
+    pub cursor: Option<String>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileHistoryPage {
+    pub display_path: String,
+    pub start_oid: Option<String>,
+    pub shallow: bool,
+    pub history: HistoryPage,
+}
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HistorySearch {
     pub field: HistorySearchField,
     pub text: String,

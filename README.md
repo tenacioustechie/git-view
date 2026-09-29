@@ -20,6 +20,8 @@ improvements for project filters, history and panels. A read-only repository
 **Activity** drawer adds attention filtering, operation times and expandable
 diagnostics. **Diff layout** switches working/history/stash text previews between
 Unified and Side-by-side; working/history previews also offer hunk navigation.
+**File history** opens paged, read-only path history from a selected working or
+historical file, with explicit revision scope and current/previous rename paths.
 These changes
 are not yet in the collected native packages.
 See [Feature status](docs/FEATURE_STATUS.md) for what is implemented and what remains.

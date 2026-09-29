@@ -219,6 +219,23 @@
 .split-meta.diff-hunk { background:color-mix(in srgb,var(--accent) 8%,var(--panel)); }
 .diff-limit { padding:8px 10px; font:12px/1.5 sans-serif; color:var(--muted); }
 [data-diff-hunk] { scroll-margin-top:140px; }
+.repository-screen .file-history-dialog { width:min(1400px,94vw); max-width:94vw; height:88vh; max-height:88vh; padding:0; overflow:hidden; }
+.file-history-dialog[open] { display:flex; flex-direction:column; }
+.file-history-heading { display:flex; justify-content:space-between; align-items:center; gap:16px; padding:16px 20px; border-bottom:1px solid var(--border); }
+.file-history-heading div { min-width:0; }
+.file-history-heading h2,.file-history-heading p { margin:0; }
+.file-history-heading p { overflow-wrap:anywhere; color:var(--muted); }
+.file-history-heading button { flex-shrink:0; }
+.file-history-context { padding:8px 20px; font-size:12px; border-bottom:1px solid var(--border); max-height:30%; overflow:auto; }
+.file-history-context p { margin:4px 0; overflow-wrap:anywhere; }
+.file-history-context select { max-width:100%; }
+.file-history-panels { display:grid; grid-template-columns:minmax(230px,30%) minmax(0,1fr); flex:1; min-height:0; }
+.file-history-list { display:flex; min-width:0; min-height:0; border-right:1px solid var(--border); }
+.file-history-list .history-list { flex:1; min-width:0; }
+.file-history-commit-heading { padding:12px 16px; max-height:35%; overflow:auto; flex-shrink:0; }
+.file-history-commit-heading h3,.file-history-commit-heading p { margin:0 0 6px; overflow-wrap:anywhere; }
+.file-history-open { margin-top:8px; font-size:12px; }
+@media(max-width:850px) { .file-history-panels { grid-template-columns:minmax(180px,32%) minmax(0,1fr); } }
 /* A bounded inspector: commit context, file navigation, and the diff each keep
    their own scroll position instead of becoming one long details document. */
 .repository-details.commit-inspector { display:flex; flex-direction:column; min-width:0; padding:0; overflow:hidden; background:var(--panel); container-type:inline-size; }

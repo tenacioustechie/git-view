@@ -1,7 +1,7 @@
 # Git View user guide
 
-Reviewed 29 September 2026 for version 0.1.0, including side-by-side diffs
-in the working tree based on `7703dc3`. The latest collected native packages
+Reviewed 29 September 2026 for version 0.1.0, including file history
+in the working tree based on `5df7c24`. The latest collected native packages
 remain rebase checkpoint `d9af4e6` on macOS arm64 and Windows 11 x64; they do not
 include this workspace redesign. See [Build status](BUILD_STATUS.md) for exact
 evidence and checksums.
@@ -17,6 +17,7 @@ packages, and platform limitations.
 - [Create and edit project files](#create-and-edit-project-files)
 - [Check and update a group](#check-and-update-a-group)
 - [Browse and search history](#browse-and-search-history)
+- [Inspect file history](#inspect-file-history)
 - [View and panel preferences](#view-and-panel-preferences)
 - [Inspect repository activity](#inspect-repository-activity)
 - [Stage files and commit](#stage-files-and-commit)
@@ -399,6 +400,47 @@ Graph connectors are omitted between filtered results to avoid implying false
 parent relationships. **Clear search** restores the graph. Refresh if Git View
 reports an expired history snapshot. Historical views ignore replacement refs
 and reject legacy grafts.
+
+## Inspect file history
+
+1. In **Changes**, select a working file; or in **History**, select a commit and
+   one of its changed files. Deleted and binary files can also be selected.
+2. Choose **File history** above the selected diff. A read-only window opens;
+   the repository workspace and commit draft remain underneath it.
+3. Read **Starting revision · Scope and limits**. Working-file history starts at
+   the HEAD recorded in that changes snapshot; historical-file history starts at
+   the selected commit. Only ancestors of that revision are included, regardless
+   of the repository's branch filter. Uncommitted edits are not history entries.
+4. Select a commit to inspect the path's patch. Use **↑/↓**, **Home/End** on the
+   results list to navigate loaded commits, and **Load more results** for the next
+   page. Filtered results deliberately have no graph connectors.
+5. For a merge, choose **Compare with parent**. A merge can have no exact-path
+   change against one parent; the window explains this rather than inventing a
+   diff. If multiple changes involve the same path, **Change** chooses which one
+   to preview. **Commit information** expands the full commit ID and message.
+6. **Close file history**, or **Escape**, returns to the repository. Focus returns
+   to the opening control if it is still present. Layout changes use the shared
+   saved Unified/Side-by-side preference; these previews have no staging controls.
+
+This initial implementation traces a **literal path**, not an inferred file
+identity. At a recorded rename, **Path history** offers **Current path** and
+**Previous path**, each starting from the same revision. Renames are not followed
+automatically through earlier commits or merges. To inspect an earlier name,
+select the rename commit/file in the main History view and open its previous-path
+history. A filename reused by a different file can include both files' changes.
+If a path was formerly a directory, commits affecting its descendants can appear,
+but the inspector shows only exact-path changes. Submodule paths describe gitlink
+changes, not the submodule repository's own history. Stash previews do not expose
+this action, and there is no arbitrary-path browser yet.
+
+Pages contain at most 200 commits and each page query has a 30-second limit.
+Paging remains anchored to the original revision even if a branch advances.
+Shallow repositories are labeled; earlier commits may be missing. Binary and
+large-patch limits are the same as other historical previews. Errors are not
+shown as successful empty results. **Retry file history** restarts from the
+original selection; if that snapshot expired, close the window, refresh the
+repository and select the file again. Close/reopen from a refreshed Changes view
+to include newly committed work. File-history selection is session-only.
 
 ## View and panel preferences
 
@@ -868,6 +910,7 @@ and Ctrl elsewhere; they do not add shortcuts for executing Git mutations.
 | Open toolbar/workspace menu | `Escape` | Close and return focus to its menu button |
 | Open compact History scope panel | `Escape` | Close navigation and focus its scope button; branch-form inputs are retained |
 | Inside the repository activity drawer | `Escape` | Close the drawer and return focus to Activity |
+| Inside File history | `Escape` | Close the inspector and return focus to its opening control when still present |
 | Focused menu command | `↑` / `↓`, `Home` / `End` | Focus another enabled command; Enter activates it |
 | Focused changed filename | `↑` / `↓`, `Home` / `End` | Inspect the previous/next or first/last visible file in expanded groups |
 | Focused changed-file checkbox | `Space` | Check/uncheck that version for Stage selected or Unstage selected; no immediate Git action |
@@ -899,7 +942,8 @@ acceptance remain outstanding.
 | Operation canceled or outcome uncertain | Refresh and inspect local/remote state before retrying; cancellation does not undo completed work. |
 | External project edit conflicts with a draft | Save the draft separately with **Save edits as**, or **Reload project** to use the disk version. |
 
-Not yet available: individual-line staging, syntax highlighting, blame/file history,
+Not yet available: individual-line staging, syntax highlighting, blame, automatic
+rename-following file history,
 interactive rebase, batch push, group branch switching, integrated conflict editing,
 multiple windows, group templates, and persisted group filters or commit drafts.
 The broader backlog and verification gaps are tracked in [Feature status](FEATURE_STATUS.md).

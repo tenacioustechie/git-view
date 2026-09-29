@@ -106,6 +106,13 @@ Both layouts cap display at 10,000 patch lines and preserve backend preview
 limits. Display-limited previews have no hunk mutation controls. Syntax
 highlighting, intraline matching and editable conflict resolution remain deferred.
 
+The initial file-history slice opens a read-only inspector from a selected
+working/historical file. It uses literal backend paths and a frozen starting
+revision, paged results and parent-specific patches; current/previous paths at
+recorded renames are explicit choices. Automatic rename following and arbitrary
+path browsing remain future work, as does blame. See the user guide for scope
+boundaries, reuse/directory caveats and recovery steps.
+
 The Changes navigation control, or the pinned Working changes row in History,
 opens the Changes workspace. Its Staged, Unstaged, Untracked, and conditional
 Conflicted groups share a separate diff pane; the commit composer sits outside

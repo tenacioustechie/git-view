@@ -413,7 +413,11 @@ rebase stage.
 tree based on `7703dc3`; platform evidence and remaining gates are in Build status.
 The initial slice uses plain text (syntax highlighting deferred), saved layouts,
 positional old/new alignment, working/history hunk navigation and explicit bounded
-previews. C2/C3 remain candidates, not implemented features.
+previews. C2's initial literal-path slice is now implemented in the working tree
+based on `5df7c24`: selected-file entry points, frozen revision, bounded pages,
+explicit current/previous paths, real merge parents and read-only previews.
+Automatic rename following is deferred rather than presented as certain file
+identity through merges. C3 (blame) remains next in the inspection track.
 
 | Slice | Proposed behavior | Acceptance focus / decision needed |
 | --- | --- | --- |

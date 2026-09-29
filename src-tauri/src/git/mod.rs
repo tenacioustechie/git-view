@@ -1,6 +1,7 @@
 mod actions;
 mod cherry_pick;
 mod discovery;
+mod file_history;
 mod history;
 mod hunks;
 mod merge;
@@ -64,6 +65,7 @@ pub(crate) struct State {
     pub locks: HashMap<PathBuf, Arc<Mutex<()>>>,
     pub snapshots: HashMap<String, Snapshot>,
     pub history: HashMap<String, HistorySnapshot>,
+    pub file_history: HashMap<String, file_history::FileHistorySnapshot>,
     pub hunks: std::collections::VecDeque<(String, Arc<hunks::HunkSnapshot>)>,
     pub stashes: HashMap<String, stash::StashSnapshot>,
     pub fetch_times: HashMap<String, String>,

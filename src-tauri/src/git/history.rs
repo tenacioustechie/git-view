@@ -3,12 +3,12 @@ use std::io::Read;
 const PAGE: usize = 200;
 const DIFF_LIMIT: usize = 2 * 1024 * 1024;
 #[derive(Clone)]
-struct Commit {
-    oid: String,
-    parents: Vec<String>,
-    message: String,
-    author: Identity,
-    committer: Identity,
+pub(super) struct Commit {
+    pub oid: String,
+    pub parents: Vec<String>,
+    pub message: String,
+    pub author: Identity,
+    pub committer: Identity,
 }
 fn identity(value: &str) -> Identity {
     let (name, tail) = value.rsplit_once(" <").unwrap_or((value, ""));
@@ -54,7 +54,7 @@ fn parse_commit(oid: String, body: &[u8]) -> AppResult<Commit> {
             .ok_or_else(|| AppError::new("invalid_git_output", "Commit lacks committer"))?,
     })
 }
-async fn commits(
+pub(super) async fn commits(
     runner: &runner::Runner,
     repo: &Repository,
     oids: &[String],
