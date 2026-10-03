@@ -24,6 +24,8 @@ export const api = {
   getCommit: (repositoryId: string, oid: string, parentOid: string | null = null) => invoke<T.CommitDetails>('get_commit', { repositoryId, oid, parentOid }),
   getDiff: (request: T.DiffRequest) => invoke<T.DiffResult>('get_diff', { request }),
   getFileHistory: (request: T.FileHistoryRequest) => invoke<T.FileHistoryPage>('get_file_history', { request }),
+  getBlame: (request: T.BlameRequest) => invoke<T.BlameResult>('get_blame', { request }),
+  getBlameCommit: (repositoryId: string, blameSnapshotId: string, oid: string, parentOid: string | null = null) => invoke<T.CommitDetails>('get_blame_commit', { repositoryId, blameSnapshotId, oid, parentOid }),
   getFileHistoryCommit: (repositoryId: string, historySnapshotId: string, oid: string, parentOid: string | null = null) => invoke<T.CommitDetails>('get_file_history_commit', { repositoryId, historySnapshotId, oid, parentOid }),
   planAction: (repositoryId: string, action: T.RepositoryAction) => invoke<T.RepositoryActionPlan>('plan_repository_action', { repositoryId, action }),
   runAction: (planId: string) => invoke<T.OperationResult>('run_repository_action', { planId }),

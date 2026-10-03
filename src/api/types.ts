@@ -77,6 +77,9 @@ export interface HistorySearch { field: 'message' | 'author' | 'oid'; text: stri
 export interface FileHistorySource { snapshotId: string; fileId: string; path: 'current' | 'previous' }
 export interface FileHistoryRequest { repositoryId: string; source: FileHistorySource; historySnapshotId?: string | null; cursor?: string | null }
 export interface FileHistoryPage { displayPath: string; startOid: string | null; shallow: boolean; history: HistoryPage }
+export interface BlameRequest { repositoryId: string; snapshotId: string; fileId: string; side: 'current' | 'previous' }
+export interface BlameLine { line: number; originalLine: number; oid: string; author: CommitDetails['author']; subject: string; originalPath: string; boundary: boolean; content: string }
+export interface BlameResult { snapshotId: string; revisionOid: string | null; displayPath: string; working: boolean; shallow: boolean; unavailableReason: string | null; lines: BlameLine[] }
 
 export interface CommitDetails {
   snapshotId: SnapshotId; // context for the returned file IDs and selected parent

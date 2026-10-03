@@ -14,7 +14,7 @@ pub(crate) struct FileHistorySnapshot {
     members: HashSet<String>,
 }
 
-fn ancestry(repo: &Repository) -> AppResult<Vec<u8>> {
+pub(super) fn ancestry(repo: &Repository) -> AppResult<Vec<u8>> {
     if repo.common_dir.join("info/grafts").exists() {
         return Err(AppError::new(
             "unsupported_history",

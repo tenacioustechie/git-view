@@ -1,7 +1,7 @@
 # Feature status
 
-Reviewed 29 September 2026, including file history in the working tree
-based on `5df7c24` and guided linear rebase at source checkpoint
+Reviewed 4 October 2026, including blame in the working tree
+based on file-history commit `9266e9b` and guided linear rebase at source checkpoint
 `d9af4e6` and the earlier A1–A4 workflows, against the
 [product plan](PRODUCT.md). This is the current completion inventory;
 [Build status](BUILD_STATUS.md) retains dated commands, results, and artifact evidence.
@@ -34,7 +34,7 @@ refer to the delivered runbook workflows on tested platforms.
 | --- | --- | --- |
 | Launch | Repository/nested-path CLI, JSON project CLI, discovery CLI, help/version, local wrappers, one-window forwarding with navigation guards | Installed PATH integration, further installation polish, additional windows, group templates |
 | History | Virtualized paged graph, persistent selected-row highlight, parent continuity, refs, branch/tag scopes, message/body and author/email search, full/prefix commit-ID search, snapshot paging | Advanced revision-query UI |
-| Details | Full messages/identities/parents, parent-specific filterable file browser with keyboard selection, collapsible commit information, independently scrolling unified/side-by-side diffs with line numbers/full-row colours, hunk navigation, binary/truncation states; read-only literal-path file history from a selected working/historical file | Syntax highlighting, blame, automatic rename-following and arbitrary-path history browsing |
+| Details | Full messages/identities/parents, parent-specific filterable file browser with keyboard selection, collapsible commit information, independently scrolling unified/side-by-side diffs with line numbers/full-row colours, hunk navigation, binary/truncation states; read-only literal-path file history; committed-revision blame with attribution-commit inspection | Syntax highlighting, uncommitted-content blame, automatic rename-following file history and arbitrary-path browsing |
 | Working changes | Staged/unstaged/untracked/conflicted states, whole-file and explicit selected-subset stage/unstage, supported complete text-hunk stage/unstage, staged-only commit, session draft retention, hook/signing failure handling; named stash creation/inspection, retained Apply, reviewed exact-entry Delete and recovery | Individual-line staging; expanded hunk support for excluded file types |
 | Remotes | Fetch, clean-only fast-forward pull, explicit normal single-repository push, optional upstream setup | Explicit batch push; hosting integrations only if requested |
 | Branches | Local create/switch with previews, explicit remote tracking checkout, ordinary merge, squash merge from local or remote refs, reviewed single non-merge cherry-pick; guided linear rebase onto an existing local or fetched remote branch with Continue, reviewed Skip, Abort, backup and stopped-state guidance | Merge-preserving or arbitrary interactive rebase; multi-commit and merge-commit cherry-pick excluded from A2 |
@@ -96,6 +96,17 @@ refer to the delivered runbook workflows on tested platforms.
   path entry and stash launch points are deferred. Reused paths and former
   directory descendants are explained. This is read-only; opening/closing keeps
   the repository workspace and draft. React cleanup rejects stale async results.
+- C3 adds read-only Blame from selected working/historical files. It reads an
+  exact committed revision (recorded HEAD for Changes), offers the selected
+  comparison parent/original path, and navigates each attribution to actual
+  commit details and parent-specific patches. Git follows whole-file renames;
+  extra copy/move detection and ignore-revision files are not enabled. Raw
+  commit identities, explicit shallow boundaries, UTF-8/regular-file limits,
+  2 MiB/10,000-line/30-second bounds and stale-result rejection avoid invented
+  attribution. The display pages 200 lines; compact commit inspection uses the
+  full dialog width. Uncommitted-byte attribution and arbitrary-path/stash
+  entry points are excluded from this initial slice. See Build status for
+  current verification; full screen-reader acceptance remains outstanding.
 - At widths up to 1,000 pixels, History's branch/scope sidebar starts collapsed
   behind a scope button, opening as a scrollable panel. Scope selection,
   Close/Escape and outside interaction dismiss it; direct branch-menu navigation
@@ -185,6 +196,13 @@ was rebuilt; installed apps and collected packages remain unchanged.
   compact 800×580 dialog and targeted keyboard/focus paths. The unsigned Mac
   bundle was rebuilt; installed apps and collected packages remain unchanged. Automatic
   rename following and full screen-reader acceptance are not claimed.
+- C3's committed-revision blame working tree on `9266e9b` passes **214 frontend
+  tests and 61 native workflow checks on each platform**, with full Rust suites
+  (182 Mac / 173 Windows passed; one separate performance measurement ignored).
+  The final compact-layout focus adjustment is included in both native runs;
+  the 800×580 browser visual/keyboard review and exact reports are in Build status. The unsigned Mac bundle
+  was rebuilt; installed apps and collected release packages were not replaced.
+  Full screen-reader acceptance and uncommitted-byte attribution are not claimed.
 - Stash requires files ref storage; reftable is unsupported. Safe stash Delete
   is implemented only on macOS and Windows. Changed submodules/gitlinks and
   stashes beyond 1,000 entries or an 8 MiB reflog are excluded from this slice.

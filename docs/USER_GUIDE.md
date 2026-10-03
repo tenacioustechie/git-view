@@ -1,7 +1,7 @@
 # Git View user guide
 
-Reviewed 29 September 2026 for version 0.1.0, including file history
-in the working tree based on `5df7c24`. The latest collected native packages
+Reviewed 4 October 2026 for version 0.1.0, including blame
+in the working tree based on file-history commit `9266e9b`. The latest collected native packages
 remain rebase checkpoint `d9af4e6` on macOS arm64 and Windows 11 x64; they do not
 include this workspace redesign. See [Build status](BUILD_STATUS.md) for exact
 evidence and checksums.
@@ -18,6 +18,7 @@ packages, and platform limitations.
 - [Check and update a group](#check-and-update-a-group)
 - [Browse and search history](#browse-and-search-history)
 - [Inspect file history](#inspect-file-history)
+- [Inspect line attribution with Blame](#inspect-line-attribution-with-blame)
 - [View and panel preferences](#view-and-panel-preferences)
 - [Inspect repository activity](#inspect-repository-activity)
 - [Stage files and commit](#stage-files-and-commit)
@@ -441,6 +442,54 @@ shown as successful empty results. **Retry file history** restarts from the
 original selection; if that snapshot expired, close the window, refresh the
 repository and select the file again. Close/reopen from a refreshed Changes view
 to include newly committed work. File-history selection is session-only.
+
+## Inspect line attribution with Blame
+
+1. Select a file in **Changes**, or a commit and changed file in **History**.
+   Choose **Blame** above its diff. This opens a read-only window and preserves
+   the underlying workspace and commit draft.
+2. Check **Revision · Attribution scope** for the full committed revision.
+   History starts at the selected commit. Changes reads the HEAD recorded in
+   that working snapshot—not staged or unstaged content, even when opened from
+   a staged diff. Branch filters do not limit attribution.
+3. In History, **Version → Comparison parent · original path** reads the parent
+   chosen in the original commit comparison, using the old path for a rename.
+   Use it for a deleted file. To choose a different parent of that starting
+   merge, close Blame, change the main comparison and reopen it. For a working
+   rename, **HEAD · previous path** inspects the old name at the same HEAD.
+   Missing paths, unborn HEAD and a root commit's empty parent are explained.
+4. Each row shows the commit, original author, current line number and committed
+   text. Hover its attribution for the subject, date and original path/line.
+   Choose the attribution button to inspect that commit's message and patch;
+   **Commit information** expands the full ID/message. **Changed file** selects
+   a file in that commit, and **Compare with parent** handles attributed merges.
+5. **Previous lines / Next lines** shows another 200-line display page without
+   rerunning attribution. On a line button, **↑/↓**, **Home/End** moves focus on
+   that page; **Enter/Space** opens its commit. **Back to lines** restores the
+   attribution view and focus. At widths up to 850 pixels, commit inspection
+   uses the whole dialog rather than crowding the source alongside the patch.
+6. **Close blame** or **Escape** closes the window and returns focus to its
+   opening button when still present. Nothing is staged, edited or committed.
+
+Blame reports Git's attribution, not code ownership or proof of who originally
+wrote an idea. Unlike the literal-path File history window, Git blame follows
+whole-file renames. Additional moved/copied-line detection, whitespace ignoring
+and ignored-revision files are not enabled. Identities are read from original
+commits without mailmap rewriting. Replacement refs are ignored; legacy grafts
+are rejected. Shallow repositories warn that earlier origins are missing, and
+affected rows are marked **boundary** rather than presented as certain origins.
+
+This slice accepts regular UTF-8, non-NUL text files up to **2 MiB and 10,000
+lines**, with a **30-second** query deadline and bounded Git output. Larger,
+binary/non-UTF-8, symlink and submodule content has an explicit unavailable
+reason; an empty committed file is distinguished from a failed read. No partial
+attribution is presented as complete. Use Git for unsupported files. There is
+no blame of uncommitted bytes, arbitrary-path browser or stash launch point.
+
+**Retry blame** retries a failed read; **Retry commit** retries inspection of
+the selected attribution. If a snapshot expired or shallow ancestry changed,
+close the window, refresh and reselect the file. Branch movement does not change
+the captured revision: reopen from refreshed Changes to inspect a newer HEAD.
 
 ## View and panel preferences
 
@@ -911,6 +960,8 @@ and Ctrl elsewhere; they do not add shortcuts for executing Git mutations.
 | Open compact History scope panel | `Escape` | Close navigation and focus its scope button; branch-form inputs are retained |
 | Inside the repository activity drawer | `Escape` | Close the drawer and return focus to Activity |
 | Inside File history | `Escape` | Close the inspector and return focus to its opening control when still present |
+| Inside Blame | `Escape` | Close Blame and return focus to its opening control when still present |
+| Focused Blame line button | `↑/↓`, `Home/End` | Move focus among the current display page's lines; Enter/Space inspects the commit |
 | Focused menu command | `↑` / `↓`, `Home` / `End` | Focus another enabled command; Enter activates it |
 | Focused changed filename | `↑` / `↓`, `Home` / `End` | Inspect the previous/next or first/last visible file in expanded groups |
 | Focused changed-file checkbox | `Space` | Check/uncheck that version for Stage selected or Unstage selected; no immediate Git action |
@@ -942,7 +993,7 @@ acceptance remain outstanding.
 | Operation canceled or outcome uncertain | Refresh and inspect local/remote state before retrying; cancellation does not undo completed work. |
 | External project edit conflicts with a draft | Save the draft separately with **Save edits as**, or **Reload project** to use the disk version. |
 
-Not yet available: individual-line staging, syntax highlighting, blame, automatic
+Not yet available: individual-line staging, syntax highlighting, uncommitted-content blame, automatic
 rename-following file history,
 interactive rebase, batch push, group branch switching, integrated conflict editing,
 multiple windows, group templates, and persisted group filters or commit drafts.

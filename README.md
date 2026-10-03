@@ -22,6 +22,8 @@ diagnostics. **Diff layout** switches working/history/stash text previews betwee
 Unified and Side-by-side; working/history previews also offer hunk navigation.
 **File history** opens paged, read-only path history from a selected working or
 historical file, with explicit revision scope and current/previous rename paths.
+**Blame** shows committed line attribution and opens the attributed commit's
+patch. Working-file entry points explicitly read recorded HEAD, not local edits.
 These changes
 are not yet in the collected native packages.
 See [Feature status](docs/FEATURE_STATUS.md) for what is implemented and what remains.

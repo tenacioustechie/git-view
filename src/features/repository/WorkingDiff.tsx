@@ -2,11 +2,12 @@ import { useMemo, useRef } from 'react';
 import type { DiffRequest, DiffResult, RepositoryAction } from '../../api/types';
 import { DiffLayoutControl, limitPatch, Patch, type DiffLayout } from './Patch';
 
-export function WorkingDiff({ request, displayPath, diff, active, blockedReason, onAction, layout = 'unified', onLayoutChange, onFileHistory }: {
+export function WorkingDiff({ request, displayPath, diff, active, blockedReason, onAction, layout = 'unified', onLayoutChange, onFileHistory, onBlame }: {
   request: DiffRequest; displayPath: string; diff: DiffResult | null; active: boolean;
   blockedReason: string | null; onAction: (action: RepositoryAction) => void;
   layout?: DiffLayout; onLayoutChange?: (layout: DiffLayout) => void;
   onFileHistory?: () => void;
+  onBlame?: () => void;
 }) {
   const root = useRef<HTMLElement>(null);
   const lastHunk = useRef<HTMLElement | null>(null);
@@ -33,6 +34,7 @@ export function WorkingDiff({ request, displayPath, diff, active, blockedReason,
   return <section ref={root} className="diff-panel" aria-label="File diff">
     <header className="diff-heading"><h3>Diff · {request.context}</h3><p className="diff-file-path" title={displayPath}>{displayPath}</p>
       {onFileHistory && <button className="file-history-open" onClick={onFileHistory}>File history</button>}
+      {onBlame && <button onClick={onBlame}>Blame</button>}
       {diff?.kind === 'text' && <div className="diff-view-tools">
         {onLayoutChange && <DiffLayoutControl value={layout} onChange={onLayoutChange} />}
         {hasHunks && <div role="group" aria-label="Hunk navigation"><button onClick={() => jump(-1)}>Previous hunk</button><button onClick={() => jump(1)}>Next hunk</button></div>}

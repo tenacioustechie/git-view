@@ -148,6 +148,26 @@ pub async fn get_file_history(
     state.engine.get_file_history(request).await
 }
 #[tauri::command]
+pub async fn get_blame(
+    state: State<'_, AppState>,
+    request: BlameRequest,
+) -> AppResult<BlameResult> {
+    state.engine.get_blame(request).await
+}
+#[tauri::command]
+pub async fn get_blame_commit(
+    state: State<'_, AppState>,
+    repository_id: String,
+    blame_snapshot_id: String,
+    oid: String,
+    parent_oid: Option<String>,
+) -> AppResult<CommitDetails> {
+    state
+        .engine
+        .get_blame_commit(&repository_id, &blame_snapshot_id, &oid, parent_oid)
+        .await
+}
+#[tauri::command]
 pub async fn get_file_history_commit(
     state: State<'_, AppState>,
     repository_id: String,

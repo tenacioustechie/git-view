@@ -35,6 +35,44 @@ command observes/reconciles operation journals, refreshes the index, changes
 refs, nor invokes a mutation action. Existing preview and missing-object limits
 remain authoritative.
 
+### Committed line attribution (C3)
+
+`get_blame({ request })` accepts only `{ repositoryId, snapshotId, fileId,
+side: 'current' | 'previous' }`, rejecting unknown keys. IDs bind a raw path to
+an existing backend snapshot, never renderer display text. For historical
+snapshots, current means selected commit/current path and previous means its
+selected comparison parent/old path (current path if not renamed). For working
+snapshots, both sides read recorded HEAD; previous requires a recorded old path.
+Unborn HEAD/root's empty parent and missing files yield explicit unavailable
+results, not attribution to fabricated commits.
+
+`BlameResult` contains `snapshotId`, nullable `revisionOid`, `displayPath`,
+`working`, `shallow`, nullable `unavailableReason`, and `lines`. Each `BlameLine`
+contains current `line`, `originalLine`, full `oid`, raw commit `author` identity,
+`subject`, display-only `originalPath`, `boundary`, and literal `content`.
+The backend reads a regular blob at the exact revision and validates all
+line-porcelain content and final line numbers against that blob before returning
+any attribution. Git-quoted original paths are decoded only for display. NUL or
+non-UTF-8 content, nonregular modes, files over 2 MiB/10,000 lines, deadline
+expiry (30 seconds total) or bounded-output failure never return partial success.
+An empty valid blob returns no lines and no unavailable reason.
+
+Git runs with replacement refs, textconv and external diff disabled; ignore-revs
+files are cleared and the Myers algorithm is explicit. Whole-file rename origins
+are Git's normal blame behavior, not the C2 literal-path traversal. Extra move/copy
+detection and whitespace ignoring are not requested. Original commit objects
+supply identities/messages rather than mailmap-transformed porcelain identities.
+Shallow boundaries are labeled; ancestry is checked before/after the read and
+legacy grafts are rejected. Reads do not reconcile operation journals or refresh
+the index. Display paging is renderer-local, 200 lines at a time.
+
+`get_blame_commit(repositoryId, blameSnapshotId, oid, parentOid)` requires a
+member OID of the matching result, rechecks shallow ancestry, then uses existing
+actual-parent validation and `CommitDetails`/opaque file IDs for read-only diffs.
+The bounded cache retains at most 32 blame snapshots (OID membership and ancestry
+fingerprint only, not file contents). Expiration requires reopening. No mutation
+endpoint, arbitrary path or renderer revision expression is introduced.
+
 ```ts
 type RepositoryId = string;
 type ProjectId = string;
@@ -215,6 +253,8 @@ Errors such as missing Git, inaccessible repository, stale precondition, authent
 | `search_history` | repository ID, `{ field: 'message' \| 'author' \| 'oid', text }`, scope, optional snapshot ID/cursor | `HistoryPage` of matches, with original ordered parents |
 | `get_file_history` | request with repository ID, source snapshot/file/path choice, optional history snapshot/cursor | `FileHistoryPage`: display path, frozen start OID, shallow flag and history page |
 | `get_file_history_commit` | repository ID, file-history snapshot ID, returned OID, optional parent OID | `CommitDetails` filtered to raw current/old-path matches |
+| `get_blame` | repository ID, source snapshot/file IDs, current/previous side | `BlameResult`: exact revision/path, committed lines with attribution, shallow/unavailable states |
+| `get_blame_commit` | repository ID, blame snapshot ID, attributed OID, optional parent OID | `CommitDetails` for an actual attributed member and validated parent |
 | `get_commit` | repository ID, OID, optional parent OID | `CommitDetails`, including file/diff context snapshot |
 | `get_diff` | repository ID, snapshot/file ID, staged/unstaged/commit context | `DiffResult` |
 | `get_operations` | optional batch ID, cursor | Current snapshots and bounded output |

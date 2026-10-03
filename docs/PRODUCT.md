@@ -110,7 +110,10 @@ The initial file-history slice opens a read-only inspector from a selected
 working/historical file. It uses literal backend paths and a frozen starting
 revision, paged results and parent-specific patches; current/previous paths at
 recorded renames are explicit choices. Automatic rename following and arbitrary
-path browsing remain future work, as does blame. See the user guide for scope
+path browsing remain future work. Committed-revision Blame now provides line
+attribution, whole-file rename origins and read-only source-commit inspection;
+working entry points explicitly inspect recorded HEAD, not uncommitted bytes.
+See the user guide for scope
 boundaries, reuse/directory caveats and recovery steps.
 
 The Changes navigation control, or the pinned Working changes row in History,

@@ -39,10 +39,11 @@ its completion.
 | Rebase timing | Following stage after the four confirmed slices | Confirmed by user, 22 September 2026 |
 | First complex-merge improvement | Clear branch/commit context, conflict list, and next-step guidance; files resolved in an external editor | Confirmed by user, 22 September 2026; integrated three-way editing deferred |
 
-Group operations (branch switching, progressive status, then batch push) and
-change inspection (side-by-side diffs/navigation, then file history/blame) remain
-later candidates. Only the selected first track needs a full implementation
-specification now.
+At the original stage selection, group operations (branch switching, progressive
+status, then batch push) and change inspection (side-by-side diffs/navigation,
+then file history/blame) were later candidates. Subsequent user-directed work
+implemented the initial inspection track described below. Group operations
+remain candidates requiring their own scoped implementation decisions.
 
 The representative user workflow is a group of up to 15 repositories with shared
 branch names, normally `main` as the default branch. Use that size for realistic
@@ -417,7 +418,18 @@ previews. C2's initial literal-path slice is now implemented in the working tree
 based on `5df7c24`: selected-file entry points, frozen revision, bounded pages,
 explicit current/previous paths, real merge parents and read-only previews.
 Automatic rename following is deferred rather than presented as certain file
-identity through merges. C3 (blame) remains next in the inspection track.
+identity through merges. C2 is committed as `9266e9b`.
+
+3 October continuation: C3's initial committed-revision blame slice is implemented
+in the working tree on `9266e9b`. It supports selected-commit/recorded-HEAD reads,
+the selected comparison parent with the old rename path, Git's whole-file rename
+attribution, shallow-boundary guidance, bounded text and read-only attributed
+commit/patch inspection. Uncommitted-byte blame, extra copy/move detection,
+ignored-revision support and arbitrary-path entry remain outside this slice.
+Build status records implementation gates separately from platform acceptance.
+The initial C1–C3 inspection track is implemented; group-track candidates and
+the inventory's usability/packaging checks remain future work, not completed
+milestones. B1/B3 still require the targeting/destination choices below.
 
 | Slice | Proposed behavior | Acceptance focus / decision needed |
 | --- | --- | --- |

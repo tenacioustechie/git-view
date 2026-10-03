@@ -308,6 +308,37 @@ pub struct FileHistoryPage {
     pub shallow: bool,
     pub history: HistoryPage,
 }
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BlameRequest {
+    pub repository_id: String,
+    pub snapshot_id: String,
+    pub file_id: String,
+    pub side: FileHistoryPath,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BlameLine {
+    pub line: usize,
+    pub original_line: usize,
+    pub oid: String,
+    pub author: Identity,
+    pub subject: String,
+    pub original_path: String,
+    pub boundary: bool,
+    pub content: String,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BlameResult {
+    pub snapshot_id: String,
+    pub revision_oid: Option<String>,
+    pub display_path: String,
+    pub working: bool,
+    pub shallow: bool,
+    pub unavailable_reason: Option<String>,
+    pub lines: Vec<BlameLine>,
+}
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HistorySearch {

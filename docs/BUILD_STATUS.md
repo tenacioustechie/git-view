@@ -1,5 +1,79 @@
 # Build status
 
+## 2026-10-03: C2 committed; C3 committed-revision blame
+
+Committed the completed file-history slice as `9266e9b` (`Add read-only file
+history with revision-scoped paging`). The subsequent working tree adds Blame
+from working/historical file previews, exact selected-commit or recorded-HEAD
+attribution, selected comparison-parent/original-path reads, shallow boundaries,
+and read-only attributed-commit details and patches. Whole-file rename origins
+use Git blame; this does not change C2's literal-path semantics. Uncommitted-byte
+attribution, extra moved/copied-line detection and ignored-revision support are
+excluded. Binary/non-UTF-8/nonregular files and limits (2 MiB, 10,000 lines,
+30 seconds, bounded output) have explicit outcomes without partial attribution.
+
+[Git's blame documentation](https://git-scm.com/docs/git-blame) informed the
+line-porcelain parser, whole-file rename behavior and cleared ignore-revs files.
+Context7's official React guidance informed effect cleanup that rejects stale
+blame, commit and diff results. Six new renderer tests cover token-based reads,
+parent navigation, read-only patches, literal markup, stale responses, empty/error/
+unavailable/shallow states, 200-line paging and focus. Five new disposable-repo
+integration tests plus one parser test cover exact revision/content, CRLF and
+missing final newline, pattern-looking Unicode paths, rename origins, raw author
+identities despite mailmap, ignored revisions/replacement refs, unchanged index/
+HEAD/working bytes, root/unborn/deleted states, frozen working HEAD, text/byte/line
+limits, shallow drift/grafts and actual merge-parent selection.
+
+Mac verification: `cargo test --manifest-path src-tauri/Cargo.toml --locked`
+passes **182 tests**, with the existing performance measurement explicitly
+ignored; strict all-target native-smoke Clippy and formatting pass. Final
+`pnpm test -- --maxWorkers=2` passes **214 tests in 24 files**, with lint,
+typecheck and normal/smoke builds passing. An initial unrestricted frontend run
+had one timeout in the existing 10,000-line split-rendering test during concurrent
+checks; reduced-worker reruns pass without changing that test or its timeout.
+Early typechecks caught and corrected a TypeScript identity alias and a widened
+test-fixture literal before final verification.
+
+The first Mac native report `/tmp/git-view-blame-mac-20260930.json` passed the new
+Blame check but failed later at the existing responsive branch-divider focus
+assertion. A same-build retry passed all 61 checks. After compact-layout/focus
+polish, the final fresh smoke build and
+`python3 scripts/native-smoke.py /tmp/git-view-blame-mac-20261002-final.json`
+pass **all 61 checks**. The filename reflects its queued invocation; the final
+run completed on 3 October. The new check reads actual selected-commit content,
+opens its real attribution patch, confirms no staging controls, switches to the
+comparison parent's content and closes with focus return. No user app was closed.
+
+Windows full `scripts/windows-verify.ps1` passes **214 frontend tests, 173 Rust
+tests** (one separate ignored performance measurement), lint/typecheck, strict
+all-target Clippy, smoke builds and **61 native checks**. Report:
+`C:\codeme\git-view\.tools\GitViewNativeSmoke-8860fb543214477a8b10598057370d77.json`.
+The existing verifier ran through encoded PowerShell over temporary source
+copies on clean baseline `4a81e31c5a2ac9d3b7176a1adf26fd4a196dc7f8`.
+Copied-file hashes were checked before reversing the patch; the checkout was
+restored clean. The final-source `scripts/windows-native-verify.ps1` rerun also
+passes all 214 frontend tests, typecheck/lint, strict native-smoke Clippy, build
+and 61 native checks, including the final compact-layout focus adjustment.
+Report: `C:\codeme\git-view\.tools\GitViewNativeSmoke-8c9e13b7583b4d3c9a465925d94b1878.json`.
+Its copied files were hash-checked and reversed too, leaving the checkout clean.
+
+An isolated mutation-disabled browser preview checked the desktop layout and
+800×580 minimum window. Review replaced the crowded compact split with full-width
+commit inspection and removed duplicate patch headings; the final compact patch
+has about 124px of visible content below its 50px toolbar, with no body overflow.
+Real keyboard opening, line inspection, Back to lines, paging, version selection,
+Escape and opener focus were checked. The preview files/tab/server were removed
+and the viewport reset. Complete VoiceOver/NVDA acceptance remains unverified.
+
+`pnpm tauri build --bundles app` rebuilt the unsigned Mac bundle at
+`src-tauri/target/release/bundle/macos/Git View.app`, with normal assets
+`index-DXNVB5HT.css` and `index-DW649f0W.js`. Installed apps and previously collected
+release packages are unchanged; no Windows installer was rebuilt. Guide,
+inventory, contracts, README and roadmap describe actual controls and exclusions.
+Final documentation review on 4 October checked 103 local links/anchors and
+`git diff --check`; both pass. C3 changes remain uncommitted; nothing was pushed
+or published.
+
 ## 2026-09-29: C2 initial literal-path file history
 
 The preceding diff slice is committed as `5df7c24` (`Add saved side-by-side diffs

@@ -235,6 +235,32 @@
 .file-history-commit-heading { padding:12px 16px; max-height:35%; overflow:auto; flex-shrink:0; }
 .file-history-commit-heading h3,.file-history-commit-heading p { margin:0 0 6px; overflow-wrap:anywhere; }
 .file-history-open { margin-top:8px; font-size:12px; }
+.blame-panels { display:grid; grid-template-columns:minmax(0,1fr); flex:1; min-height:0; }
+.blame-panels.has-selection { grid-template-columns:minmax(220px,45%) minmax(0,1fr); }
+.blame-source { display:flex; flex-direction:column; min-height:0; min-width:0; border-right:1px solid var(--border); }
+.blame-paging { display:flex; align-items:center; gap:8px; padding:8px 12px; font-size:12px; border-bottom:1px solid var(--border); flex-wrap:wrap; }
+.blame-paging span { margin-right:auto; }
+.blame-lines { flex:1; overflow:auto; min-height:0; }
+.blame-lines table { border-collapse:collapse; min-width:100%; font-size:12px; }
+.blame-lines th { text-align:left; font-size:11px; color:var(--muted); padding:6px 10px; position:sticky; top:0; background:var(--panel); z-index:1; white-space:nowrap; }
+.blame-lines th:first-child { width:175px; }
+.blame-lines th:nth-child(2) { width:3.5em; }
+.blame-lines td { border-bottom:1px solid var(--border); padding:0; }
+.blame-lines button { border:0; border-radius:0; background:transparent; display:flex; flex-direction:column; align-items:flex-start; width:175px; padding:5px 10px; text-align:left; font-size:11px; }
+.blame-lines button span { max-width:155px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--muted); }
+.blame-lines button code { color:var(--accent); }
+.blame-lines .blame-line-number { padding:0 10px; color:var(--muted); text-align:right; font:11px ui-monospace,monospace; }
+.blame-lines pre { margin:0; padding:4px 12px; font:12px/1.6 ui-monospace,monospace; white-space:pre; }
+.blame-selected { background:color-mix(in srgb,var(--accent) 12%,var(--panel)); }
+.blame-change { padding:6px 12px; font-size:12px; min-width:0; }
+.blame-change select { min-width:0; max-width:100%; }
+.blame-dialog .diff-heading h3,.blame-dialog .diff-file-path { display:none; }
+.blame-dialog .diff-heading { padding:8px 12px; }
+.blame-dialog .diff-view-tools { margin-top:0; }
+@media(max-width:850px) {
+  .blame-panels.has-selection { grid-template-columns:minmax(0,1fr); }
+  .blame-panels.has-selection .blame-source { display:none; }
+}
 @media(max-width:850px) { .file-history-panels { grid-template-columns:minmax(180px,32%) minmax(0,1fr); } }
 /* A bounded inspector: commit context, file navigation, and the diff each keep
    their own scroll position instead of becoming one long details document. */

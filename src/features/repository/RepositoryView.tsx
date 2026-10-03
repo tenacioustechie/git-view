@@ -19,6 +19,7 @@ import { PanelDivider } from './PanelDivider';
 import { useHistorySidebar } from './useHistorySidebar';
 import { ActivityDrawer } from './ActivityDrawer';
 import { FileHistory } from './FileHistory';
+import { Blame } from './Blame';
 import { primaryShortcut, shortcutAria, shortcutLabel, shortcutsBlocked } from '../../app/shortcuts';
 import './repository.css';
 
@@ -62,6 +63,7 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
   const [diffRequest, updateDiffRequest] = useState<DiffRequest | null>(null);
   const [diffFileName, setDiffFileName] = useState('');
   const [fileHistory, setFileHistory] = useState<{ request: DiffRequest; displayPath: string; previousPath: string | null } | null>(null);
+  const [blame, setBlame] = useState<{ request: DiffRequest; displayPath: string; previousPath: string | null } | null>(null);
   const fileHistoryRequest = useMemo(() => fileHistory ? { repositoryId: id, source: { snapshotId: fileHistory.request.snapshotId, fileId: fileHistory.request.fileId, path: 'current' as const } } : null, [fileHistory, id]);
   const diffGeneration = useRef(0);
   const diffSelection = useRef<{ request: DiffRequest; displayPath: string } | null>(null);
@@ -308,7 +310,7 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
     sidebar.reveal();
     setWorkspace('history'); setShowCombine(false); setShowStashes(false); setDiffRequest(null); setBranchPanel(selector);
   };
-  const fileDiff = diffRequest ? <WorkingDiff key={`${diffRequest.snapshotId}:${diffRequest.fileId}:${diffRequest.context}`} request={diffRequest} displayPath={diffFileName} diff={diff} layout={preferences.diffLayout} onLayoutChange={diffLayout => view.update({ diffLayout })} onFileHistory={() => setFileHistory({ request: diffRequest, displayPath: diffFileName, previousPath: (diffRequest.context === 'commit' ? details?.files : changes?.files)?.find(file => file.fileId === diffRequest.fileId)?.oldDisplayPath ?? null })} active={active || loading} blockedReason={operationReviewRequired ? 'Resolve the recorded Git operation context before staging or unstaging hunks.' : null} onAction={action => { void act(action); }} /> : null;
+  const fileDiff = diffRequest ? <WorkingDiff key={`${diffRequest.snapshotId}:${diffRequest.fileId}:${diffRequest.context}`} request={diffRequest} displayPath={diffFileName} diff={diff} layout={preferences.diffLayout} onLayoutChange={diffLayout => view.update({ diffLayout })} onFileHistory={() => setFileHistory({ request: diffRequest, displayPath: diffFileName, previousPath: (diffRequest.context === 'commit' ? details?.files : changes?.files)?.find(file => file.fileId === diffRequest.fileId)?.oldDisplayPath ?? null })} onBlame={() => setBlame({ request: diffRequest, displayPath: diffFileName, previousPath: (diffRequest.context === 'commit' ? details?.files : changes?.files)?.find(file => file.fileId === diffRequest.fileId)?.oldDisplayPath ?? null })} active={active || loading} blockedReason={operationReviewRequired ? 'Resolve the recorded Git operation context before staging or unstaging hunks.' : null} onAction={action => { void act(action); }} /> : null;
   const composer = <form className="commit-form" onSubmit={event => { event.preventDefault(); void act({ kind: 'commit', statusSnapshotId: status.snapshotId, message: draft }); }}>
     <label htmlFor="commit-message">Commit message</label><textarea id="commit-message" value={draft} placeholder="Describe the staged changes" onChange={event => { setDraft(event.target.value); drafts.set(id, event.target.value); }} rows={3} />
     <small>Only staged content is committed. Draft kept for this session.</small>
@@ -320,6 +322,7 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
 
   return <section className="repository-screen" aria-label="Repository" style={{ '--changes-width': `${preferences.changesWidth}px`, '--branches-width': `${preferences.branchesWidth}px`, '--history-width': `${preferences.historyWidth}px` } as CSSProperties}>
     {fileHistory && fileHistoryRequest && <FileHistory request={fileHistoryRequest} displayPath={fileHistory.displayPath} previousPath={fileHistory.previousPath} layout={preferences.diffLayout} onLayoutChange={diffLayout => view.update({ diffLayout })} onClose={() => setFileHistory(null)} />}
+    {blame && <Blame {...blame} layout={preferences.diffLayout} onLayoutChange={diffLayout => view.update({ diffLayout })} onClose={() => setBlame(null)} />}
     <header className="repository-toolbar">
       {onBack && <button onClick={onBack}>← Back</button>}
       <div className="repository-title"><strong title={repository.displayPath}>{repositoryName}</strong><small title={statusSummary}>{statusSummary}</small></div>

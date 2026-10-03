@@ -578,6 +578,23 @@ async function runHistorySearchSmoke(checks: string[]) {
   await until('file history closes with focus return', () => !repository.querySelector('dialog.file-history-dialog') && document.activeElement === historyTrigger);
   checks.push('Native file history opens from an exact historical file, excludes side-branch commits, loads real older patch without mutation controls or false graph edges, and closes with focus return');
 
+  const blameTrigger = await button('Blame', await region('File diff'));
+  blameTrigger.focus(); blameTrigger.click();
+  const blame = await until('blame dialog', () => repository.querySelector<HTMLDialogElement>('dialog.blame-dialog[open]'));
+  const attribution = await until('blame attribution', () => blame.querySelector<HTMLButtonElement>('.blame-lines button'));
+  assert(blame.querySelector('.file-history-context')?.textContent?.includes(fixture.matchOids[0]), 'Blame must identify the exact selected revision');
+  attribution.click();
+  await until('blame actual commit patch', () => blame.querySelector('.unified-diff,.split-diff'));
+  assert(![...blame.querySelectorAll('button')].some(node => /^(Unstage|Stage) hunk$/.test(node.textContent ?? '')), 'Blame commit inspection must remain read-only');
+  await click('Back to lines', blame);
+  assert(document.activeElement?.getAttribute('aria-label') === 'Blame lines', 'Back to lines must return focus');
+  const blameVersion = blame.querySelector<HTMLSelectElement>('[aria-label="Blame version"]')!;
+  blameVersion.value = 'previous'; blameVersion.dispatchEvent(new Event('change', { bubbles: true }));
+  await until('blame comparison-parent content', () => blame.querySelector('.blame-lines pre')?.textContent === 'unmatched middle');
+  await click('Close blame', blame);
+  await until('blame closes with focus return', () => !repository.querySelector('dialog.blame-dialog') && document.activeElement === blameTrigger);
+  checks.push('Native blame reads the selected committed file, opens actual attribution commit patches without mutations, switches to comparison-parent content and closes with keyboard focus return');
+
   await search('author', fixture.author, fixture.matchOids);
   await search('message', fixture.body, [fixture.bodyOid]);
   await search('oid', fixture.matchOids[0].slice(0, 8), [fixture.matchOids[0]]);
