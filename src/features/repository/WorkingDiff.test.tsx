@@ -128,7 +128,7 @@ describe('working hunk actions (mocked IPC)', () => {
     vi.mocked(api.getDiff).mockResolvedValue(diff('unstaged', 'after-external-edit'));
     fireEvent.click(within(screen.getByLabelText('Hunk 1')).getByRole('button', { name: 'Stage hunk' }));
     await screen.findByText('Working file changed; review again');
-    expect(api.getStatus).toHaveBeenCalledTimes(2); expect(api.getDiff).toHaveBeenCalledTimes(2);
+    await waitFor(() => { expect(api.getStatus).toHaveBeenCalledTimes(2); expect(api.getDiff).toHaveBeenCalledTimes(2); });
     expect(api.runAction).not.toHaveBeenCalled();
     expect((screen.getByLabelText('Commit message') as HTMLTextAreaElement).value).toBe('Keep after external edit');
   });

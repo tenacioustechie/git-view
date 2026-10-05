@@ -313,10 +313,10 @@ async function runCombineSmoke(checks: string[]) {
     const panel = await region('Combine commits');
     const count = await until('combine count', () => panel.querySelector<HTMLInputElement>('[aria-label="Newest commits to combine"]'));
     type(count, '1');
-    await until('one-commit selection rejected', () => [...panel.querySelectorAll<HTMLButtonElement>('button')].some(node => node.textContent === 'Preview combine commits' && node.disabled));
-    type(count, '2');
-    const selection = panel.querySelector('[aria-label="Commits to replace"]');
-    await until('exact selected suffix rendered', () => fixture.commitOids.every(oid => selection?.textContent?.includes(oid)));
+    await until('one-commit selection rejected', () => panel.querySelector('.combine-blocked')?.textContent === 'Choose at least two commits.');
+    const currentCount = await until('current combine count', () => panel.querySelector<HTMLInputElement>('[aria-label="Newest commits to combine"]'));
+    type(currentCount, '2');
+    await until('exact selected suffix rendered', () => fixture.commitOids.every(oid => panel.querySelector('[aria-label="Commits to replace"]')?.textContent?.includes(oid)));
     const message = `Native ${scenario} combined message`;
     const input = await until('combined message editor', () => panel.querySelector<HTMLTextAreaElement>('[aria-label="Combined commit message"]'));
     type(input, message);
