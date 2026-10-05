@@ -398,7 +398,7 @@ requirements recorded before A4 acceptance, not passing evidence by themselves.
 
 ## Candidate track B: groups
 
-4 October continuation: B1 is implemented in the working tree on blame commit
+4–5 October continuation: B1 is committed as `8c8c3e4`, following blame commit
 `9a5ee62`. The initial scope uses one common **existing local branch name**, with
 per-member source/target commits, fixed reviewed members, explicit skips and
 independent outcomes. Per-repository targets and remote branch creation are

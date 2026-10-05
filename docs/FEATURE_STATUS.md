@@ -1,7 +1,7 @@
 # Feature status
 
-Reviewed 5 October 2026, including group branch switching in the working tree
-based on blame commit `9a5ee62` and guided linear rebase at source checkpoint
+Reviewed 5 October 2026, including group branch switching at commit `8c8c3e4`
+(following blame commit `9a5ee62`) and guided linear rebase at source checkpoint
 `d9af4e6` and the earlier A1–A4 workflows, against the
 [product plan](PRODUCT.md). This is the current completion inventory;
 [Build status](BUILD_STATUS.md) retains dated commands, results, and artifact evidence.
@@ -223,11 +223,13 @@ was rebuilt; installed apps and collected packages remain unchanged.
 - Rewrite recovery covers injected failures/interruption states; this is not
   evidence from physical power-loss testing.
 
-B1 group switching on `9a5ee62` passes **219 frontend tests on each platform**,
+B1 group switching, now committed as `8c8c3e4`, passes **219 frontend tests on each platform**,
 **187 Mac Rust tests** (one separate measurement ignored), and **63 native
 checks on each platform**, with a rebuilt unsigned Mac bundle. All five new group integration
 tests pass on Windows, but its full Rust gate stops at an Application Control
-block (OS error 4551) before the cherry-pick integration binary runs. No security
+block (OS error 4551) before the cherry-pick integration binary runs. A subsequent
+read-only event-log check confirms Smart App Control's enforced
+`VerifiedAndReputableDesktop` policy blocked the unsigned test binary. No security
 policy was changed. The separate Windows native run also passes strict Clippy,
 lint/typecheck and smoke builds. Exact evidence is recorded in Build status;
 this partial backend run is not a complete Windows Rust-suite pass.

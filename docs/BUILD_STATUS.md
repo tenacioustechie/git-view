@@ -1,5 +1,35 @@
 # Build status
 
+## 2026-10-05: committed B1 checkpoint and confirmed Windows policy diagnosis
+
+Committed test-wait fixes as `214ce1e` (`Stabilize asynchronous renderer and native
+smoke assertions`) and B1 with its tests/docs as `8c8c3e4` (`Add reviewed group
+branch switching with guarded per-repository execution`). The implementation and
+native evidence below describe the same source now captured by these commits.
+The commit-preparation rerun of `pnpm test -- --maxWorkers=2`, `pnpm lint`,
+`pnpm typecheck` and `git diff --check` passes (219 frontend tests in 24 files).
+No native suites were repeated for this documentation-only diagnosis.
+
+A read-only query of the Windows Code Integrity Operational log found event
+**3077**, record **7429**, at **2026-10-05 01:29:13 UTC**, naming Cargo as the
+launcher and `src-tauri/target/debug/deps/git_cherry_pick-4dd04b57cbe5490d.exe`
+as the blocked image. The enforced policy is **VerifiedAndReputableDesktop**,
+with status `0xc0e90002` (the run reported Win32 error 4551). An Authenticode
+query confirms the executable is not digitally signed. The policy name identifies
+[Smart App Control enforcement](https://learn.microsoft.com/en-us/windows/apps/develop/smart-app-control/test-your-app-with-smart-app-control),
+not a Git View application error or a failing test assertion: this executable
+was refused before its tests could run.
+
+[Microsoft's Smart App Control FAQ](https://support.microsoft.com/en-us/windows/security/threat-malware-protection/smart-app-control-frequently-asked-questions)
+explains that unknown unsigned code can be blocked and that there is no per-app
+allow exception. The observation establishes a trust-policy block, not a malware
+finding. The full Windows Rust gate remains incomplete even though the separate
+63-check native suite passed. No policy, registry, Defender exclusions, signing,
+or machine configuration was changed. Follow-up is to choose a supported signed
+test-build workflow or an appropriate dedicated Windows development/test
+environment, then rerun the full gate; this diagnostic does not authorize a
+security-policy change.
+
 ## 2026-10-05: C3 committed; B1 reviewed group branch switching
 
 Committed completed blame as `9a5ee62` (`Add revision-scoped blame and attribution

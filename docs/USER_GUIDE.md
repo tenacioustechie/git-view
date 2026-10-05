@@ -1,7 +1,7 @@
 # Git View user guide
 
 Reviewed 5 October 2026 for version 0.1.0, including group branch switching
-in the working tree based on blame commit `9a5ee62`. The latest collected native packages
+at source commit `8c8c3e4`. The latest collected native packages
 remain rebase checkpoint `d9af4e6` on macOS arm64 and Windows 11 x64; they do not
 include this workspace redesign. See [Build status](BUILD_STATUS.md) for exact
 evidence and checksums.
