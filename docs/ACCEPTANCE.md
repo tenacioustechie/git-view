@@ -16,6 +16,24 @@ Create temporary local repositories and a project JSON file with paths relative 
 - Clearing that filter allows each eligible repository to pull its own configured upstream.
 - Open a skipped repository, resolve it manually, refresh, and retry only the intended entries.
 
+### Group branch switching
+
+Use disposable members with a shared existing local branch, dirty/unavailable
+members, absent targets, already-on-target and detached/unborn heads, an active
+Git operation, a target occupied by another worktree, and duplicate aliases.
+Review matching versus selected scope (including hidden checks), source/target
+commits and skip reasons. Changing the target input or filters after preview must
+not retarget the plan. Save/cancel project edits before switching. Confirm only
+eligible members, verify actual Git HEAD/file state and independent results, then
+retry selected failures using the original target and a new plan.
+
+Backend gates additionally cover dirty/ref/symbolic-ref drift after preview,
+project revision changes, ignored-file collisions, a post-checkout hook failing
+after HEAD changes, queued cancellation and recursive submodule user config.
+No implicit fetch/pull/stash/branch creation or cross-repository rollback is
+allowed. Native tests exercise visible preview/confirmation with real Git;
+mocked renderer tests are separate evidence. Record platform runs in Build status.
+
 ## Backend tests with real Git
 
 Generate isolated repositories under test-owned temporary directories and local bare remotes. Isolate test Git config, identities, hooks, signing, credential helpers, and file-protocol needs so tests never depend on or change user config. Hooks/signing failures are enabled only in their dedicated fixtures. Clean up only test-owned paths.

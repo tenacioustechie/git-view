@@ -216,6 +216,7 @@ interface OperationResult {
   memberId: string | null;
   repositoryId: RepositoryId | null;
   action: string;
+  targetBranch?: string; // original shared local-branch name for group switch retries
   state: JobState;
   startedAt: string | null;
   finishedAt: string | null;
@@ -348,7 +349,9 @@ Capability flags are explanatory; execution always revalidates the plan.
 
 Use backend-held preflight tokens for branch/remote operations. Index and worktree observations can race with outside clients; the UI must never promise total exclusion. Report Git's final outcome and refresh. A hook may legitimately alter content during commit.
 
-`plan_batch` accepts project ID/revision, candidate member IDs, action (`fetch` or `pull`), and optional exact branch filter. The backend owns eligibility and returns a plan ID plus all candidate rows with eligible/skipped reason and displayed destination. The plan retains resolved repository identities and preconditions for five minutes; execution still revalidates. Replan after expiry or project edits. Do not make the renderer the sole source of eligibility.
+`plan_batch` accepts project ID/revision, candidate member IDs, action (`fetch`, `pull` or `switchBranch`), and optional exact current-branch filter. `switchBranch` requires `targetBranch`, one literal existing local branch name (not a full ref or revision expression); fetch/pull reject a supplied target. The backend owns eligibility and returns a plan ID plus all candidate rows with eligible/skipped reason and displayed destination. Switch plans echo `targetBranch`, and eligible candidates include a `summary` with reviewed source and target commits. The plan retains resolved repository identities and preconditions for five minutes; execution still revalidates. Replan after expiry or project edits. Do not make the renderer the sole source of eligibility.
+
+Group switch skips dirty, unavailable, detached/unborn, already-on-target, missing-target, symbolic-target, worktree-occupied and incompatible members. It uses the shared guarded existing-branch switch, with no branch guessing/creation, ignored-file overwrite, submodule recursion, stash, fetch or pull. Candidates and the common target stay frozen if renderer filters/input change. Every switch result, including skips and aliases, carries the original `targetBranch`; retries create a fresh plan for that target, never substitute later input. Hooks can fail after mutation; resulting HEAD is checked and uncertain outcomes require inspection, not rollback. Independent successful switches remain in place.
 
 `run_batch(planId)` returns batch and job IDs promptly. Make starting the same plan idempotent so a double click returns the existing batch. Every planned member receives a terminal result, including skips and fetch aliases. `cancel_batch(batchId)` stops queued jobs and requests cancellation of running jobs according to runner support. `retry` creates a new plan, not a replay of stale argv.
 

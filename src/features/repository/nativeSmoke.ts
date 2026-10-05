@@ -524,6 +524,38 @@ async function runDiscoverySmoke(checks: string[]) {
   checks.push('Existing group discovery excluded duplicates and proposed unchecked addition; rescans/cancel/draft cancel preserved saved membership, explicit DOM Save project appended only chosen repository');
 }
 
+async function runGroupSwitchSmoke(checks: string[]) {
+  await invoke('native_smoke_group_switch_case', { inspect: false });
+  const group = await until('group-switch project opens', () => {
+    const node = [...document.querySelectorAll<HTMLElement>('[aria-label="Repository group"]')].find(visible);
+    return node?.querySelector('h1')?.textContent === 'Native group switch' ? node : null;
+  });
+  group.querySelector<HTMLElement>('.group-switch summary')!.click();
+  const target = group.querySelector<HTMLInputElement>('.group-switch input')!;
+  type(target, 'team/topic');
+  await click('Preview switch all (5)', group);
+  const preview = await region('Batch preview');
+  assert(preview.querySelectorAll('li').length === 5, 'Switch preview must retain every candidate and skip reason');
+  assert([...preview.querySelectorAll('li')].filter(item => item.textContent?.includes('— Eligible')).length === 1, 'Only clean member on another branch may be eligible');
+  const inspect = () => invoke<{ branches: string[]; dirtyContents: string }>('native_smoke_group_switch_case', { inspect: true });
+  assert((await inspect()).branches.join(',') === 'main,main,main,team/topic', 'Review must not switch any repository');
+  type(target, 'different-target');
+  checks.push('Group branch switch native preview retained five members with dirty/missing-target/already/unavailable skips and performed no checkout before confirmation');
+  await click('Switch 1 eligible to team/topic', preview);
+  await until('group-switch results complete', async () => {
+    const results = (await api.getOperations()).filter(result => result.batchId && result.action === 'switchBranch');
+    return results.length === 5 && results.every(result => !['queued', 'running'].includes(result.state)) ? results : null;
+  });
+  const results = (await api.getOperations()).filter(result => result.batchId && result.action === 'switchBranch');
+  assert(results.filter(result => result.state === 'succeeded').length === 1 && results.filter(result => result.state === 'skipped').length === 4, 'Switch batch must retain one success and four independent skips');
+  assert(results.every(result => result.targetBranch === 'team/topic'), 'Batch results must retain original target for retries');
+  const actual = await inspect();
+  assert(actual.branches.join(',') === 'team/topic,main,main,team/topic' && actual.dirtyContents === 'preserve my edits\n', 'Only eligible repository may switch; dirty bytes must remain unchanged');
+  const activity = await region('Batch activity');
+  await until('native group-switch activity rendered', () => activity.textContent?.includes('Switch branch batch → team/topic') && activity.textContent.includes('succeeded'));
+  checks.push('Native DOM confirmation used the frozen target despite edited input; real Git verified one switch, four skips, retained retry target and preserved dirty bytes');
+}
+
 async function runHistorySearchSmoke(checks: string[]) {
   const fixture = await invoke<{ repositoryId: string; path: string; message: string; author: string; body: string; matchOids: string[]; bodyOid: string; otherOid: string; scopeRef: string }>('native_smoke_history_search_case');
   const repository = await until('history search fixture selected', () => {
@@ -1404,6 +1436,7 @@ export async function runNativeSmoke(): Promise<void> {
     if (context.m3) await runCombineSmoke(checks);
     if (context.performance) await runPerformanceSmoke(checks);
     if (context.discovery) await runDiscoverySmoke(checks);
+    if (context.discovery) await runGroupSwitchSmoke(checks);
     if (context.historySearch) await runHistorySearchSmoke(checks);
     if (context.remoteCheckout) await runRemoteCheckoutSmoke(checks);
     if (context.cherryPick) { await runCherryPickSmoke(checks); return; }

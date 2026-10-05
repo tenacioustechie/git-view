@@ -80,7 +80,326 @@ fn request(project: &Project, action: &str, branch: Option<&str>) -> BatchReques
             .collect(),
         action: action.into(),
         branch_filter: branch.map(str::to_owned),
+        target_branch: None,
     }
+}
+
+fn switch_request(project: &Project, branch: Option<&str>) -> BatchRequest {
+    let mut request = request(project, "switchBranch", branch);
+    request.target_branch = Some("team/topic".into());
+    request
+}
+async fn switch_project(root: &Path, names: &[&str]) -> (GitEngine, Catalog, Project) {
+    let engine = GitEngine::isolated();
+    let catalog = Catalog::new();
+    let content = ProjectContent {
+        version: 1,
+        name: "Switch group".into(),
+        repositories: names
+            .iter()
+            .map(|name| ProjectMember {
+                path: (*name).into(),
+                label: Some((*name).into()),
+            })
+            .collect(),
+    };
+    let file = root.join("switch.git-view.json");
+    std::fs::write(&file, serde_json::to_vec(&content).unwrap()).unwrap();
+    let project = catalog.open(&engine, &file).await.unwrap();
+    (engine, catalog, project)
+}
+fn switch_repo(root: &Path, name: &str) -> PathBuf {
+    let p = root.join(name);
+    init(&p);
+    commit(&p, "base", "base\n");
+    git(&p, &["switch", "-c", "team/topic"]);
+    commit(&p, "topic", "topic\n");
+    git(&p, &["switch", "main"]);
+    p
+}
+
+#[tokio::test]
+async fn group_switch_does_not_recurse_into_submodules_with_recursive_user_config() {
+    let temp = tempfile::tempdir().unwrap();
+    let child = temp.path().join("child");
+    init(&child);
+    commit(&child, "file", "old child\n");
+    let old = git(&child, &["rev-parse", "HEAD"]);
+    commit(&child, "file", "new child\n");
+    let new = git(&child, &["rev-parse", "HEAD"]);
+    let parent = temp.path().join("parent");
+    init(&parent);
+    git(
+        &parent,
+        &[
+            "-c",
+            "protocol.file.allow=always",
+            "submodule",
+            "add",
+            child.to_str().unwrap(),
+            "nested",
+        ],
+    );
+    let nested = parent.join("nested");
+    git(&nested, &["checkout", &old]);
+    commit(&parent, "base", "main\n");
+    git(&parent, &["switch", "-c", "team/topic"]);
+    git(&nested, &["checkout", &new]);
+    commit(&parent, "base", "topic\n");
+    git(&parent, &["switch", "main"]);
+    git(&nested, &["checkout", &old]);
+    git(&parent, &["config", "submodule.recurse", "true"]);
+    let (engine, catalog, project) = switch_project(temp.path(), &["parent"]).await;
+    let service = Operations::new(engine, catalog);
+    let plan = service
+        .plan_batch(switch_request(&project, None))
+        .await
+        .unwrap();
+    assert!(plan.candidates[0].eligible, "{:?}", plan.candidates[0]);
+    let batch = service.run_batch(&plan.plan_id).await.unwrap();
+    let results = finish(&service, &batch).await;
+    assert_eq!(results[0].state, JobState::Succeeded, "{results:?}");
+    assert_eq!(git(&parent, &["branch", "--show-current"]), "team/topic");
+    assert_eq!(git(&nested, &["rev-parse", "HEAD"]), old);
+    assert_eq!(
+        std::fs::read_to_string(nested.join("file")).unwrap(),
+        "old child\n"
+    );
+}
+
+#[tokio::test]
+async fn group_switch_reviews_mixed_members_and_shares_alias_execution() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path();
+    for name in [
+        "clean",
+        "dirty",
+        "missing-target",
+        "busy",
+        "detached",
+        "already",
+        "occupied",
+    ] {
+        switch_repo(root, name);
+    }
+    std::fs::write(root.join("dirty/base"), "private edits\n").unwrap();
+    git(
+        &root.join("missing-target"),
+        &["branch", "-D", "team/topic"],
+    );
+    std::fs::write(
+        root.join("busy/.git/MERGE_HEAD"),
+        format!(
+            "{}\n",
+            git(&root.join("busy"), &["rev-parse", "team/topic"])
+        ),
+    )
+    .unwrap();
+    git(&root.join("detached"), &["switch", "--detach"]);
+    git(&root.join("already"), &["switch", "team/topic"]);
+    git(
+        &root.join("occupied"),
+        &[
+            "worktree",
+            "add",
+            root.join("linked").to_str().unwrap(),
+            "team/topic",
+        ],
+    );
+    let (engine, catalog, project) = switch_project(
+        root,
+        &[
+            "clean",
+            "dirty",
+            "missing-target",
+            "busy",
+            "detached",
+            "already",
+            "occupied",
+            "absent",
+            "./clean",
+        ],
+    )
+    .await;
+    let service = Operations::new(engine, catalog);
+    let plan = service
+        .plan_batch(switch_request(&project, None))
+        .await
+        .unwrap();
+    assert_eq!(plan.target_branch.as_deref(), Some("team/topic"));
+    assert_eq!(plan.candidates.iter().filter(|c| c.eligible).count(), 2);
+    assert!(plan.candidates[0]
+        .summary
+        .as_ref()
+        .unwrap()
+        .contains(&git(&root.join("clean"), &["rev-parse", "team/topic"])));
+    assert!(plan.candidates[5]
+        .reason
+        .as_ref()
+        .unwrap()
+        .contains("Already"));
+    assert!(plan.candidates[6]
+        .reason
+        .as_ref()
+        .unwrap()
+        .contains("worktree"));
+    assert_eq!(
+        git(&root.join("clean"), &["branch", "--show-current"]),
+        "main"
+    );
+    let batch = service.run_batch(&plan.plan_id).await.unwrap();
+    assert_eq!(
+        service.run_batch(&plan.plan_id).await.unwrap().batch_id,
+        batch.batch_id
+    );
+    let ops = finish(&service, &batch).await;
+    assert_eq!(
+        ops.iter()
+            .filter(|o| o.state == JobState::Succeeded)
+            .count(),
+        2
+    );
+    assert_eq!(
+        ops.iter().filter(|o| o.state == JobState::Skipped).count(),
+        7
+    );
+    assert!(ops
+        .iter()
+        .all(|o| o.action == "switchBranch" && o.target_branch.as_deref() == Some("team/topic")));
+    assert!(ops[8].reason.as_ref().unwrap().contains("Same repository"));
+    assert_eq!(
+        git(&root.join("clean"), &["branch", "--show-current"]),
+        "team/topic"
+    );
+    assert_eq!(
+        std::fs::read_to_string(root.join("dirty/base")).unwrap(),
+        "private edits\n"
+    );
+    assert_eq!(
+        git(&root.join("dirty"), &["branch", "--show-current"]),
+        "main"
+    );
+}
+
+#[tokio::test]
+async fn group_switch_rechecks_refs_dirty_state_filters_and_project_revision() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path();
+    let moved = switch_repo(root, "moved");
+    let dirty = switch_repo(root, "dirty");
+    let symbolic = switch_repo(root, "symbolic");
+    let (engine, catalog, project) = switch_project(root, &["moved", "dirty", "symbolic"]).await;
+    let service = Operations::new(engine, catalog);
+    let excluded = service
+        .plan_batch(switch_request(&project, Some("other")))
+        .await
+        .unwrap();
+    assert!(excluded.candidates.iter().all(|c| !c.eligible));
+    let plan = service
+        .plan_batch(switch_request(&project, Some("main")))
+        .await
+        .unwrap();
+    git(&moved, &["update-ref", "refs/heads/team/topic", "main"]);
+    std::fs::write(dirty.join("local"), "keep\n").unwrap();
+    git(
+        &symbolic,
+        &["symbolic-ref", "refs/heads/team/topic", "refs/heads/main"],
+    );
+    let batch = service.run_batch(&plan.plan_id).await.unwrap();
+    assert!(finish(&service, &batch)
+        .await
+        .iter()
+        .all(|o| o.state == JobState::Skipped));
+    for p in [&moved, &dirty, &symbolic] {
+        assert_eq!(git(p, &["branch", "--show-current"]), "main");
+    }
+    let symbolic_plan = service
+        .plan_batch(switch_request(&project, None))
+        .await
+        .unwrap();
+    assert!(!symbolic_plan.candidates[2].eligible);
+    std::fs::write(root.join("switch.git-view.json"), "changed externally").unwrap();
+    assert!(service.run_batch(&symbolic_plan.plan_id).await.is_err());
+}
+
+#[tokio::test]
+async fn group_switch_preserves_ignored_files_and_reports_post_checkout_failure_without_rollback() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path();
+    switch_repo(root, "clean");
+    let ignored = switch_repo(root, "ignored");
+    let hooked = switch_repo(root, "hooked");
+    commit(&ignored, ".gitignore", "secret\n");
+    git(&ignored, &["switch", "team/topic"]);
+    std::fs::write(ignored.join("secret"), "tracked target\n").unwrap();
+    git(&ignored, &["add", "-f", "secret"]);
+    git(&ignored, &["commit", "-m", "target secret"]);
+    git(&ignored, &["switch", "main"]);
+    std::fs::write(ignored.join("secret"), "private ignored\n").unwrap();
+    let hooks = hooked.join(".git/hooks");
+    std::fs::create_dir_all(&hooks).unwrap();
+    let hook = hooks.join("post-checkout");
+    std::fs::write(&hook, "#!/bin/sh\nexit 1\n").unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    git(
+        &hooked,
+        &["config", "core.hooksPath", hooks.to_str().unwrap()],
+    );
+    let (engine, catalog, project) = switch_project(root, &["clean", "ignored", "hooked"]).await;
+    let service = Operations::new(engine, catalog);
+    let plan = service
+        .plan_batch(switch_request(&project, None))
+        .await
+        .unwrap();
+    assert!(plan.candidates.iter().all(|c| c.eligible));
+    let batch = service.run_batch(&plan.plan_id).await.unwrap();
+    let ops = finish(&service, &batch).await;
+    assert_eq!(ops[0].state, JobState::Succeeded);
+    assert_eq!(ops[1].state, JobState::Failed);
+    assert_eq!(ops[2].state, JobState::Failed);
+    assert!(ops[2].outcome_uncertain);
+    assert_eq!(
+        std::fs::read_to_string(ignored.join("secret")).unwrap(),
+        "private ignored\n"
+    );
+    assert_eq!(git(&ignored, &["branch", "--show-current"]), "main");
+    assert_eq!(git(&hooked, &["branch", "--show-current"]), "team/topic");
+    assert_eq!(
+        git(&root.join("clean"), &["branch", "--show-current"]),
+        "team/topic"
+    );
+}
+
+#[tokio::test]
+async fn group_switch_cancellation_and_literal_target_validation() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path();
+    switch_repo(root, "one");
+    let (engine, catalog, project) = switch_project(root, &["one"]).await;
+    let service = Operations::new(engine, catalog);
+    for name in ["", "-", "@{-1}", "refs/heads/main", "main\n", "name space"] {
+        let mut req = switch_request(&project, None);
+        req.target_branch = Some(name.into());
+        assert!(service.plan_batch(req).await.is_err(), "{name}");
+    }
+    let mut req = switch_request(&project, None);
+    req.action = "fetch".into();
+    assert!(service.plan_batch(req).await.is_err());
+    let plan = service
+        .plan_batch(switch_request(&project, None))
+        .await
+        .unwrap();
+    let batch = service.run_batch(&plan.plan_id).await.unwrap();
+    service.cancel(&batch.batch_id).await.unwrap();
+    assert_eq!(finish(&service, &batch).await[0].state, JobState::Canceled);
+    assert_eq!(
+        git(&root.join("one"), &["branch", "--show-current"]),
+        "main"
+    );
 }
 #[tokio::test]
 async fn mixed_group_pull_preserves_dirty_and_diverged_and_reports_aliases() {

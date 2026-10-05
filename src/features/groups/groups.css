@@ -27,6 +27,13 @@
 .group-view .group-link { border: 0; background: transparent; color: var(--accent); padding: 0; text-align: left; font-weight: 650; }
 .group-edit-row .group-path { flex: 1; min-width: 10rem; }
 .group-activity { overflow-x: auto; }
+.group-switch { border:1px solid var(--border); border-radius:6px; padding:.8rem 1rem; background:var(--panel); margin:1rem 0; }
+.group-switch summary { cursor:pointer; font-weight:600; }
+.group-switch p { font-size:.85rem; max-width:75ch; }
+.group-switch label { display:flex; flex-wrap:wrap; align-items:center; gap:.5rem; }
+.group-switch input { min-width:0; max-width:100%; }
+.group-switch-summary { display:block; margin-top:.25rem; }
+.group-preview h2,.group-activity h3 { overflow-wrap:anywhere; }
 .group-discovery { border: 1px solid var(--border); border-radius: 6px; padding: 1rem; margin: 1rem 0; }
 .group-discovery input[type=number] { width: 4rem; }
 .group-discovery .discovery-path { overflow-wrap: anywhere; white-space: pre-wrap; }

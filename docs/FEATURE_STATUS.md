@@ -1,7 +1,7 @@
 # Feature status
 
-Reviewed 4 October 2026, including blame in the working tree
-based on file-history commit `9266e9b` and guided linear rebase at source checkpoint
+Reviewed 5 October 2026, including group branch switching in the working tree
+based on blame commit `9a5ee62` and guided linear rebase at source checkpoint
 `d9af4e6` and the earlier A1–A4 workflows, against the
 [product plan](PRODUCT.md). This is the current completion inventory;
 [Build status](BUILD_STATUS.md) retains dated commands, results, and artifact evidence.
@@ -38,7 +38,7 @@ refer to the delivered runbook workflows on tested platforms.
 | Working changes | Staged/unstaged/untracked/conflicted states, whole-file and explicit selected-subset stage/unstage, supported complete text-hunk stage/unstage, staged-only commit, session draft retention, hook/signing failure handling; named stash creation/inspection, retained Apply, reviewed exact-entry Delete and recovery | Individual-line staging; expanded hunk support for excluded file types |
 | Remotes | Fetch, clean-only fast-forward pull, explicit normal single-repository push, optional upstream setup | Explicit batch push; hosting integrations only if requested |
 | Branches | Local create/switch with previews, explicit remote tracking checkout, ordinary merge, squash merge from local or remote refs, reviewed single non-merge cherry-pick; guided linear rebase onto an existing local or fetched remote branch with Continue, reviewed Skip, Abort, backup and stopped-state guidance | Merge-preserving or arbitrary interactive rebase; multi-commit and merge-commit cherry-pick excluded from A2 |
-| Groups | Versioned JSON, create/edit/save/save-as, labels, locate/remove/add, external-edit protection, state/branch/name filters, selection, batch fetch/pull, per-member outcomes/cancel/retry | Explicit group branch switching and further large-group tuning |
+| Groups | Versioned JSON, create/edit/save/save-as, labels, locate/remove/add, external-edit protection, state/branch/name filters, selection, batch fetch/pull; reviewed switching to one shared existing local branch name, fixed member/target snapshots, skip reasons and per-member outcomes/cancel/retry | Progressive status loading (B2), explicit batch push (B3), further large-group tuning; per-member switch targets and remote branch creation excluded from initial B1 |
 | Discovery | Bounded depth-controlled scanning, ordinary/linked worktree detection, reviewed new-project creation and draft additions, duplicate exclusion, partial-result warnings | No further discovery feature required by the current plan; nested/skipped paths require explicit addition |
 | Existing-commit squash | Consecutive linear tip selection, editable message, exact-tree replacement, backup refs, journal, guarded recovery including later file edits | No missing feature in the agreed initial Combine commits scope; arbitrary selections are outside this implementation |
 | Conflicts | Shared source/target and index-conflict guidance, external-editor resolution, stage resolution, ordinary merge/cherry-pick/rebase continuation and recovery, explicit reviewed Skip, interrupted-marker review, persistent squash review state | Integrated three-way conflict editor |
@@ -223,8 +223,18 @@ was rebuilt; installed apps and collected packages remain unchanged.
 - Rewrite recovery covers injected failures/interruption states; this is not
   evidence from physical power-loss testing.
 
-No known blocker is recorded for the delivered feature slices. The items above
-are remaining features or evidence gaps, rather than passing acceptance claims.
+B1 group switching on `9a5ee62` passes **219 frontend tests on each platform**,
+**187 Mac Rust tests** (one separate measurement ignored), and **63 native
+checks on each platform**, with a rebuilt unsigned Mac bundle. All five new group integration
+tests pass on Windows, but its full Rust gate stops at an Application Control
+block (OS error 4551) before the cherry-pick integration binary runs. No security
+policy was changed. The separate Windows native run also passes strict Clippy,
+lint/typecheck and smoke builds. Exact evidence is recorded in Build status;
+this partial backend run is not a complete Windows Rust-suite pass.
+
+The items above are remaining features or evidence gaps, rather than passing
+acceptance claims. The Windows Application Control gate is an explicit outstanding
+verification blocker, not a known group-switch behavior failure.
 
 ## Explicitly outside initial scope
 

@@ -24,6 +24,73 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('GroupView renderer', () => {
+  const switchPlan: BatchPlan = { ...plan, action: 'switchBranch', targetBranch: 'team/topic', candidates: plan.candidates.map(candidate => ({ ...candidate, summary: candidate.eligible ? 'Switch from main at abc to team/topic at def' : undefined })) };
+  function openSwitch() {
+    fireEvent.click(screen.getByText('Switch group branch'));
+    fireEvent.change(screen.getByLabelText('Target local branch'), { target: { value: 'team/topic' } });
+  }
+  it('freezes the reviewed switch target and members until explicit confirmation', async () => {
+    vi.mocked(api.planBatch).mockResolvedValue(switchPlan);
+    render(<GroupView project={project} onOpenRepository={vi.fn()} />);
+    openSwitch();
+    fireEvent.click(screen.getByRole('button', { name: 'Preview switch all (3)' }));
+    const preview = await screen.findByRole('region', { name: 'Batch preview' });
+    expect(api.planBatch).toHaveBeenCalledWith({ projectId: 'project', revision: 'revision-1', memberIds: ['api', 'web', 'missing'], action: 'switchBranch', branchFilter: null, targetBranch: 'team/topic' });
+    expect(preview.textContent).toContain('main at abc to team/topic at def');
+    expect(preview.textContent).toContain('Dirty worktree');
+    expect(api.runBatch).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText('Target local branch'), { target: { value: 'different' } });
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'web' } });
+    expect(within(preview).getAllByRole('listitem')).toHaveLength(3);
+    fireEvent.click(within(preview).getByRole('button', { name: 'Switch 1 eligible to team/topic' }));
+    await waitFor(() => expect(api.runBatch).toHaveBeenCalledWith('plan-1'));
+  });
+  it('uses the current branch filter for switch all, but includes hidden selected members', async () => {
+    vi.mocked(api.planBatch).mockResolvedValue(switchPlan);
+    render(<GroupView project={project} onOpenRepository={vi.fn()} />);
+    openSwitch();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all matching' }));
+    fireEvent.change(screen.getByLabelText('Branch'), { target: { value: 'main' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Preview switch all (1)' }));
+    await waitFor(() => expect(api.planBatch).toHaveBeenLastCalledWith(expect.objectContaining({ action: 'switchBranch', memberIds: ['api'], branchFilter: 'main', targetBranch: 'team/topic' })));
+    await screen.findByRole('button', { name: 'Close preview' });
+    fireEvent.click(screen.getByRole('button', { name: 'Close preview' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Preview switch selected (3)' }));
+    await waitFor(() => expect(api.planBatch).toHaveBeenLastCalledWith(expect.objectContaining({ memberIds: ['api', 'web', 'missing'], branchFilter: null, targetBranch: 'team/topic' })));
+  });
+  it('recovers the original switch target for retries instead of using the current input', async () => {
+    vi.mocked(api.getOperations).mockResolvedValue([{ ...result('api', 'failed'), action: 'switchBranch', targetBranch: 'original/topic' }]);
+    render(<GroupView project={project} onOpenRepository={vi.fn()} />);
+    openSwitch();
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Retry api' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Preview retry (1)' }));
+    await waitFor(() => expect(api.planBatch).toHaveBeenCalledWith(expect.objectContaining({ action: 'switchBranch', memberIds: ['api'], branchFilter: null, targetBranch: 'original/topic' })));
+    expect(api.runBatch).not.toHaveBeenCalled();
+  });
+  it('blocks switching while editing the project, including an already reviewed confirmation', async () => {
+    vi.mocked(api.planBatch).mockResolvedValue(switchPlan);
+    render(<GroupView project={project} onOpenRepository={vi.fn()} />);
+    openSwitch();
+    fireEvent.click(screen.getByRole('button', { name: 'Preview switch all (3)' }));
+    const confirm = await screen.findByRole('button', { name: 'Switch 1 eligible to team/topic' });
+    fireEvent.click(screen.getByRole('button', { name: 'Edit project' }));
+    expect((confirm as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Preview switch all (3)' }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(confirm);
+    expect(api.runBatch).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel editing' }));
+    expect((confirm as HTMLButtonElement).disabled).toBe(false);
+  });
+  it('does not offer an unsafe retry for a switch result without its saved target', async () => {
+    vi.mocked(api.getOperations).mockResolvedValue([{ ...result('api', 'failed'), action: 'switchBranch' }]);
+    render(<GroupView project={project} onOpenRepository={vi.fn()} />);
+    await screen.findByRole('region', { name: 'Batch activity' });
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Retry api' }));
+    const retry = screen.getByRole('button', { name: 'Preview retry (1)' }) as HTMLButtonElement;
+    expect(retry.disabled).toBe(true);
+    fireEvent.click(retry);
+    expect(api.planBatch).not.toHaveBeenCalled();
+  });
   it('focuses/selects the project search with primary-F; Escape clears only its text', async () => {
     render(<GroupView project={project} onOpenRepository={vi.fn()} />);
     fireEvent.change(screen.getByLabelText('Branch'), { target: { value: 'main' } });

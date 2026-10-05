@@ -7,6 +7,15 @@ current completion and verification.
 
 ## Next-stage decisions — 21–22 September 2026
 
+Implementation continuation, 4–5 October: following the request to proceed with
+group operations, B1 starts with one shared existing local branch name, consistent
+with the shared-branch usage below. Each repository's source/target commits are
+reviewed separately. Per-member target editing and remote branch creation are
+excluded from this initial slice; there is no implicit stash/pull or rollback of
+successful members. B2 progressive status remains next; B3 batch push still needs
+its destination-policy choice. This is the implementation scope, not a claim that
+the user separately selected every engineering detail.
+
 - Confirmed order, expanded after the workflow discussion: remote tracking
   checkout → cherry-pick → stash → hunk staging.
 - Confirmed delivery: small feature slices, each tested and usable before the next.

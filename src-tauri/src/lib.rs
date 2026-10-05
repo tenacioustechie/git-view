@@ -200,6 +200,7 @@ pub fn run() {
         native_smoke::native_smoke_context,
         native_smoke::native_smoke_focus,
         native_smoke::native_smoke_discovery_case,
+        native_smoke::native_smoke_group_switch_case,
         native_smoke::native_smoke_history_search_case,
         native_smoke::native_smoke_remote_checkout_case,
         native_smoke::native_smoke_remote_checkout_verify,

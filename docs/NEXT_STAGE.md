@@ -398,9 +398,17 @@ requirements recorded before A4 acceptance, not passing evidence by themselves.
 
 ## Candidate track B: groups
 
+4 October continuation: B1 is implemented in the working tree on blame commit
+`9a5ee62`. The initial scope uses one common **existing local branch name**, with
+per-member source/target commits, fixed reviewed members, explicit skips and
+independent outcomes. Per-repository targets and remote branch creation are
+excluded. Retrying uses the original branch name with a new preflight; no stash,
+pull or cross-repository rollback is implicit. Build status records verification
+separately. B2 progressive status is next; B3's destination choice remains open.
+
 | Slice | Proposed behavior | Acceptance focus / decision needed |
 | --- | --- | --- |
-| B1: explicit group branch switching | Preview matching or selected members and their target local branch; skip dirty, missing-target, unavailable, and incompatible members with reasons | Mixed success/skip/failure, selection fixed during execution, no implicit pull, and no rollback claim across repositories. Decide common branch name versus per-repository targets and whether remote branch creation belongs in this slice. A1 can supply that behavior later. |
+| B1: explicit group branch switching | Implemented: preview matching or selected members against one common existing local branch name; explicit skip reasons and per-member results | Mixed success/skip/failure, frozen selection/target, no implicit pull or rollback; see Build status for current platform evidence. Per-member targets and remote creation excluded. |
 | B2: progressive group status | Show completed rows while slower repositories continue; bound concurrent reads; retain errors and navigation | Slow/unavailable fixture, cancellation/stale-generation rejection, selection stability, representative 15-repository usage, 25-repository regression timing, and separate 100-repository stress scheduling. |
 | B3: explicit batch push | Review each member's source and destination, then report independent results | No force push; exact destinations; partial remote failures and cancellation; retry after inspection. Decide configured-upstream-only versus editable per-member destinations. |
 
@@ -427,9 +435,10 @@ attribution, shallow-boundary guidance, bounded text and read-only attributed
 commit/patch inspection. Uncommitted-byte blame, extra copy/move detection,
 ignored-revision support and arbitrary-path entry remain outside this slice.
 Build status records implementation gates separately from platform acceptance.
-The initial C1–C3 inspection track is implemented; group-track candidates and
-the inventory's usability/packaging checks remain future work, not completed
-milestones. B1/B3 still require the targeting/destination choices below.
+The initial C1–C3 inspection track is implemented; C3 is committed as `9a5ee62`.
+B1 is now implemented as described above. B2/B3 and the inventory's
+usability/packaging checks remain future work, not completed milestones.
+B3 still requires its destination choice.
 
 | Slice | Proposed behavior | Acceptance focus / decision needed |
 | --- | --- | --- |

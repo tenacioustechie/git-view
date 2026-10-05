@@ -1,5 +1,83 @@
 # Build status
 
+## 2026-10-05: C3 committed; B1 reviewed group branch switching
+
+Committed completed blame as `9a5ee62` (`Add revision-scoped blame and attribution
+commit inspection`). The subsequent working tree implements the first group
+operations slice: **Switch group branch**, one shared existing local branch name,
+matching/selected scopes, per-member source/target review, explicit skips,
+independent results, cancellation and newly planned retries retaining the original
+target. Per-repository targets, remote branch creation, implicit stash/fetch/pull,
+and cross-repository rollback are excluded. B2 progressive status and B3 explicit
+batch push remain future work.
+
+The shared existing-branch switch also rejects symbolic targets and targets in
+another worktree, explicitly disables ignored-file overwrite and submodule
+recursion, and verifies resulting HEAD. Hook errors can occur after mutation and
+are reported as uncertain, without rollback. Git's official
+[switch](https://git-scm.com/docs/git-switch) and
+[checkout](https://www.kernel.org/pub/software/scm/git/docs/git-checkout.html)
+documentation informed these options. Context7's React state-snapshot guidance
+informed capturing reviewed input and member selections rather than consulting
+later form edits during confirmation/retry.
+
+Five new disposable-repository integration tests cover mixed eligibility and
+aliases, moved/symbolic refs, dirty changes after preview, exact branch filters,
+external project changes, ignored-file collisions, post-checkout hook failures,
+literal target validation, cancellation, and no submodule recursion even with
+recursive user configuration. Five new renderer tests cover fixed previews,
+hidden selected members, saved retry targets, unsaved project edits and missing
+retry metadata. The native harness adds actual DOM preview/confirmation of five
+members and independent Git verification of the one eligible switch, four skips,
+retained target and preserved dirty bytes.
+
+Mac full `cargo test --manifest-path src-tauri/Cargo.toml --locked` passes
+**187 tests**, with the existing performance measurement explicitly ignored.
+Strict all-target native-smoke Clippy and formatting pass.
+`pnpm test -- --maxWorkers=2` passes **219 tests in 24 files**, with lint,
+typecheck and smoke frontend/native builds passing.
+
+Early verification issues are retained here rather than counted as passes:
+the smoke-only fixture initially had a JSON macro syntax error (corrected);
+the first Mac native report `/tmp/git-view-group-switch-mac-20261004.json`
+timed out after 26 checks in the existing Combine commits selection test.
+The harness now waits for the specific one-commit rejection and reacquires live
+controls/selection after renders. Two later native attempts timed out without
+reports after normal Rust tests replaced the smoke-enabled debug executable;
+the final workflow rebuilds smoke last. The initial Windows connection timed out
+before any source copy. Once reachable, a full Windows run failed in the existing
+WorkingDiff stale-plan test, which checked refreshed diff calls before asynchronous
+refresh completed; it now awaits those calls. That temporary source copy was
+hash-checked and reversed, restoring the clean checkout before the rerun.
+
+The final fresh smoke build and
+`python3 scripts/native-smoke.py /tmp/git-view-group-switch-mac-20261005-final.json`
+pass **all 63 Mac native checks**, including both new group-switch checks and
+all existing Combine commits, reload, keyboard and compact-window checks.
+Windows full `scripts/windows-verify.ps1` rerun passes **219 frontend tests**,
+lint/typecheck, **25 library tests, 11 acceptance tests (including all five new
+group tests), and 5 blame tests**. It then stops before running the cherry-pick
+integration binary: Windows Application Control reports OS error 4551. No
+security policy was changed and no full Windows Rust-suite pass is claimed.
+Temporary source copies were based on clean Windows checkout
+`4a81e31c5a2ac9d3b7176a1adf26fd4a196dc7f8`, hash-checked before reversal and
+restored clean. The separate `scripts/windows-native-verify.ps1` run passes all
+**219 frontend tests and 63 native checks**, typecheck/lint, strict all-target
+native-smoke Clippy and smoke builds. Its report is
+`C:\codeme\git-view\.tools\GitViewNativeSmoke-88fcbd2cf537443e9c2efa9110c97f5f.json`.
+This final source copy was also hash-checked and reversed, restoring the clean
+Windows checkout. This native pass does not replace the blocked full Rust gate.
+
+`pnpm tauri build --bundles app` passes and rebuilds the unsigned normal Mac app
+at `src-tauri/target/release/bundle/macos/Git View.app` with assets
+`index-T1Vl0_7d.css` and `index-4IpLWutM.js`. Installed apps and collected release
+packages remain unchanged; no Windows installer was rebuilt. Guide, inventory,
+README, roadmap, product scope, contracts and acceptance criteria now describe
+the actual B1 controls and exclusions. Final local-link/anchor check covers
+108 links with no failures; `git diff --check` passes.
+No user application was closed; mutation tests use disposable repositories.
+No push or release publication was performed. B1 working changes are uncommitted.
+
 ## 2026-10-03: C2 committed; C3 committed-revision blame
 
 Committed the completed file-history slice as `9266e9b` (`Add read-only file

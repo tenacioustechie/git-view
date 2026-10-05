@@ -148,6 +148,7 @@ export interface OperationResult {
   memberId: string | null;
   repositoryId: RepositoryId | null;
   action: string;
+  targetBranch?: string | null;
   state: JobState;
   startedAt: string | null;
   finishedAt: string | null;
@@ -179,9 +180,10 @@ export interface StashList { snapshotId: SnapshotId; entries: StashEntry[]; dele
 export type StashSection = 'worktree' | 'index' | 'untracked';
 export interface ProjectContent { version: 1; name: string; repositories: { path: string; label?: string }[] }
 export interface Project { projectId: string; revision: string; displayPath: string; name: string; content: ProjectContent; members: RepositoryRow[]; stale: boolean; error: AppError | null }
-export interface BatchRequest { projectId: string; revision: string; memberIds: string[]; action: 'fetch' | 'pull'; branchFilter: string | null }
-export interface BatchCandidate { memberId: string; repositoryId: string | null; label: string; eligible: boolean; reason: string | null; destination: string | null }
-export interface BatchPlan { planId: string; expiresAt: string; candidates: BatchCandidate[]; action: 'fetch' | 'pull' }
+export type BatchAction = 'fetch' | 'pull' | 'switchBranch';
+export interface BatchRequest { projectId: string; revision: string; memberIds: string[]; action: BatchAction; branchFilter: string | null; targetBranch?: string | null }
+export interface BatchCandidate { memberId: string; repositoryId: string | null; label: string; eligible: boolean; reason: string | null; destination: string | null; summary?: string | null }
+export interface BatchPlan { planId: string; expiresAt: string; candidates: BatchCandidate[]; action: BatchAction; targetBranch?: string | null }
 export interface Batch { batchId: string; operationIds: string[] }
 export interface LaunchRequest { requestId: string; kind: 'repository' | 'project' | 'welcome' | 'discovery'; path: string | null; error: AppError | null; scanDepth?: number | null }
 export interface DiscoveryCandidate { repositoryId: string; displayPath: string; label: string }

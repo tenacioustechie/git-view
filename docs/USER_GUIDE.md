@@ -1,7 +1,7 @@
 # Git View user guide
 
-Reviewed 4 October 2026 for version 0.1.0, including blame
-in the working tree based on file-history commit `9266e9b`. The latest collected native packages
+Reviewed 5 October 2026 for version 0.1.0, including group branch switching
+in the working tree based on blame commit `9a5ee62`. The latest collected native packages
 remain rebase checkpoint `d9af4e6` on macOS arm64 and Windows 11 x64; they do not
 include this workspace redesign. See [Build status](BUILD_STATUS.md) for exact
 evidence and checksums.
@@ -285,6 +285,37 @@ inspection before retrying.
 Visible group status refreshes on focus and approximately every ten seconds;
 **Refresh** is also available. Filters and selection survive opening a member
 and returning. These group filters and selections are not persisted across app restarts.
+
+### Switch a group's branch
+
+1. Save or cancel any project edits, then expand **Switch group branch**.
+2. Enter **Target local branch**, for example `main` or `team/topic`. Use the
+   branch name, not `refs/heads/…` or a revision expression. The same existing
+   local branch name is used in every repository; target commits may differ.
+3. Choose **Preview switch all (N)** for the current matching rows (including
+   the exact current-branch filter), or **Preview switch selected (N)** for all
+   checked members, including those hidden by filters.
+4. Review each source and target commit and the skip reasons. Dirty (including
+   untracked), unavailable, missing-target, detached/unborn, busy, already-on-target
+   repositories, symbolic branch targets and targets occupied by another worktree
+   are skipped. The candidate list and target are fixed: editing filters or the
+   input afterward does not alter this preview. Close it and preview again to
+   change the operation. Plans expire after five minutes.
+5. Choose **Switch N eligible to branch-name**. Read each result in **Batch activity**.
+   State, project revision and target refs are rechecked before execution.
+
+This updates eligible repositories independently, with at most three jobs running
+at once. It does not fetch, pull, create branches, automatically stash, discard
+changes, or recursively update submodules. Ignored files are not overwritten;
+an ignored-file collision can fail at execution. Hooks run normally and can fail
+after HEAD or working files have already changed. Refresh and inspect any failed
+or uncertain member before retrying; successful members are **not rolled back**.
+Duplicate project entries for the same repository share one execution and result.
+**Cancel batch** cannot undo completed switches. After completion, select entries
+and choose **Preview retry (N)** for a fresh review using the original target,
+not the current input. Batch activity survives navigation during this app session,
+not an app restart. Per-repository targets and remote-branch creation are outside
+this group-switch workflow.
 
 ## Browse and search history
 
@@ -675,6 +706,11 @@ first; the toolbar's branch menu is a direct alternative.
 
 Expand **Switch branch**, select a local branch, choose **Preview switch**, and
 confirm the target. Git View rechecks repository state before execution.
+Existing-branch switching rejects symbolic branch targets and targets occupied by
+another worktree, does not overwrite ignored files, and does not recursively
+update submodules. Hooks still run; if a switch fails or its resulting HEAD cannot
+be verified, refresh and inspect the repository before retrying. A failed hook
+can leave the branch already switched; no rollback is attempted.
 
 To create a branch, select the desired starting commit, expand **Create branch**,
 enter **Name**, and optionally check **Switch after creating**. **Preview create**
@@ -995,7 +1031,7 @@ acceptance remain outstanding.
 
 Not yet available: individual-line staging, syntax highlighting, uncommitted-content blame, automatic
 rename-following file history,
-interactive rebase, batch push, group branch switching, integrated conflict editing,
+interactive rebase, batch push, progressive group-status loading, integrated conflict editing,
 multiple windows, group templates, and persisted group filters or commit drafts.
 The broader backlog and verification gaps are tracked in [Feature status](FEATURE_STATUS.md).
 

@@ -386,7 +386,55 @@ impl GitEngine {
                     .ok_or_else(|| {
                         AppError::new("invalid_ref", "Select an existing local branch.")
                     })?;
-                args = runner::args(&["switch", "--no-guess", "--", &selected.label]);
+                let symbolic = self
+                    .runner
+                    .run(
+                        &repo.root,
+                        &runner::args(&["symbolic-ref", "-q", &selected.full_name]),
+                        None,
+                        false,
+                        runner::STRUCTURED_LIMIT,
+                    )
+                    .await?;
+                if symbolic.code == 0 {
+                    return Err(AppError::new(
+                        "invalid_ref",
+                        "Switching to a symbolic local branch is not supported.",
+                    ));
+                }
+                if symbolic.code != 1 {
+                    runner::checked(symbolic)?;
+                }
+                if !matches!(&status.head, Head::Branch { name, .. } if name == &selected.label) {
+                    let worktrees = self
+                        .runner
+                        .read(&repo.root, &["worktree", "list", "--porcelain", "-z"])
+                        .await?;
+                    let branch = format!("branch {}", selected.full_name);
+                    if worktrees
+                        .split(|b| *b == 0)
+                        .any(|field| field == branch.as_bytes())
+                    {
+                        return Err(AppError::new(
+                            "branch_in_use",
+                            "The target branch is checked out in another worktree.",
+                        ));
+                    }
+                }
+                args = runner::args(&[
+                    "switch",
+                    "--no-guess",
+                    "--no-recurse-submodules",
+                    "--no-overwrite-ignore",
+                    "--",
+                    &selected.label,
+                ]);
+                let source = match &status.head {
+                    Head::Branch { name, oid } => format!("{name} at {oid}"),
+                    Head::Detached { oid } => format!("detached HEAD at {oid}"),
+                    Head::Unborn { name } => format!("unborn {name}"),
+                };
+                summary = Some(format!("Switch from {source} to {} at {}. No fetch, pull, branch creation or automatic stash.", selected.full_name, selected.oid));
                 destination = Some(selected.full_name.clone());
                 target_ref = Some((selected.full_name.clone(), selected.oid.clone()));
             }
@@ -769,6 +817,21 @@ impl GitEngine {
             }
         }
         if let Some((reference, oid)) = &plan.target_ref {
+            if matches!(plan.action, RepositoryAction::SwitchBranch { .. }) {
+                let symbolic = self
+                    .runner
+                    .run(
+                        &plan.repository.root,
+                        &runner::args(&["symbolic-ref", "-q", reference]),
+                        None,
+                        false,
+                        runner::STRUCTURED_LIMIT,
+                    )
+                    .await?;
+                if symbolic.code != 1 {
+                    return Err(AppError::new("precondition_changed", "The target branch is no longer a verifiable direct local ref. Preview again."));
+                }
+            }
             if self.resolve_commit(&plan.repository, reference).await? != *oid {
                 return Err(AppError::new(
                     "precondition_changed",
@@ -816,6 +879,10 @@ impl GitEngine {
             merge::finish_attempt(&plan.repository, &journal.operation_id)?;
         }
         let output=runner::checked(output).map_err(|mut error| {
+            if matches!(plan.action, RepositoryAction::SwitchBranch { .. }) {
+                error.code="outcome_uncertain".into();
+                error.message=format!("Switch returned an error and may already have changed HEAD or files (for example, before a hook failed). Refresh and inspect before retrying. {}", error.message);
+            }
             if !matches!(plan.action,RepositoryAction::Fetch{..}|RepositoryAction::Push{..}) && plan.repository.git_dir.join("index.lock").exists() {
                 error.code="lock_conflict".into();
                 error.message="Git could not acquire the repository index lock. Another Git process may be active; no lock was removed.".into();
@@ -823,6 +890,14 @@ impl GitEngine {
             }
             error
         })?;
+        if let RepositoryAction::SwitchBranch { local_ref, .. } = &plan.action {
+            let observed = self.observe(&plan.repository).await.map_err(|error| AppError::new("outcome_uncertain", format!("Switch completed, but the resulting repository state could not be verified. Refresh and inspect before retrying. {}", error.message)))?;
+            let expected = plan.target_ref.as_ref().map(|(_, oid)| oid);
+            if !matches!(&observed.status.as_ref().unwrap().head, Head::Branch { name, oid } if format!("refs/heads/{name}") == *local_ref && Some(oid) == expected)
+            {
+                return Err(AppError::new("outcome_uncertain", "The switch command completed, but HEAD differs from the reviewed target. A hook or external process may have changed it; inspect this repository before retrying."));
+            }
+        }
         if plan.finish_squash {
             self.finish_squash_commit(&plan.repository).await?;
         }

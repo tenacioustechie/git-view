@@ -151,6 +151,13 @@ Make Pull all the primary action. It means all group members currently matching 
 
 Groups use explicit JSON project files as defined in [Project files](PROJECT_FILES.md). Paths are relative to the project file by default. The app can open or create a project and add/remove entries; loading a file never clones or executes anything. Missing members remain visible with Locate and Remove from group. Removing membership never deletes repository files.
 
+The initial group branch-switch slice reviews one shared existing local branch
+name across matching or selected members. Each member retains its own source and
+target commit, eligibility and result. No branch creation, implicit fetch/pull,
+stash, discarded changes or cross-repository rollback is included. Retry uses a
+fresh plan for the original target. Progressive group-status loading and explicit
+batch push remain separate follow-ups.
+
 M2 discovery walks the chosen root to the chosen depth, recognizes `.git` directories and files, skips internal Git data and common dependency/build folders, avoids symlink traversal, and reports inaccessible folders. Stop descending inside a discovered repository by default. Review candidates before saving; rescan proposes additions rather than silently changing membership.
 
 ## Interaction and performance

@@ -1216,6 +1216,55 @@ pub async fn native_smoke_discovery_case(
 }
 
 #[tauri::command]
+pub async fn native_smoke_group_switch_case(
+    state: State<'_, AppState>,
+    inspect: bool,
+) -> AppResult<serde_json::Value> {
+    let f = fixture(&state)?;
+    let root = f._root.path().join("group-switch");
+    let project = root.join("switch.git-view.json");
+    if inspect {
+        let branches = ["clean", "dirty", "missing-target", "already"]
+            .map(|name| git(&root.join(name), &["branch", "--show-current"]));
+        return Ok(serde_json::json!({
+            "branches": branches,
+            "dirtyContents": std::fs::read_to_string(root.join("dirty/file.txt")).unwrap()
+        }));
+    }
+    std::fs::create_dir(&root).unwrap();
+    for name in ["clean", "dirty", "missing-target", "already"] {
+        let path = root.join(name);
+        std::fs::create_dir(&path).unwrap();
+        git(&path, &["init", "--template=", "-b", "main"]);
+        configure(&path);
+        std::fs::write(path.join("file.txt"), "baseline\n").unwrap();
+        commit(&path, "Group baseline");
+        if name != "missing-target" {
+            git(&path, &["branch", "team/topic"]);
+        }
+        if name == "dirty" {
+            std::fs::write(path.join("file.txt"), "preserve my edits\n").unwrap();
+        }
+        if name == "already" {
+            git(&path, &["switch", "team/topic"]);
+        }
+    }
+    let repositories: Vec<_> = ["clean", "dirty", "missing-target", "already", "unavailable"]
+        .iter()
+        .map(|name| serde_json::json!({"path":format!("./{name}"),"label":name}))
+        .collect();
+    std::fs::write(&project, serde_json::to_vec(&serde_json::json!({"version":1,"name":"Native group switch","repositories":repositories})).unwrap()).unwrap();
+    state.launches.push(LaunchRequest {
+        scan_depth: None,
+        request_id: uuid::Uuid::new_v4().to_string(),
+        kind: "project".into(),
+        path: Some(project.to_string_lossy().into_owned()),
+        error: None,
+    });
+    Ok(serde_json::json!({"projectPath":project.to_string_lossy()}))
+}
+
+#[tauri::command]
 pub async fn native_smoke_history_search_case(
     state: State<'_, AppState>,
 ) -> AppResult<serde_json::Value> {

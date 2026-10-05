@@ -670,6 +670,8 @@ pub struct OperationResult {
     pub member_id: Option<String>,
     pub repository_id: Option<String>,
     pub action: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_branch: Option<String>,
     pub state: JobState,
     pub started_at: Option<String>,
     pub finished_at: Option<String>,
@@ -713,6 +715,7 @@ pub struct BatchRequest {
     pub member_ids: Vec<String>,
     pub action: String,
     pub branch_filter: Option<String>,
+    pub target_branch: Option<String>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -723,6 +726,8 @@ pub struct BatchCandidate {
     pub eligible: bool,
     pub reason: Option<String>,
     pub destination: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub summary: Option<String>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -731,6 +736,8 @@ pub struct BatchPlan {
     pub expires_at: String,
     pub candidates: Vec<BatchCandidate>,
     pub action: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_branch: Option<String>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
