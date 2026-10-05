@@ -404,12 +404,14 @@ per-member source/target commits, fixed reviewed members, explicit skips and
 independent outcomes. Per-repository targets and remote branch creation are
 excluded. Retrying uses the original branch name with a new preflight; no stash,
 pull or cross-repository rollback is implicit. Build status records verification
-separately. B2 progressive status is next; B3's destination choice remains open.
+separately. B2 progressive status is now implemented in the working tree based on
+`600f601`; its verification is recorded separately in Build status. B3's
+destination choice remains open.
 
 | Slice | Proposed behavior | Acceptance focus / decision needed |
 | --- | --- | --- |
 | B1: explicit group branch switching | Implemented: preview matching or selected members against one common existing local branch name; explicit skip reasons and per-member results | Mixed success/skip/failure, frozen selection/target, no implicit pull or rollback; see Build status for current platform evidence. Per-member targets and remote creation excluded. |
-| B2: progressive group status | Show completed rows while slower repositories continue; bound concurrent reads; retain errors and navigation | Slow/unavailable fixture, cancellation/stale-generation rejection, selection stability, representative 15-repository usage, 25-repository regression timing, and separate 100-repository stress scheduling. |
+| B2: progressive group status | Implemented for saved-project open/reload/refresh: completed ordered rows, bounded reads, errors/navigation/selection retained, Stop status scan and explicit retry | Slow/unavailable fixture, cancellation/stale-generation rejection, selection stability, representative 15-repository usage, 25-repository timing, and separate 100-repository stress measurement; platform results in Build status. Create/save remain blocking. |
 | B3: explicit batch push | Review each member's source and destination, then report independent results | No force push; exact destinations; partial remote failures and cancellation; retry after inspection. Decide configured-upstream-only versus editable per-member destinations. |
 
 The original priority of quickly checking/pulling groups remains valid. This
@@ -436,7 +438,7 @@ commit/patch inspection. Uncommitted-byte blame, extra copy/move detection,
 ignored-revision support and arbitrary-path entry remain outside this slice.
 Build status records implementation gates separately from platform acceptance.
 The initial C1–C3 inspection track is implemented; C3 is committed as `9a5ee62`.
-B1 is now implemented as described above. B2/B3 and the inventory's
+B1 and B2 are now implemented as described above. B3 and the inventory's
 usability/packaging checks remain future work, not completed milestones.
 B3 still requires its destination choice.
 

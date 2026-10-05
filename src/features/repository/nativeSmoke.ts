@@ -524,6 +524,38 @@ async function runDiscoverySmoke(checks: string[]) {
   checks.push('Existing group discovery excluded duplicates and proposed unchecked addition; rescans/cancel/draft cancel preserved saved membership, explicit DOM Save project appended only chosen repository');
 }
 
+async function runGroupStatusSmoke(checks: string[]) {
+  await invoke('native_smoke_group_status_case', { release: false });
+  const group = await until('progressive project opens', () => {
+    const node = [...document.querySelectorAll<HTMLElement>('[aria-label="Repository group"]')].find(visible);
+    return node?.querySelector('h1')?.textContent === 'Native progressive status' ? node : null;
+  });
+  await until('14 rows complete around held first repository', () => group.querySelector('[role="status"]')?.textContent?.includes('14 of 15'));
+  const rows = group.querySelectorAll('.group-table-scroll tbody tr');
+  assert(rows.length === 15 && rows[0].textContent?.includes('Waiting for status'), 'Slow first member must not hold other rows or reorder them');
+  assert(rows[14].querySelector('button')?.textContent === 'Locate', 'Missing last repository must retain its locate/error state');
+  assert(group.querySelector<HTMLButtonElement>('.group-primary')?.disabled, 'Incomplete status must block batch previews');
+  group.querySelector<HTMLInputElement>('[aria-label="Select repo-0"]')!.click();
+  const search = group.querySelector<HTMLInputElement>('input[type="search"]')!;
+  type(search, 'repo-1');
+  await until('selection hidden by filter', () => group.textContent?.includes('1 selected · 1 hidden by filters'));
+  await click('repo-1', group);
+  await region('Repository');
+  await click('Back to Native progressive status');
+  checks.push('Progressive group native fixture delivered 14/15 ordered rows around a gated slow read, retained unavailable errors, hidden selection and repository navigation');
+  await click('Stop status scan', group);
+  await until('status canceled with partial rows', () => group.querySelector('[role="status"]')?.textContent?.includes('Status scan stopped · 14 of 15'));
+  assert(group.textContent?.includes('1 selected · 1 hidden by filters'), 'Cancel must preserve selected members and filters');
+  await invoke('native_smoke_group_status_case', { release: true });
+  await click('Refresh', group);
+  await until('progressive retry completes', () => group.querySelector('[role="status"]')?.textContent?.includes('Status checked · 15 of 15'));
+  await button('Fetch selected (1)', group);
+  type(search, '');
+  await until('all members visible after retry', () => group.querySelectorAll('.group-table-scroll tbody tr').length === 15);
+  assert(group.querySelector<HTMLInputElement>('[aria-label="Select repo-0"]')!.checked, 'Original member selection must survive cancellation and refresh');
+  checks.push('Native Stop status scan retained completed rows; explicit Refresh completed a new scan without losing filters or selection and reenabled batch review');
+}
+
 async function runGroupSwitchSmoke(checks: string[]) {
   await invoke('native_smoke_group_switch_case', { inspect: false });
   const group = await until('group-switch project opens', () => {
@@ -1436,7 +1468,7 @@ export async function runNativeSmoke(): Promise<void> {
     if (context.m3) await runCombineSmoke(checks);
     if (context.performance) await runPerformanceSmoke(checks);
     if (context.discovery) await runDiscoverySmoke(checks);
-    if (context.discovery) await runGroupSwitchSmoke(checks);
+    if (context.discovery) { await runGroupStatusSmoke(checks); await runGroupSwitchSmoke(checks); }
     if (context.historySearch) await runHistorySearchSmoke(checks);
     if (context.remoteCheckout) await runRemoteCheckoutSmoke(checks);
     if (context.cherryPick) { await runCherryPickSmoke(checks); return; }

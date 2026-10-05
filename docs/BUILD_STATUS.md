@@ -1,5 +1,94 @@
 # Build status
 
+## 2026-10-05: B2 progressive group status
+
+Working tree based on `600f601` implements progressive saved-project opening,
+reload and refresh. Ordered placeholders become ready/unavailable independently;
+refresh preserves old values with pending labels. Four shared catalog read
+permits and a four-task scan window bound work. Stop status scan preserves partial
+results; manual Refresh retries. Scan IDs guard cancellation/publication, including
+same-revision replacements. Renderer generation/effect cleanup rejects late
+responses. Batch previews wait for complete status; filters, selection and
+repository navigation remain available. Create/save still await status. B3 batch
+push and larger-scale tuning remain separate work.
+
+Context7's React async-effect cleanup guidance informed the renderer's explicit
+disposed/generation guards and sequential polling cleanup. Four new Rust tests
+cover a gated slow first member in a 15-member real-Git fixture, missing members,
+partial results, cancellation/permit release, old cancellation tokens, external
+edits, same-revision replacement, save/reload and empty projects. Four new renderer
+tests cover partial delivery, filters/hidden selection/navigation, cancellation,
+late replies after reload/unmount, honest loading labels and unavailable results.
+The native harness adds two real DOM/IPC checks using a test-build-only read gate;
+normal application builds contain no gate.
+
+Mac checks pass: **223 frontend tests in 24 files**, lint, typecheck, formatting,
+strict all-target native-smoke Clippy, and full **191 Rust tests**, with two
+explicit measurements ignored in the ordinary run. Commands:
+
+```sh
+pnpm test -- --maxWorkers=2
+pnpm lint
+pnpm typecheck
+cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+cargo test --manifest-path src-tauri/Cargo.toml --locked
+cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets --features native-smoke -- -D warnings
+cargo test --manifest-path src-tauri/Cargo.toml --locked --lib catalog::scan::tests::progressive_group_measurement -- --ignored --nocapture
+VITE_NATIVE_SMOKE=1 pnpm build
+cargo build --manifest-path src-tauri/Cargo.toml --locked --features native-smoke,tauri/custom-protocol
+python3 scripts/native-smoke.py /tmp/git-view-progressive-mac-20261005-rerun.json
+```
+
+Explicit debug macOS arm64 measurement (separate fresh, small, local empty
+repositories; fixture creation excluded) passes:
+
+| Members | Initial snapshot | First checked row | Complete sweep |
+| --- | --- | --- | --- |
+| 15 representative | 2.14 ms | 27.65 ms | 78.15 ms |
+| 25 regression | 0.51 ms | 24.49 ms | 202.47 ms |
+| 100 separate stress | 1.62 ms | 19.60 ms | 411.00 ms |
+
+These are backend measurements, not WebView render timings or a performance
+guarantee for large/remote/dirty repositories or the 1,000-member file limit.
+
+Mac first report `/tmp/git-view-progressive-mac-20261005.json` passed 63 checks,
+including both new B2 checks, then failed the existing final compact-history
+divider focus assertion. No assertion or product code was changed in response.
+The unchanged rerun `/tmp/git-view-progressive-mac-20261005-rerun.json` passes
+**all 65 checks**. The isolated focus failure remains recorded as a flaky native
+acceptance observation, not silently counted as a first-run pass.
+
+Windows source was temporarily staged over clean checkout
+`4a81e31c5a2ac9d3b7176a1adf26fd4a196dc7f8` using the actual current source diff,
+including new scan files. Frontend **223 tests**, lint/typecheck, strict
+native-smoke all-target Clippy and native builds pass. The focused native report
+`C:\codeme\git-view\.tools\GitViewNativeSmoke-ebfd17fa9a1e418c93d1e96dd81da35d.json`
+passes **all 65 checks**, including progressive partial delivery, navigation,
+stop/retry and retained selection.
+
+The full Windows backend gate is **not passed**: an explicit rerun stops at
+`git_view-dcc876395506a5a1.exe` before library tests execute, with exit
+`0xc0000139 / STATUS_ENTRYPOINT_NOT_FOUND`. This is a loader failure, not a test
+assertion and not established as the earlier Smart App Control block below.
+The latest queried Code Integrity event was still the earlier cherry-pick event;
+do not conflate the two. Log: `/tmp/git-view-b2-windows-finish.log`. Library test
+loader/import/manifest diagnosis and a complete Windows backend rerun remain open.
+No security settings were changed.
+
+The first remote restoration check exceeded Windows' command-line length before
+altering files. Retrying SHA-256 verification in short batches confirmed every
+staged source file, then reverse-applied only the exact temporary patch and
+verified the original Windows checkout clean. Test-only new source files were
+removed there by that reversal; their originals remain in this Mac worktree.
+No commits, push, release publication or installed-app replacement was performed.
+
+Normal `pnpm tauri build --bundles app` also passes. The refreshed unsigned local
+Mac app is `src-tauri/target/release/bundle/macos/Git View.app`, built from this
+working tree; normal assets are `index-BkwDAlaI.css` and `index-CGmboOYv.js`.
+The smoke-only harness/gate is excluded. Guide controls and current roadmap
+wording were reviewed; 82 local documentation file links, formatting and
+`git diff --check` pass. README entry points and project-file schema are unchanged.
+
 ## 2026-10-05: committed B1 checkpoint and confirmed Windows policy diagnosis
 
 Committed test-wait fixes as `214ce1e` (`Stabilize asynchronous renderer and native

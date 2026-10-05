@@ -8,8 +8,10 @@ export function errorMessage(error: unknown): string {
 export const api = {
   discoverRepositories: (root: string, depth = 3) => invoke<T.DiscoveryResult>('discover_repositories', { root, depth }),
   openRepository: (path: string) => invoke<T.RepositoryOpen>('open_repository', { path }),
-  openProject: (path: string) => invoke<T.Project>('open_project', { path }),
-  refreshProject: (projectId: string) => invoke<T.Project>('refresh_project', { projectId }),
+  openProject: (path: string, progressive = false) => invoke<T.Project>('open_project', { path, progressive }),
+  refreshProject: (projectId: string) => invoke<T.Project>('refresh_project', { projectId, progressive: true }),
+  getProjectStatus: (projectId: string) => invoke<T.Project>('get_project_status', { projectId }),
+  cancelProjectStatus: (projectId: string, scanId: string) => invoke<T.Project>('cancel_project_status', { projectId, scanId }),
   saveProject: (projectId: string, expectedRevision: string, content: T.ProjectContent) => invoke<T.Project>('save_project', { projectId, expectedRevision, content }),
   createProject: (path: string, content: T.ProjectContent) => invoke<T.Project>('create_project', { path, content }),
   getStatus: (repositoryId: string) => invoke<T.RepositoryStatus>('get_status', { repositoryId }),

@@ -1,6 +1,7 @@
 # Feature status
 
-Reviewed 5 October 2026, including group branch switching at commit `8c8c3e4`
+Reviewed 5 October 2026, including progressive group status in the working tree
+based on `600f601`, group branch switching at commit `8c8c3e4`
 (following blame commit `9a5ee62`) and guided linear rebase at source checkpoint
 `d9af4e6` and the earlier A1–A4 workflows, against the
 [product plan](PRODUCT.md). This is the current completion inventory;
@@ -38,7 +39,7 @@ refer to the delivered runbook workflows on tested platforms.
 | Working changes | Staged/unstaged/untracked/conflicted states, whole-file and explicit selected-subset stage/unstage, supported complete text-hunk stage/unstage, staged-only commit, session draft retention, hook/signing failure handling; named stash creation/inspection, retained Apply, reviewed exact-entry Delete and recovery | Individual-line staging; expanded hunk support for excluded file types |
 | Remotes | Fetch, clean-only fast-forward pull, explicit normal single-repository push, optional upstream setup | Explicit batch push; hosting integrations only if requested |
 | Branches | Local create/switch with previews, explicit remote tracking checkout, ordinary merge, squash merge from local or remote refs, reviewed single non-merge cherry-pick; guided linear rebase onto an existing local or fetched remote branch with Continue, reviewed Skip, Abort, backup and stopped-state guidance | Merge-preserving or arbitrary interactive rebase; multi-commit and merge-commit cherry-pick excluded from A2 |
-| Groups | Versioned JSON, create/edit/save/save-as, labels, locate/remove/add, external-edit protection, state/branch/name filters, selection, batch fetch/pull; reviewed switching to one shared existing local branch name, fixed member/target snapshots, skip reasons and per-member outcomes/cancel/retry | Progressive status loading (B2), explicit batch push (B3), further large-group tuning; per-member switch targets and remote branch creation excluded from initial B1 |
+| Groups | Versioned JSON, create/edit/save/save-as, labels, locate/remove/add, external-edit protection, state/branch/name filters, selection, batch fetch/pull; reviewed switching to one shared existing local branch name, fixed member/target snapshots, skip reasons and per-member outcomes/cancel/retry; progressive saved-project opening/refresh with bounded reads, retained rows, stop/retry and generation guards (B2) | Explicit batch push (B3), further large-group tuning; per-member switch targets and remote branch creation excluded from initial B1; create/save still wait for status |
 | Discovery | Bounded depth-controlled scanning, ordinary/linked worktree detection, reviewed new-project creation and draft additions, duplicate exclusion, partial-result warnings | No further discovery feature required by the current plan; nested/skipped paths require explicit addition |
 | Existing-commit squash | Consecutive linear tip selection, editable message, exact-tree replacement, backup refs, journal, guarded recovery including later file edits | No missing feature in the agreed initial Combine commits scope; arbitrary selections are outside this implementation |
 | Conflicts | Shared source/target and index-conflict guidance, external-editor resolution, stage resolution, ordinary merge/cherry-pick/rebase continuation and recovery, explicit reviewed Skip, interrupted-marker review, persistent squash review state | Integrated three-way conflict editor |
@@ -114,8 +115,14 @@ refer to the delivered runbook workflows on tested platforms.
   resizing, with focus moved to visible navigation controls when needed. Wide
   windows retain the inline sidebar. This does not implement one-pane/mobile
   navigation or full screen-reader acceptance.
-- Group status reads run with bounded concurrency, but opening/refreshing returns
-  a complete snapshot; progressive row delivery during slow reads is absent.
+- Saved-project opening, reload and refresh now publish progressive status with
+  stable ordered member IDs, at most four concurrent catalog reads, completed and
+  unavailable results retained, explicit pending/last-known labels, Stop status
+  scan and manual retry. Cancellation and same-revision replacement are guarded
+  in the backend and late renderer responses are ignored. Navigation, filters
+  and selection remain usable; batch review waits for a complete check.
+  Create/save still await their status scan. See Build status for current B2
+  test/platform evidence; implementation is not a blanket performance claim.
 - The app-bar Shortcuts reference and repository More menu show platform-specific
   keyboard hints. Visible project dashboards support primary-F filter focus,
   primary-R local refresh and Escape clearing only search text. Repository/project
@@ -137,6 +144,16 @@ refer to the delivered runbook workflows on tested platforms.
   project format's 1,000-member limit.
 
 ## Verification and distribution outstanding
+
+B2 working-tree evidence on `600f601`: 223 frontend tests and 65 native checks
+pass on each platform; 191 Rust tests pass on Mac, with separate 15/25/100-member
+status measurements. The full Windows backend gate is still incomplete: its
+library-test executable exits before assertions with `STATUS_ENTRYPOINT_NOT_FOUND`.
+This new loader failure is distinct from the earlier recorded Smart App Control
+block. A first Mac native run failed an existing final focus assertion; the
+unchanged rerun passed. Exact reports and remaining investigation are in Build
+status. The local normal Mac app was rebuilt; collected release packages below
+have not been replaced.
 
 Latest collected packages and complete cross-platform backend checkpoint use
 rebase source `d9af4e6`: **114 frontend

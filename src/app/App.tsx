@@ -48,7 +48,7 @@ export function App() {
         const next = await withNavigationBlock(() => api.openRepository(item.path));
         if (current()) acceptRepository(next);
       } else {
-        const next = await withNavigationBlock(() => api.openProject(item.path));
+        const next = await withNavigationBlock(() => api.openProject(item.path, true));
         if (current()) acceptProject(next);
       }
     } catch (cause) {
@@ -91,7 +91,7 @@ export function App() {
             if (!current()) return;
             acceptRepository(next);
           } else if (request.kind === 'project' && request.path) {
-            const next = await api.openProject(request.path);
+            const next = await api.openProject(request.path, true);
             if (!current()) return;
             acceptProject(next);
           } else if (request.kind === 'discovery' && request.path) {
@@ -125,7 +125,7 @@ export function App() {
         }); }}>Open repository</button>
         <button disabled={busy} onClick={() => { close(); void perform(async () => {
           const path = await open({ multiple: false, title: 'Open project', filters: [{ name: 'Git View project', extensions: ['json'] }] });
-          if (typeof path === 'string') acceptProject(await api.openProject(path));
+          if (typeof path === 'string') acceptProject(await api.openProject(path, true));
         }); }}>Open project</button>
         <div className="popover-separator" />
         <button disabled={busy} onClick={() => { close(); discover(); }}>Discover repositories</button>

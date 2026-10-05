@@ -234,12 +234,29 @@ Errors such as missing Git, inaccessible repository, stale precondition, authent
 
 ## Query commands
 
+B2 adds nullable `Project.statusScan`: `{ scanId, state, pendingMemberIds, error }`,
+where state is `running`, `complete`, `canceled` or `failed`. Progressive open
+returns ordered loading rows; refresh retains old rows until each replacement
+is ready/unavailable. A checked unavailable result counts as completed. The
+renderer polls cached snapshots every 200 ms without overlapping requests;
+project revision/scan generation and effect cleanup guard late responses.
+Backend publication/cancellation is serialized with scan-ID checks, including
+same-revision replacement. Four catalog read permits and at most four worker
+tasks per scan bound Git reads. Cancellation aborts that worker and its pending
+reads without clearing completed rows; old cancellation tokens cannot stop a
+new scan. `plan_batch` rejects pending status as `status_incomplete`. Existing
+plans still revalidate actual repositories at execution. Create/save and callers
+omitting `progressive` retain the wait-for-status contract. Project JSON is unchanged.
+
 | Command | Input | Output |
 | --- | --- | --- |
 | `get_launch_request` / `ack_launch_request` | optional request ID | Queued launch target, ack result |
 | `open_repository` | native path selected by launcher/dialog | Repository ID, resolved display path, initial status |
 | `discover_repositories` | root path, depth 0–10 | Root/depth, candidates with canonical repository ID and path/label, issues, truncation flag, visited directory count |
-| `open_project` | project file path | Project ID, file revision, name, ordered members |
+| `open_project` | project file path, optional `progressive` (default false) | Project ID, file revision, name, ordered members and status scan |
+| `refresh_project` | project ID, optional `progressive` (default false) | Last valid project membership with refreshed/progressively updating rows |
+| `get_project_status` | project ID | Latest cached project/scan snapshot; no new Git reads |
+| `cancel_project_status` | project ID, scan ID | Retained project snapshot; cancels only the matching running scan |
 | `save_project` | project ID, expected file revision, version-1 content | New revision or external-change error |
 | `create_project` | chosen file path, version-1 content | Project ID and revision |
 | `get_status` | repository ID | `RepositoryStatus` |

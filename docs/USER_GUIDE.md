@@ -1,7 +1,8 @@
 # Git View user guide
 
-Reviewed 5 October 2026 for version 0.1.0, including group branch switching
-at source commit `8c8c3e4`. The latest collected native packages
+Reviewed 5 October 2026 for version 0.1.0, including progressive group status
+in the working tree based on `600f601` and group branch switching at `8c8c3e4`.
+The latest collected native packages
 remain rebase checkpoint `d9af4e6` on macOS arm64 and Windows 11 x64; they do not
 include this workspace redesign. See [Build status](BUILD_STATUS.md) for exact
 evidence and checksums.
@@ -251,6 +252,34 @@ last operation result. **Clean** describes local files and index state; a clean
 repository may still be ahead of or behind its upstream. Unknown or unavailable
 repositories are not reported as clean. Ahead/behind counts can be stale until
 you fetch.
+
+Opening a saved project through Workspace, Recent or the CLI shows its ordered
+rows after reading the project file. Status arrives progressively;
+**Checking status · N of M repositories** and its progress bar include unavailable
+results as checked rows. Unchecked repositories say **Waiting for status**, not
+Clean or Unavailable. Refresh keeps existing row values while each pending row
+is marked **Checking · last known status**. At most four repository status reads
+run concurrently across project scans; no fetch is performed.
+
+You can search, select rows and open available repositories while scanning.
+Rows keep their project-file order and selection; filters use the currently
+displayed values, so matching rows can change as fresh status arrives. Selected
+members hidden by a filter stay selected. Fetch, Pull and Switch batch previews
+(including retries and confirmation) wait until the scan finishes, so incomplete
+filter results cannot silently become a batch scope.
+
+**Stop status scan** stops this status scan, retaining completed results and
+last-known values. Unchecked rows remain explicitly marked; **Refresh** or
+**⌘R/Ctrl+R** starts a new check. A stopped/interrupted scan does not restart on
+the automatic timer or window focus. Stopping status does not cancel a batch,
+undo Git operations or edit the project file. Use **Cancel batch** for batch work.
+Older scan results cannot replace a newer scan or reloaded project.
+
+An active scan can finish while you inspect a repository or another workspace;
+automatic new sweeps pause when the dashboard/document is hidden. The visible
+dashboard otherwise refreshes every ten seconds and on window focus. Creating
+or saving project membership still waits for its status scan before returning;
+the new progressive controls cover saved-project opening, reload and refresh.
 
 Use **Search** for a name/path, **Branch** for an exact current branch, and
 **Working state** for dirty, behind, or attention-needed repositories. A branch
@@ -741,8 +770,9 @@ normally. A hook failure may occur after checkout has taken effect; inspect the
 refreshed branch and activity before retrying. No automatic rollback deletes a
 partially created branch or discards working files.
 
-Remote refs can also be inspected or used as merge sources. Group-wide branch
-switching is not implemented.
+Remote refs can also be inspected or used as merge sources. For multiple
+repositories, use **Switch group branch** in the group dashboard as described
+under [Check and update a group](#check-and-update-a-group).
 
 ## Cherry-pick a commit
 
@@ -1031,7 +1061,7 @@ acceptance remain outstanding.
 
 Not yet available: individual-line staging, syntax highlighting, uncommitted-content blame, automatic
 rename-following file history,
-interactive rebase, batch push, progressive group-status loading, integrated conflict editing,
+interactive rebase, batch push, integrated conflict editing,
 multiple windows, group templates, and persisted group filters or commit drafts.
 The broader backlog and verification gaps are tracked in [Feature status](FEATURE_STATUS.md).
 

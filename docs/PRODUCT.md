@@ -155,8 +155,12 @@ The initial group branch-switch slice reviews one shared existing local branch
 name across matching or selected members. Each member retains its own source and
 target commit, eligibility and result. No branch creation, implicit fetch/pull,
 stash, discarded changes or cross-repository rollback is included. Retry uses a
-fresh plan for the original target. Progressive group-status loading and explicit
-batch push remain separate follow-ups.
+fresh plan for the original target. Progressive status for saved-project opening,
+reload and refresh is now implemented: ordered partial rows, four concurrent
+catalog reads, Stop status scan, retained last-known values, manual retry, and
+generation-guarded publication. Batch review waits for complete status; navigation
+and selection remain usable. Create/save still wait for status. Explicit batch
+push remains a separate follow-up; platform acceptance is tracked in Build status.
 
 M2 discovery walks the chosen root to the chosen depth, recognizes `.git` directories and files, skips internal Git data and common dependency/build folders, avoids symlink traversal, and reports inaccessible folders. Stop descending inside a discovered repository by default. Review candidates before saving; rescan proposes additions rather than silently changing membership.
 

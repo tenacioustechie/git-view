@@ -2,6 +2,7 @@ import type { RepositoryRow } from '../../api/types';
 
 export interface GroupFilters { search: string; branch: string; state: 'all' | 'dirty' | 'behind' | 'attention' }
 export function branchName(row: RepositoryRow): string {
+  if (row.kind === 'loading') return 'Not checked';
   if (row.kind !== 'ready') return 'Unavailable';
   const head = row.status.head;
   return head.kind === 'detached' ? `Detached ${head.oid.slice(0, 8)}` : head.name;

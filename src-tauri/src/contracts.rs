@@ -706,6 +706,15 @@ pub struct Project {
     pub members: Vec<RepositoryRow>,
     pub stale: bool,
     pub error: Option<AppError>,
+    pub status_scan: Option<ProjectStatusScan>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectStatusScan {
+    pub scan_id: String,
+    pub state: String,
+    pub pending_member_ids: Vec<String>,
+    pub error: Option<String>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

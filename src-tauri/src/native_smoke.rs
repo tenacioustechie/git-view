@@ -1216,6 +1216,52 @@ pub async fn native_smoke_discovery_case(
 }
 
 #[tauri::command]
+pub async fn native_smoke_group_status_case(
+    state: State<'_, AppState>,
+    release: bool,
+) -> AppResult<()> {
+    let f = fixture(&state)?;
+    let root = f._root.path().join("group-status");
+    if release {
+        let root = dunce::canonicalize(&root).unwrap();
+        state
+            .catalog
+            .smoke_status_gate(&root.join("repo-0"), false)
+            .await;
+        return Ok(());
+    }
+    std::fs::create_dir(&root).unwrap();
+    let mut repositories = Vec::new();
+    for index in 0..15 {
+        let name = format!("repo-{index}");
+        let path = root.join(&name);
+        if index != 14 {
+            std::fs::create_dir(&path).unwrap();
+            git(&path, &["init", "--template=", "-b", "main"]);
+            configure(&path);
+            std::fs::write(path.join("file.txt"), "baseline\n").unwrap();
+            commit(&path, "Status baseline");
+        }
+        repositories.push(serde_json::json!({"path":name}));
+    }
+    let project = root.join("status.git-view.json");
+    std::fs::write(&project, serde_json::to_vec(&serde_json::json!({"version":1,"name":"Native progressive status","repositories":repositories})).unwrap()).unwrap();
+    let root = dunce::canonicalize(&root).unwrap();
+    state
+        .catalog
+        .smoke_status_gate(&root.join("repo-0"), true)
+        .await;
+    state.launches.push(LaunchRequest {
+        scan_depth: None,
+        request_id: uuid::Uuid::new_v4().to_string(),
+        kind: "project".into(),
+        path: Some(project.to_string_lossy().into_owned()),
+        error: None,
+    });
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn native_smoke_group_switch_case(
     state: State<'_, AppState>,
     inspect: bool,

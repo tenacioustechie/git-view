@@ -277,6 +277,16 @@ impl Operations {
             .catalog
             .verify_revision(&request.project_id, &request.revision)
             .await?;
+        if project
+            .status_scan
+            .as_ref()
+            .is_some_and(|scan| !scan.pending_member_ids.is_empty())
+        {
+            return Err(AppError::new(
+                "status_incomplete",
+                "Finish refreshing group status before previewing a batch.",
+            ));
+        }
         if request.member_ids.len() > 1000 {
             return Err(AppError::new(
                 "invalid_selection",

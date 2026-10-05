@@ -31,12 +31,49 @@ pub async fn open_repository(
     state.engine.open_repository(Path::new(&path)).await
 }
 #[tauri::command]
-pub async fn open_project(state: State<'_, AppState>, path: String) -> AppResult<Project> {
-    state.catalog.open(&state.engine, Path::new(&path)).await
+pub async fn open_project(
+    state: State<'_, AppState>,
+    path: String,
+    progressive: Option<bool>,
+) -> AppResult<Project> {
+    if progressive.unwrap_or(false) {
+        state
+            .catalog
+            .start_open(&state.engine, Path::new(&path))
+            .await
+    } else {
+        state.catalog.open(&state.engine, Path::new(&path)).await
+    }
 }
 #[tauri::command]
-pub async fn refresh_project(state: State<'_, AppState>, project_id: String) -> AppResult<Project> {
-    state.catalog.refresh(&state.engine, &project_id).await
+pub async fn refresh_project(
+    state: State<'_, AppState>,
+    project_id: String,
+    progressive: Option<bool>,
+) -> AppResult<Project> {
+    if progressive.unwrap_or(false) {
+        state
+            .catalog
+            .start_refresh(&state.engine, &project_id)
+            .await
+    } else {
+        state.catalog.refresh(&state.engine, &project_id).await
+    }
+}
+#[tauri::command]
+pub async fn get_project_status(
+    state: State<'_, AppState>,
+    project_id: String,
+) -> AppResult<Project> {
+    state.catalog.get(&project_id).await
+}
+#[tauri::command]
+pub async fn cancel_project_status(
+    state: State<'_, AppState>,
+    project_id: String,
+    scan_id: String,
+) -> AppResult<Project> {
+    state.catalog.cancel_scan(&project_id, &scan_id).await
 }
 #[tauri::command]
 pub async fn create_project(

@@ -7,12 +7,29 @@ use std::{
     sync::Arc,
 };
 use tokio::sync::{Mutex, Semaphore};
+mod scan;
 
 const MAX_BYTES: u64 = 1024 * 1024;
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct Catalog {
     projects: Arc<Mutex<HashMap<String, Project>>>,
     saves: Arc<Mutex<HashMap<String, Arc<Mutex<()>>>>>,
+    scans: Arc<Mutex<HashMap<String, tokio::task::AbortHandle>>>,
+    read_permits: Arc<Semaphore>,
+    #[cfg(any(test, feature = "native-smoke"))]
+    read_gates: Arc<Mutex<HashMap<String, Arc<Semaphore>>>>,
+}
+impl Default for Catalog {
+    fn default() -> Self {
+        Self {
+            projects: Default::default(),
+            saves: Default::default(),
+            scans: Default::default(),
+            read_permits: Arc::new(Semaphore::new(4)),
+            #[cfg(any(test, feature = "native-smoke"))]
+            read_gates: Default::default(),
+        }
+    }
 }
 fn error(message: impl Into<String>) -> AppError {
     AppError::new("invalid_project", message)
@@ -101,65 +118,11 @@ impl Catalog {
     pub fn new() -> Self {
         Self::default()
     }
-    async fn rows(
-        engine: &GitEngine,
-        path: &Path,
-        project_id: &str,
-        content: &ProjectContent,
-    ) -> Vec<RepositoryRow> {
-        let permits = Arc::new(Semaphore::new(4));
-        let mut tasks = tokio::task::JoinSet::new();
-        for (index, member) in content.repositories.iter().enumerate() {
-            let path = path.parent().unwrap().join(&member.path);
-            let foreign = foreign_path(&member.path);
-            let display_path = if foreign {
-                member.path.clone()
-            } else {
-                path.to_string_lossy().into_owned()
-            };
-            let label = member.label.clone().unwrap_or_else(|| {
-                Path::new(&member.path)
-                    .file_name()
-                    .unwrap_or_default()
-                    .to_string_lossy()
-                    .into_owned()
-            });
-            let member_id = hash(format!("{project_id}:{index}:{}", member.path).as_bytes());
-            let engine = engine.clone();
-            let permits = permits.clone();
-            tasks.spawn(async move {
-                let _permit = permits.acquire().await.unwrap();
-                let result = if foreign {
-                    Err(error("Path belongs to another operating system."))
-                } else {
-                    engine.open_repository(&path).await
-                };
-                let row = match result {
-                    Ok(opened) => RepositoryRow::Ready {
-                        member_id,
-                        repository_id: opened.repository_id,
-                        label,
-                        display_path,
-                        status: opened.status,
-                    },
-                    Err(error) => RepositoryRow::Unavailable {
-                        member_id,
-                        label,
-                        display_path,
-                        error,
-                    },
-                };
-                (index, row)
-            });
-        }
-        let mut rows = Vec::new();
-        while let Some(result) = tasks.join_next().await {
-            rows.push(result.expect("status task panicked"));
-        }
-        rows.sort_by_key(|(index, _)| *index);
-        rows.into_iter().map(|(_, row)| row).collect()
-    }
     pub async fn open(&self, engine: &GitEngine, path: &Path) -> AppResult<Project> {
+        let project = self.start_open(engine, path).await?;
+        self.wait_for_scan(project).await
+    }
+    pub async fn start_open(&self, engine: &GitEngine, path: &Path) -> AppResult<Project> {
         let path = dunce::canonicalize(path).map_err(|e| error(e.to_string()))?;
         let (content, revision) = read_project(&path)?;
         let display_path = path
@@ -167,7 +130,7 @@ impl Catalog {
             .ok_or_else(|| error("Project filename cannot be represented in JSON."))?
             .to_owned();
         let project_id = hash(display_path.as_bytes());
-        let members = Self::rows(engine, &path, &project_id, &content).await;
+        let members = scan::placeholders(&path, &project_id, &content);
         let project = Project {
             project_id: project_id.clone(),
             revision,
@@ -177,12 +140,9 @@ impl Catalog {
             members,
             stale: false,
             error: None,
+            status_scan: None,
         };
-        self.projects
-            .lock()
-            .await
-            .insert(project_id, project.clone());
-        Ok(project)
+        self.start_scan(engine, project, None).await
     }
     pub async fn get(&self, id: &str) -> AppResult<Project> {
         self.projects
@@ -193,7 +153,15 @@ impl Catalog {
             .ok_or_else(|| error("Open the project again."))
     }
     pub async fn refresh(&self, engine: &GitEngine, id: &str) -> AppResult<Project> {
+        let project = self.start_refresh(engine, id).await?;
+        self.wait_for_scan(project).await
+    }
+    pub async fn start_refresh(&self, engine: &GitEngine, id: &str) -> AppResult<Project> {
         let mut project = self.get(id).await?;
+        let previous_scan = project
+            .status_scan
+            .as_ref()
+            .map(|scan| scan.scan_id.clone());
         match read_project(Path::new(&project.display_path)) {
             Ok((_, revision)) if revision == project.revision => {
                 project.stale = false;
@@ -211,23 +179,7 @@ impl Catalog {
                 project.error = Some(e);
             }
         }
-        project.members = Self::rows(
-            engine,
-            Path::new(&project.display_path),
-            id,
-            &project.content,
-        )
-        .await;
-        let mut state = self.projects.lock().await;
-        // A concurrent explicit reload/save wins over this older observation.
-        if state
-            .get(id)
-            .is_some_and(|p| p.revision != project.revision)
-        {
-            return Ok(state[id].clone());
-        }
-        state.insert(id.to_owned(), project.clone());
-        Ok(project)
+        self.start_scan(engine, project, Some(previous_scan)).await
     }
     pub async fn verify_revision(&self, id: &str, expected: &str) -> AppResult<Project> {
         let project = self.get(id).await?;

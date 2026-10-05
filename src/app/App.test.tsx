@@ -58,7 +58,7 @@ it('records CLI project opens, member opens and Save as without promoting backgr
   expect(saved()[0].path).toBe('/projects/copy.json');
   fireEvent.click(screen.getByRole('button', { name: 'Recent' }));
   await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Open project Renamed project: /projects/work.json' })); });
-  expect(api.openProject).toHaveBeenLastCalledWith('/projects/work.json');
+  expect(api.openProject).toHaveBeenLastCalledWith('/projects/work.json', true);
   expect(saved()[0].name).toBe('Work');
 });
 

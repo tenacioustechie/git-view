@@ -8,7 +8,7 @@ import { GroupView } from './GroupView';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { withNavigationBlock } from '../../api/navigation';
 
-vi.mock('../../api/client', () => ({ api: { refreshProject: vi.fn(), openProject: vi.fn(), saveProject: vi.fn(), createProject: vi.fn(), planBatch: vi.fn(), runBatch: vi.fn(), cancelBatch: vi.fn(), getOperations: vi.fn() }, errorMessage: (error: unknown) => error instanceof Error ? error.message : String(error) }));
+vi.mock('../../api/client', () => ({ api: { refreshProject: vi.fn(), getProjectStatus: vi.fn(), cancelProjectStatus: vi.fn(), openProject: vi.fn(), saveProject: vi.fn(), createProject: vi.fn(), planBatch: vi.fn(), runBatch: vi.fn(), cancelBatch: vi.fn(), getOperations: vi.fn() }, errorMessage: (error: unknown) => error instanceof Error ? error.message : String(error) }));
 vi.mock('@tauri-apps/plugin-dialog', () => ({ open: vi.fn(), save: vi.fn() }));
 const ready = (id: string, branch: string, dirty = false): RepositoryRow => ({ kind: 'ready', memberId: id, repositoryId: id, label: id, displayPath: `/workspace/${id}`, status: { ...(dirty ? fixtures.mixed : fixtures.clean), repositoryId: id, head: { kind: 'branch', name: branch, oid: 'abc' } } });
 const project: Project = { projectId: 'project', revision: 'revision-1', displayPath: '/workspace/work.git-view.json', name: 'Work', content: { version: 1, name: 'Work', repositories: [{ path: './api' }, { path: './web' }, { path: './missing' }] }, members: [ready('api', 'main'), ready('web', 'feature', true), { kind: 'unavailable', memberId: 'missing', label: 'missing', displayPath: '/workspace/missing', error: { code: 'missing', message: 'Path does not exist', retryable: false } }], stale: false, error: null };
@@ -24,6 +24,73 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('GroupView renderer', () => {
+  const scanningProject = (pending = ['api', 'web', 'missing']): Project => ({ ...project, statusScan: { scanId: 'scan-1', state: 'running', pendingMemberIds: pending, error: null } });
+  it('progressively updates stable rows while retaining filters, hidden selections and navigation', async () => {
+    let publish!: (value: Project) => void;
+    vi.mocked(api.getProjectStatus).mockReturnValue(new Promise(resolve => { publish = resolve; }));
+    const onOpenRepository = vi.fn();
+    render(<GroupView project={scanningProject()} onOpenRepository={onOpenRepository} />);
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select web' }));
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'api' } });
+    expect(screen.getByText('1 selected · 1 hidden by filters')).toBeTruthy();
+    expect((screen.getByRole('button', { name: 'Fetch all (1)' }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'api' }));
+    expect(onOpenRepository).toHaveBeenCalledWith(expect.objectContaining({ repositoryId: 'api' }));
+    await act(async () => publish(scanningProject(['web', 'missing'])));
+    expect(screen.getByRole('status').textContent).toContain('1 of 3');
+    expect(screen.getByText('1 selected · 1 hidden by filters')).toBeTruthy();
+    vi.mocked(api.getProjectStatus).mockResolvedValue({ ...project, statusScan: { ...scanningProject().statusScan!, state: 'complete', pendingMemberIds: [] } });
+    await waitFor(() => expect(screen.getByRole('status').textContent).toContain('3 of 3'));
+    expect((screen.getByRole('button', { name: 'Fetch all (1)' }) as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Fetch selected (1)' }));
+    await waitFor(() => expect(api.planBatch).toHaveBeenCalledWith(expect.objectContaining({ memberIds: ['web'] })));
+  });
+  it('stops status reads without clearing partial results, and rejects a late poll after stopping', async () => {
+    let publish!: (value: Project) => void;
+    const partial = scanningProject(['web']);
+    vi.mocked(api.getProjectStatus).mockReturnValue(new Promise(resolve => { publish = resolve; }));
+    vi.mocked(api.cancelProjectStatus).mockResolvedValue({ ...partial, statusScan: { ...partial.statusScan!, state: 'canceled' } });
+    const onProjectChange = vi.fn();
+    render(<GroupView project={partial} onOpenRepository={vi.fn()} onProjectChange={onProjectChange} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Stop status scan' }));
+    await waitFor(() => expect(screen.getByRole('status').textContent).toContain('Status scan stopped · 2 of 3'));
+    await act(async () => publish({ ...project, name: 'Obsolete poll' }));
+    expect(screen.getByRole('heading', { name: 'Work' })).toBeTruthy();
+    expect(api.cancelProjectStatus).toHaveBeenCalledWith('project', 'scan-1');
+    expect(onProjectChange).toHaveBeenCalledTimes(1);
+    expect(screen.getByText('Not checked · last known status')).toBeTruthy();
+    fireEvent.focus(window);
+    expect(api.refreshProject).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+    await waitFor(() => expect(api.refreshProject).toHaveBeenCalledTimes(1));
+  });
+  it('ignores an old scan after same-project reload and after unmount', async () => {
+    let publish!: (value: Project) => void;
+    vi.mocked(api.getProjectStatus).mockReturnValueOnce(new Promise(resolve => { publish = resolve; }));
+    const onProjectChange = vi.fn();
+    const view = render(<GroupView project={scanningProject()} onOpenRepository={vi.fn()} onProjectChange={onProjectChange} />);
+    view.rerender(<GroupView project={{ ...project, name: 'Reloaded', statusScan: { ...scanningProject().statusScan!, scanId: 'new', state: 'complete', pendingMemberIds: [] } }} onOpenRepository={vi.fn()} onProjectChange={onProjectChange} />);
+    await act(async () => publish({ ...project, name: 'Old scan' }));
+    expect(screen.getByRole('heading', { name: 'Reloaded' })).toBeTruthy();
+    expect(onProjectChange).not.toHaveBeenCalled();
+    vi.mocked(api.getProjectStatus).mockReturnValueOnce(new Promise(resolve => { publish = resolve; }));
+    view.rerender(<GroupView project={scanningProject()} onOpenRepository={vi.fn()} onProjectChange={onProjectChange} />);
+    view.unmount();
+    await act(async () => publish(project));
+    expect(onProjectChange).not.toHaveBeenCalled();
+  });
+  it('labels initial placeholders honestly and preserves selection when a repository becomes unavailable', async () => {
+    let publish!: (value: Project) => void;
+    const loading = { ...scanningProject(), members: project.members.map(row => ({ kind: 'loading' as const, memberId: row.memberId, label: row.label, displayPath: row.displayPath })) };
+    vi.mocked(api.getProjectStatus).mockReturnValue(new Promise(resolve => { publish = resolve; }));
+    render(<GroupView project={loading} onOpenRepository={vi.fn()} />);
+    expect(screen.getAllByText('Waiting for status')).toHaveLength(3);
+    expect(screen.queryByText('Unavailable')).toBeNull();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select missing' }));
+    await act(async () => publish({ ...project, statusScan: { ...loading.statusScan!, state: 'complete', pendingMemberIds: [] } }));
+    expect(screen.getByText('Path does not exist')).toBeTruthy();
+    expect((screen.getByRole('checkbox', { name: 'Select missing' }) as HTMLInputElement).checked).toBe(true);
+  });
   const switchPlan: BatchPlan = { ...plan, action: 'switchBranch', targetBranch: 'team/topic', candidates: plan.candidates.map(candidate => ({ ...candidate, summary: candidate.eligible ? 'Switch from main at abc to team/topic at def' : undefined })) };
   function openSwitch() {
     fireEvent.click(screen.getByText('Switch group branch'));
