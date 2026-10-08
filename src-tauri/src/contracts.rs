@@ -672,6 +672,10 @@ pub struct OperationResult {
     pub action: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub target_branch: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub destination: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub summary: Option<String>,
     pub state: JobState,
     pub started_at: Option<String>,
     pub finished_at: Option<String>,

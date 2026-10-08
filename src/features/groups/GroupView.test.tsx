@@ -24,6 +24,48 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('GroupView renderer', () => {
+  const pushPlan: BatchPlan = { ...plan, action: 'push', candidates: plan.candidates.map(candidate => ({ ...candidate, destination: candidate.eligible ? 'origin refs/heads/upstream-name' : null, summary: candidate.eligible ? 'Push refs/heads/main at reviewed-oid. Uncommitted changes stay local.' : undefined })) };
+  it('reviews configured-upstream push with fixed matching members and an explicit publish confirmation', async () => {
+    vi.mocked(api.planBatch).mockResolvedValue(pushPlan);
+    render(<GroupView project={project} onOpenRepository={vi.fn()} />);
+    fireEvent.click(screen.getByText('Push group upstreams'));
+    fireEvent.click(screen.getByRole('button', { name: 'Preview push all (3)' }));
+    const preview = await screen.findByRole('region', { name: 'Batch preview' });
+    expect(api.planBatch).toHaveBeenCalledWith({ projectId: 'project', revision: 'revision-1', memberIds: ['api', 'web', 'missing'], action: 'push', branchFilter: null });
+    expect(preview.textContent).toContain('origin refs/heads/upstream-name');
+    expect(preview.textContent).toContain('reviewed-oid');
+    expect(preview.textContent).toContain('Successful pushes are not rolled back');
+    expect(api.runBatch).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'web' } });
+    expect(within(preview).getAllByRole('listitem')).toHaveLength(3);
+    fireEvent.click(within(preview).getByRole('button', { name: 'Push 1 eligible upstreams' }));
+    await waitFor(() => expect(api.runBatch).toHaveBeenCalledWith('plan-1'));
+  });
+  it('includes hidden selected push members and blocks publishing while project edits are unsaved', async () => {
+    vi.mocked(api.planBatch).mockResolvedValue(pushPlan);
+    render(<GroupView project={project} onOpenRepository={vi.fn()} />);
+    fireEvent.click(screen.getByText('Push group upstreams'));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select web' }));
+    fireEvent.change(screen.getByLabelText('Branch'), { target: { value: 'main' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Preview push selected (1)' }));
+    const confirm = await screen.findByRole('button', { name: 'Push 1 eligible upstreams' });
+    expect(api.planBatch).toHaveBeenCalledWith(expect.objectContaining({ action: 'push', memberIds: ['web'], branchFilter: null }));
+    fireEvent.click(screen.getByRole('button', { name: 'Edit project' }));
+    expect((confirm as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Preview push all (1)' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+  it('retains push destinations in results and replans selected failed members without executing a retry', async () => {
+    vi.mocked(api.getOperations).mockResolvedValue([{ ...result('web', 'failed'), action: 'push', destination: 'origin refs/heads/reviewed', summary: 'Reviewed commit old-oid', outcomeUncertain: true }]);
+    vi.mocked(api.planBatch).mockResolvedValue(pushPlan);
+    render(<GroupView project={project} onOpenRepository={vi.fn()} />);
+    expect(await screen.findByText('origin refs/heads/reviewed')).toBeTruthy();
+    expect(screen.getByText('Reviewed commit old-oid')).toBeTruthy();
+    expect(screen.getByText(/A retry resolves current upstreams/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Retry web' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Preview retry (1)' }));
+    await waitFor(() => expect(api.planBatch).toHaveBeenCalledWith(expect.objectContaining({ action: 'push', memberIds: ['web'], branchFilter: null })));
+    expect(api.runBatch).not.toHaveBeenCalled();
+  });
   const scanningProject = (pending = ['api', 'web', 'missing']): Project => ({ ...project, statusScan: { scanId: 'scan-1', state: 'running', pendingMemberIds: pending, error: null } });
   it('progressively updates stable rows while retaining filters, hidden selections and navigation', async () => {
     let publish!: (value: Project) => void;

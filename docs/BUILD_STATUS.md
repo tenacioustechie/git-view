@@ -1,5 +1,77 @@
 # Build status
 
+## 2026-10-05: B2 committed; B3 configured-upstream group push
+
+Committed B2 implementation/tests/docs as `2edd67c` (`Add progressive group status
+with cancelable bounded scans`). The commit-preparation typecheck and
+`git diff --check` pass. No push was requested or performed.
+
+The subsequent working tree implements the recommended configured-upstream-only
+B3 slice: **Push group upstreams**, matching/selected scopes, full source commit
+and named-remote/full-branch review, fixed candidates, independent outcomes and
+explicit fresh retry previews. Uncommitted content stays local; ambiguous or
+missing upstreams, differing push-remote overrides, detached/unborn/in-progress
+or busy repositories and unsupported push configurations are skipped.
+Each execution revalidates configuration/status and sends the reviewed commit ID
+instead of resolving a possibly moved branch. No force, follow-tags, submodule
+push, automatic fetch or upstream setup is introduced. Remote branch creation is
+possible if the configured branch was deleted remotely. Queued cancellation does
+not terminate already-running Git pushes; successful remote changes remain.
+
+Context7's official Git documentation on explicit refspecs, push URLs and
+`push.default` informed destination resolution and rejection of ambiguous
+configuration. Existing shared push safeguards reject mirror/multi-URL/unsupported
+configured refspecs. Push command errors (including single-repository pushes)
+are now conservatively uncertain and instruct inspection of remote state before
+retrying; no error is treated as proof of rollback.
+
+Five new disposable integration tests cover exact differently named upstreams,
+dirty-byte preservation, alias/idempotent results, omitted tags, missing upstream
+and detached/unborn skips, ambiguous configuration, changed config/HEAD/project,
+non-fast-forward partial failure, explicit retry, cancellation before starting,
+three already-running pushes finishing while queued work is canceled, and a
+pre-push hook moving local HEAD without publishing its unreviewed commit.
+Three new renderer tests cover frozen push previews, hidden selected members,
+draft guards, retained result metadata and selected retry review without execution.
+
+Mac full `cargo test --manifest-path src-tauri/Cargo.toml --locked` passes
+**196 tests**, with two explicit measurements ignored. Log:
+`/tmp/git-view-b3-mac-rust.log`. `pnpm test -- --maxWorkers=2` passes **226 tests
+in 24 files**; lint, typecheck, formatting, strict all-target native-smoke Clippy
+and smoke builds pass. An initial smoke-only fixture used unsupported JSON macro
+syntax around an array `.map`; this compile failure was corrected before the
+passing Clippy/build. Product tests were not weakened.
+
+Windows uses a checked temporary source patch over clean
+`4a81e31c5a2ac9d3b7176a1adf26fd4a196dc7f8`, including the new push module.
+The full gate again stops before library tests run with
+`0xc0000139 / STATUS_ENTRYPOINT_NOT_FOUND`; this is not a complete Windows
+backend pass and is distinct from the earlier Smart App Control event.
+The focused `cargo test --manifest-path src-tauri/Cargo.toml --locked --test
+acceptance group_push` passes **all five new tests**. Frontend **226 tests**,
+lint/typecheck pass. Remote orchestration log: `/tmp/git-view-b3-windows.log`.
+Windows strict all-target native-smoke Clippy and smoke builds also pass. Native
+report `C:\codeme\git-view\.tools\GitViewNativeSmoke-990c673945f649a887409113c6748346.json`
+passes **67 checks**. After verifying the temporary source files still matched
+their tested hashes, the patch was reversed and the Windows checkout was verified
+clean at its original baseline. These focused/native passes do not resolve the
+full backend test-loader failure above; security policies were not changed.
+
+Mac native report `/tmp/git-view-group-push-mac-20261005.json` passes **67 checks**.
+The two new DOM/IPC checks verify exact-source/upstream preview without mutation,
+one successful local-remote push, one remote-hook rejection, one missing-upstream
+skip, preserved dirty bytes, retained source/destination activity and an explicit
+selected retry preview canceled without another push. All network mutations in
+these tests target disposable local remotes, not GitHub.
+
+Normal `pnpm tauri build --bundles app` passes; the rebuilt unsigned Mac app is
+`src-tauri/target/release/bundle/macos/Git View.app`, with normal assets
+`index-BkwDAlaI.css` and `index-Cuz8PwMO.js`. Installed apps and collected release
+packages were not replaced. Guides/contracts were checked against the controls;
+85 local documentation file links and `git diff --check` pass. README entry points
+and project-file schema remain unchanged. This section records the B3
+implementation checkpoint; no push or release publication was performed.
+
 ## 2026-10-05: B2 progressive group status
 
 Working tree based on `600f601` implements progressive saved-project opening,

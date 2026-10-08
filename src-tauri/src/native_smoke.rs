@@ -1216,6 +1216,84 @@ pub async fn native_smoke_discovery_case(
 }
 
 #[tauri::command]
+pub async fn native_smoke_group_push_case(
+    state: State<'_, AppState>,
+    inspect: bool,
+) -> AppResult<serde_json::Value> {
+    let f = fixture(&state)?;
+    let root = f._root.path().join("group-push");
+    if inspect {
+        let local =
+            ["publish", "rejected"].map(|name| git(&root.join(name), &["rev-parse", "HEAD"]));
+        let remote = ["publish.git", "rejected.git"]
+            .map(|name| git(&root.join(name), &["rev-parse", "refs/heads/upstream-name"]));
+        return Ok(serde_json::json!({
+            "local": local,
+            "remote": remote,
+            "dirtyContents": std::fs::read_to_string(root.join("publish/file.txt")).unwrap()
+        }));
+    }
+    std::fs::create_dir(&root).unwrap();
+    for name in ["publish", "rejected", "no-upstream"] {
+        let path = root.join(name);
+        std::fs::create_dir(&path).unwrap();
+        git(&path, &["init", "--template=", "-b", "main"]);
+        configure(&path);
+        std::fs::write(path.join("file.txt"), "baseline\n").unwrap();
+        commit(&path, "Push baseline");
+        if name != "no-upstream" {
+            let remote = root.join(format!("{name}.git"));
+            git(
+                &root,
+                &["init", "--bare", "--template=", remote.to_str().unwrap()],
+            );
+            git(
+                &path,
+                &["remote", "add", "origin", remote.to_str().unwrap()],
+            );
+            git(&path, &["push", "-u", "origin", "main:upstream-name"]);
+            std::fs::write(path.join("file.txt"), "publish committed bytes\n").unwrap();
+            commit(&path, "Publish this commit");
+            if name == "rejected" {
+                let hooks = remote.join("hooks");
+                std::fs::create_dir_all(&hooks).unwrap();
+                let hook = hooks.join("pre-receive");
+                std::fs::write(
+                    &hook,
+                    "#!/bin/sh\necho 'Fixture rejects this push' >&2\nexit 1\n",
+                )
+                .unwrap();
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755))
+                        .unwrap();
+                }
+                git(
+                    &remote,
+                    &["config", "core.hooksPath", hooks.to_str().unwrap()],
+                );
+            }
+        }
+    }
+    std::fs::write(root.join("publish/file.txt"), "keep my uncommitted bytes\n").unwrap();
+    let project = root.join("push.git-view.json");
+    let repositories: Vec<_> = ["publish", "rejected", "no-upstream"]
+        .iter()
+        .map(|name| serde_json::json!({"path":name}))
+        .collect();
+    std::fs::write(&project, serde_json::to_vec(&serde_json::json!({"version":1,"name":"Native group push","repositories":repositories})).unwrap()).unwrap();
+    state.launches.push(LaunchRequest {
+        scan_depth: None,
+        request_id: uuid::Uuid::new_v4().to_string(),
+        kind: "project".into(),
+        path: Some(project.to_string_lossy().into_owned()),
+        error: None,
+    });
+    Ok(serde_json::json!({"projectPath":project.to_string_lossy()}))
+}
+
+#[tauri::command]
 pub async fn native_smoke_group_status_case(
     state: State<'_, AppState>,
     release: bool,

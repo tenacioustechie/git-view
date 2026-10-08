@@ -1,4 +1,5 @@
 mod actions;
+mod batch_push;
 mod blame;
 mod cherry_pick;
 mod discovery;

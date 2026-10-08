@@ -879,6 +879,10 @@ impl GitEngine {
             merge::finish_attempt(&plan.repository, &journal.operation_id)?;
         }
         let output=runner::checked(output).map_err(|mut error| {
+            if matches!(plan.action, RepositoryAction::Push { .. }) {
+                error.code="outcome_uncertain".into();
+                error.message=format!("Push returned an error. Inspect the remote branch before retrying; a connection or hook failure does not prove that the remote was unchanged. {}", error.message);
+            }
             if matches!(plan.action, RepositoryAction::SwitchBranch { .. }) {
                 error.code="outcome_uncertain".into();
                 error.message=format!("Switch returned an error and may already have changed HEAD or files (for example, before a hook failed). Refresh and inspect before retrying. {}", error.message);

@@ -11,7 +11,7 @@ import './groups.css';
 interface Props { project: Project; onOpenRepository: (repository: RepositoryOpen) => void; onProjectChange?: (project: Project) => void }
 const terminal = (operation: OperationResult) => !['queued', 'running'].includes(operation.state);
 const identity = (project: Project) => JSON.stringify([project.projectId, project.revision, project.stale, project.statusScan?.scanId]);
-const actionLabel = (action: string) => action === 'switchBranch' ? 'Switch branch' : action === 'pull' ? 'Pull' : action === 'fetch' ? 'Fetch' : action;
+const actionLabel = (action: string) => action === 'switchBranch' ? 'Switch branch' : action === 'pull' ? 'Pull' : action === 'push' ? 'Push' : action === 'fetch' ? 'Fetch' : action;
 
 export function GroupView({ project: initial, onOpenRepository, onProjectChange }: Props) {
   const [project, setProject] = useState(initial);
@@ -299,12 +299,20 @@ export function GroupView({ project: initial, onOpenRepository, onProjectChange 
         <button disabled={busy || batchBlocked || Boolean(draft) || !targetBranch.trim() || !selectedIds.length} onClick={() => void plan('switchBranch', selectedIds, `${selectedIds.length} selected members, including ${hiddenCount} hidden by filters`, null, targetBranch.trim())}>Preview switch selected ({selectedIds.length})</button>
       </div><p className="group-hint">All uses matching rows; selected includes checked rows hidden by filters. Dirty, missing-target, unavailable, detached/unborn and busy repositories are skipped. Save or cancel project edits before switching.</p>
     </details>
+    <details className="group-switch"><summary>Push group upstreams</summary>
+      <p>Push each current branch's reviewed commit to its configured upstream. No force push, implicit fetch, upstream setup or editable destinations. Uncommitted changes stay local.</p>
+      <div className="group-toolbar">
+        <button disabled={busy || batchBlocked || Boolean(draft) || !rows.length} onClick={() => void plan('push', rows.map(row => row.memberId), `All ${rows.length} matching members`, filters.branch || null)}>Preview push all ({rows.length})</button>
+        <button disabled={busy || batchBlocked || Boolean(draft) || !selectedIds.length} onClick={() => void plan('push', selectedIds, `${selectedIds.length} selected members, including ${hiddenCount} hidden by filters`, null)}>Preview push selected ({selectedIds.length})</button>
+      </div><p className="group-hint">Missing upstreams, detached/unborn branches, busy repositories and ambiguous push configuration are skipped. Remote state is checked by Git during push, not by this preview. Save or cancel project edits first.</p>
+    </details>
     {preview && <section className="group-preview" aria-label="Batch preview">
       <h2>{actionLabel(preview.action)} preview{preview.action === 'switchBranch' ? ` → ${preview.targetBranch}` : ''}</h2><p>{previewScope}. This candidate list and target are fixed; changing filters or the target input does not change this preview.</p>
       <p>Plan expires {new Date(preview.expiresAt).toLocaleTimeString()}. Each repository is rechecked before it runs.</p>
       <ul>{preview.candidates.map(candidate => <li key={candidate.memberId}><strong>{candidate.label}</strong> — {candidate.eligible ? 'Eligible' : 'Skipped'}{candidate.destination ? ` → ${candidate.destination}` : ''}{candidate.reason ? `: ${candidate.reason}` : ''}{candidate.summary && <small className="group-switch-summary">{candidate.summary}</small>}</li>)}</ul>
       {preview.action === 'switchBranch' && <p>Review each source and target commit. Successful switches update working files and the index. Hooks run normally; inspect actual state after any failure. There is no cross-repository rollback.</p>}
-      <button disabled={busy || batchBlocked || (preview.action === 'switchBranch' && Boolean(draft)) || !preview.candidates.some(candidate => candidate.eligible)} onClick={() => void perform(async () => { const batch = await api.runBatch(preview.planId); trackedBatches.current.add(batch.batchId); setPreview(null); await loadOperations(); })}>{preview.action === 'switchBranch' ? `Switch ${preview.candidates.filter(candidate => candidate.eligible).length} eligible to ${preview.targetBranch}` : `Run ${preview.candidates.filter(candidate => candidate.eligible).length} eligible`}</button>
+      {preview.action === 'push' && <p>Review every source commit and remote branch. This publishes committed history using each remote's configured push URL. Git may reject a non-fast-forward update; a missing remote branch may be created. Hooks and credentials apply. Successful pushes are not rolled back if another member fails or you cancel.</p>}
+      <button disabled={busy || batchBlocked || (['switchBranch', 'push'].includes(preview.action) && Boolean(draft)) || !preview.candidates.some(candidate => candidate.eligible)} onClick={() => void perform(async () => { const batch = await api.runBatch(preview.planId); trackedBatches.current.add(batch.batchId); setPreview(null); await loadOperations(); })}>{preview.action === 'switchBranch' ? `Switch ${preview.candidates.filter(candidate => candidate.eligible).length} eligible to ${preview.targetBranch}` : preview.action === 'push' ? `Push ${preview.candidates.filter(candidate => candidate.eligible).length} eligible upstreams` : `Run ${preview.candidates.filter(candidate => candidate.eligible).length} eligible`}</button>
       <button disabled={busy} onClick={() => setPreview(null)}>Close preview</button>
     </section>}
     <div className="group-table-scroll"><table className="group-table"><caption>{rows.length} of {project.members.length} repositories</caption>
@@ -319,7 +327,7 @@ export function GroupView({ project: initial, onOpenRepository, onProjectChange 
     {!rows.length && <p>No repositories match these filters.</p>}
     <section aria-label="Batch activity"><h2>Batch activity</h2><p>Results stay visible independently of filters. Cancel stops queued work and requests cancellation of running jobs; it does not undo completed changes.</p>
       {!batches.length && <p>No batch activity yet.</p>}
-      {batches.map(([id, results]) => <BatchActivity key={id} id={id} results={results} labels={knownMembers.current} busy={busy} blocked={batchBlocked || (results[0]?.action === 'switchBranch' && Boolean(draft))} onCancel={() => void perform(async () => { await api.cancelBatch(id); await loadOperations(); await refresh(true); })} onRetry={(action, ids, target) => void plan(action, ids, `Retry ${ids.length} chosen members`, null, target)} />)}
+      {batches.map(([id, results]) => <BatchActivity key={id} id={id} results={results} labels={knownMembers.current} busy={busy} blocked={batchBlocked || (['switchBranch', 'push'].includes(results[0]?.action) && Boolean(draft))} onCancel={() => void perform(async () => { await api.cancelBatch(id); await loadOperations(); await refresh(true); })} onRetry={(action, ids, target) => void plan(action, ids, `Retry ${ids.length} chosen members`, null, target)} />)}
     </section>
   </section>;
 }
@@ -330,13 +338,14 @@ function BatchActivity({ id, results, labels, busy, blocked, onCancel, onRetry }
   const ids = [...new Set(retryable.flatMap(result => result.memberId && retryIds.has(result.memberId) ? [result.memberId] : []))];
   const action = results[0]?.action;
   const target = results[0]?.targetBranch;
-  const canRetry = (action === 'fetch' || action === 'pull' || (action === 'switchBranch' && Boolean(target))) && results.every(result => result.action === action && (action !== 'switchBranch' || result.targetBranch === target));
+  const canRetry = (action === 'fetch' || action === 'pull' || action === 'push' || (action === 'switchBranch' && Boolean(target))) && results.every(result => result.action === action && (action !== 'switchBranch' || result.targetBranch === target));
   return <article className="group-activity"><h3>{actionLabel(action)} batch{action === 'switchBranch' ? ` → ${target ?? 'target unavailable'}` : ''} <small>{id}</small></h3>
     <table className="group-table"><thead><tr><th>Retry</th><th>Repository</th><th>State</th><th>Details</th></tr></thead><tbody>{results.map(result => <tr key={result.operationId}>
       <td>{retryable.includes(result) && result.memberId && <input type="checkbox" aria-label={`Retry ${labels.get(result.memberId) ?? result.memberId}`} checked={retryIds.has(result.memberId)} onChange={event => { const checked = event.target.checked; setRetryIds(current => { const next = new Set(current); if (checked) next.add(result.memberId!); else next.delete(result.memberId!); return next; }); }} />}</td>
-      <td>{labels.get(result.memberId ?? '') ?? result.memberId ?? result.repositoryId ?? 'Repository'}</td><td>{result.state}</td><td>{result.error?.message ?? result.reason ?? '—'}{result.outcomeUncertain && <strong> Outcome uncertain; refresh and inspect the repository before retrying.</strong>}{result.outputTruncated && <span> Output was truncated.</span>}</td>
+      <td>{labels.get(result.memberId ?? '') ?? result.memberId ?? result.repositoryId ?? 'Repository'}</td><td>{result.state}</td><td>{result.destination && <strong>{result.destination}</strong>}{result.summary && <small>{result.summary}</small>}{result.error?.message ?? result.reason ?? '—'}{result.outcomeUncertain && <strong> Outcome uncertain; refresh and inspect the repository before retrying.</strong>}{result.outputTruncated && <span> Output was truncated.</span>}</td>
     </tr>)}</tbody></table>
     {results.some(result => !terminal(result)) && <button disabled={busy} onClick={onCancel}>Cancel batch</button>}
+    {action === 'push' && <p>Cancel stops queued pushes; already-running Git pushes may finish. Inspect remote outcomes before retrying. A retry resolves current upstreams and commits into a new preview; review any changed destinations before confirming.</p>}
     {retryable.length > 0 && <button disabled={!canRetry || busy || blocked || !ids.length || results.some(result => !terminal(result))} onClick={() => { if (canRetry) onRetry(action as BatchAction, ids, target); }}>Preview retry ({ids.length})</button>}
   </article>;
 }

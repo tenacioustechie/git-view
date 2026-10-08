@@ -69,6 +69,16 @@ Resolved follow-up: the user accepted Tauri/Rust/TypeScript and asked for projec
 
 ## Other working decisions
 
+5 October 2026 continuation: after the configured-upstream-only recommendation,
+the user asked to commit B2 and continue. B3 therefore uses that recommended
+first-slice scope: one configured named-remote upstream per attached branch,
+no editable destinations, no force or implicit upstream changes. This is the
+announced working scope, not a claim that the user separately specified every
+edge case. Dirty files stay local; reviewed commit IDs are pinned. Triangular
+push-remote overrides differing from the upstream require individual review.
+Retries resolve current upstreams into a new confirmation; successful pushes
+are never retried implicitly. In-flight pushes may complete after cancellation.
+
 | Topic | Working decision | Reason |
 | --- | --- | --- |
 | Product name / CLI | Git View / `git-view` | Matches the workspace; branding can follow |

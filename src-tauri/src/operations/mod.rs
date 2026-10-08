@@ -247,10 +247,13 @@ impl Operations {
         operation
     }
     pub async fn plan_batch(&self, request: BatchRequest) -> AppResult<BatchPlan> {
-        if !matches!(request.action.as_str(), "fetch" | "pull" | "switchBranch") {
+        if !matches!(
+            request.action.as_str(),
+            "fetch" | "pull" | "push" | "switchBranch"
+        ) {
             return Err(AppError::new(
                 "invalid_action",
-                "Batch supports fetch, pull or switching to an existing local branch.",
+                "Batch supports fetch, pull, configured-upstream push or switching to an existing local branch.",
             ));
         }
         if request.action == "switchBranch" {
@@ -341,6 +344,9 @@ impl Operations {
                     if let Some(branch) = &request.branch_filter {
                         if !matches!(&status.head, Head::Branch {name,..}|Head::Unborn {name} if name==branch) { return Err(AppError::new("branch_filter", "Current branch does not match the exact branch filter.")); }
                     }
+                    if request.action == "push" {
+                        return self.engine.prepare_upstream_push(&repository_id, &status).await;
+                    }
                     let action = if request.action == "switchBranch" {
                         let target = request.target_branch.as_ref().unwrap();
                         match &status.head {
@@ -362,7 +368,7 @@ impl Operations {
                     Ok(plan) => {
                         candidate.eligible = true;
                         candidate.destination = plan.destination.clone();
-                        if request.action == "switchBranch" {
+                        if matches!(request.action.as_str(), "switchBranch" | "push") {
                             candidate.summary = Some(plan.summary.clone());
                         }
                         let key = plan.fetch_coalesce_key().unwrap_or(repository_id);
@@ -444,6 +450,10 @@ impl Operations {
                 &plan.wire.action,
             );
             operation.target_branch = plan.wire.target_branch.clone();
+            if plan.wire.action == "push" {
+                operation.destination = entry.candidate.destination.clone();
+                operation.summary = entry.candidate.summary.clone();
+            }
             if !entry.candidate.eligible {
                 operation.state = JobState::Skipped;
                 operation.reason = entry.candidate.reason.clone();
@@ -537,6 +547,8 @@ fn queued(
         repository_id,
         action: action.into(),
         target_branch: None,
+        destination: None,
+        summary: None,
         state: JobState::Queued,
         started_at: None,
         finished_at: None,

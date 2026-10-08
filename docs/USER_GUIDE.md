@@ -1,7 +1,8 @@
 # Git View user guide
 
-Reviewed 5 October 2026 for version 0.1.0, including progressive group status
-in the working tree based on `600f601` and group branch switching at `8c8c3e4`.
+Reviewed 5 October 2026 for version 0.1.0, including configured-upstream group
+push based on progressive-status commit `2edd67c`, and
+group branch switching at `8c8c3e4`.
 The latest collected native packages
 remain rebase checkpoint `d9af4e6` on macOS arm64 and Windows 11 x64; they do not
 include this workspace redesign. See [Build status](BUILD_STATUS.md) for exact
@@ -264,7 +265,7 @@ run concurrently across project scans; no fetch is performed.
 You can search, select rows and open available repositories while scanning.
 Rows keep their project-file order and selection; filters use the currently
 displayed values, so matching rows can change as fresh status arrives. Selected
-members hidden by a filter stay selected. Fetch, Pull and Switch batch previews
+members hidden by a filter stay selected. Fetch, Pull, Push and Switch batch previews
 (including retries and confirmation) wait until the scan finishes, so incomplete
 filter results cannot silently become a batch scope.
 
@@ -345,6 +346,42 @@ and choose **Preview retry (N)** for a fresh review using the original target,
 not the current input. Batch activity survives navigation during this app session,
 not an app restart. Per-repository targets and remote-branch creation are outside
 this group-switch workflow.
+
+### Push a group's configured upstreams
+
+1. Save or cancel project edits, wait for status to finish, then expand
+   **Push group upstreams**. This action publishes committed history.
+2. Choose **Preview push all (N)** for the currently matching rows, or
+   **Preview push selected (N)** for checked members, including hidden selections.
+3. Review every source branch/full commit ID, named remote and full destination
+   branch ref. Different repositories can use different upstream branch names.
+   Missing/unavailable upstreams, detached/unborn branches, in-progress Git
+   operations, busy or unavailable repositories, multiple upstream definitions,
+   mirror/multi-URL/unsupported push-refspec configurations, and a push-remote
+   override different from the upstream remote are skipped with explanations.
+4. Choose **Push N eligible upstreams**. The reviewed member list and destinations
+   stay fixed even if you change filters. Each execution rechecks local state and
+   Git configuration, and sends the exact reviewed commit—not a later branch tip.
+5. Inspect **Batch activity**. Every member retains its outcome, and eligible
+   members retain the reviewed source and destination. One rejection does not
+   roll back another repository's successful push.
+
+This uses each named upstream remote's configured effective push URL, which can
+differ from its fetch URL. The preview performs local checks only: it does not
+fetch or contact the remote. Git checks remote state at execution, rejects
+non-fast-forward updates, and may create the configured destination branch if it
+was deleted remotely. Normal hooks, signing and credentials still apply.
+Dirty local files are allowed; only committed content is published. No force,
+tag/submodule push, automatic fetch, upstream setup/change, or editable per-member
+destination is included. Use the single-repository Push form for other workflows.
+
+**Cancel batch** stops queued pushes; already-running Git pushes are allowed to
+finish and may succeed after cancellation. It cannot undo a remote update.
+A push error is conservatively marked uncertain: inspect the remote before
+retrying. After the batch finishes, select failed/skipped/canceled members and
+choose **Preview retry (N)**. This resolves their *current* upstreams and commits
+into a fresh preview; review changed destinations before confirming. It never
+silently replays the old plan or retries successful members.
 
 ## Browse and search history
 
@@ -718,8 +755,11 @@ hook/external changes are reported for inspection without an automatic rollback.
   (for example, `refs/heads/main`). Optionally select **Set upstream**. Choose
   **Preview push**, inspect the destination, then run the action.
 
-Push is a normal single-repository push. There is no force-push or batch-push
-control. A non-fast-forward rejection must be resolved before retrying. Network
+The repository Push form is a normal single-repository push. Groups also offer
+**Push group upstreams**, described above. There is no force-push control.
+A non-fast-forward rejection must be resolved before retrying. Push errors are
+conservatively marked uncertain; inspect the remote before retrying because a
+connection or hook failure does not prove the remote was unchanged. Network
 operations use the installed Git's credential helpers and SSH configuration;
 remote-service authentication still needs verification in your own environment.
 
@@ -1061,7 +1101,7 @@ acceptance remain outstanding.
 
 Not yet available: individual-line staging, syntax highlighting, uncommitted-content blame, automatic
 rename-following file history,
-interactive rebase, batch push, integrated conflict editing,
+interactive rebase, editable per-member batch-push destinations, integrated conflict editing,
 multiple windows, group templates, and persisted group filters or commit drafts.
 The broader backlog and verification gaps are tracked in [Feature status](FEATURE_STATUS.md).
 

@@ -1,7 +1,7 @@
 # Feature status
 
-Reviewed 5 October 2026, including progressive group status in the working tree
-based on `600f601`, group branch switching at commit `8c8c3e4`
+Reviewed 5 October 2026, including configured-upstream group push based on
+progressive-status commit `2edd67c`, group switching at `8c8c3e4`
 (following blame commit `9a5ee62`) and guided linear rebase at source checkpoint
 `d9af4e6` and the earlier A1–A4 workflows, against the
 [product plan](PRODUCT.md). This is the current completion inventory;
@@ -37,9 +37,9 @@ refer to the delivered runbook workflows on tested platforms.
 | History | Virtualized paged graph, persistent selected-row highlight, parent continuity, refs, branch/tag scopes, message/body and author/email search, full/prefix commit-ID search, snapshot paging | Advanced revision-query UI |
 | Details | Full messages/identities/parents, parent-specific filterable file browser with keyboard selection, collapsible commit information, independently scrolling unified/side-by-side diffs with line numbers/full-row colours, hunk navigation, binary/truncation states; read-only literal-path file history; committed-revision blame with attribution-commit inspection | Syntax highlighting, uncommitted-content blame, automatic rename-following file history and arbitrary-path browsing |
 | Working changes | Staged/unstaged/untracked/conflicted states, whole-file and explicit selected-subset stage/unstage, supported complete text-hunk stage/unstage, staged-only commit, session draft retention, hook/signing failure handling; named stash creation/inspection, retained Apply, reviewed exact-entry Delete and recovery | Individual-line staging; expanded hunk support for excluded file types |
-| Remotes | Fetch, clean-only fast-forward pull, explicit normal single-repository push, optional upstream setup | Explicit batch push; hosting integrations only if requested |
+| Remotes | Fetch, clean-only fast-forward pull, explicit normal single-repository push, optional upstream setup; reviewed configured-upstream batch push | Editable per-member batch-push destinations; hosting integrations only if requested |
 | Branches | Local create/switch with previews, explicit remote tracking checkout, ordinary merge, squash merge from local or remote refs, reviewed single non-merge cherry-pick; guided linear rebase onto an existing local or fetched remote branch with Continue, reviewed Skip, Abort, backup and stopped-state guidance | Merge-preserving or arbitrary interactive rebase; multi-commit and merge-commit cherry-pick excluded from A2 |
-| Groups | Versioned JSON, create/edit/save/save-as, labels, locate/remove/add, external-edit protection, state/branch/name filters, selection, batch fetch/pull; reviewed switching to one shared existing local branch name, fixed member/target snapshots, skip reasons and per-member outcomes/cancel/retry; progressive saved-project opening/refresh with bounded reads, retained rows, stop/retry and generation guards (B2) | Explicit batch push (B3), further large-group tuning; per-member switch targets and remote branch creation excluded from initial B1; create/save still wait for status |
+| Groups | Versioned JSON, create/edit/save/save-as, labels, locate/remove/add, external-edit protection, state/branch/name filters, selection, batch fetch/pull; reviewed shared-local-branch switching (B1); progressive saved-project opening/refresh, bounded reads, stop/retry and generation guards (B2); reviewed configured-upstream push with pinned commits, independent outcomes, queued cancellation and fresh retries (B3) | Further large-group tuning; per-member switch targets/remote branch creation excluded from B1; editable per-member push destinations excluded from B3; create/save still wait for status |
 | Discovery | Bounded depth-controlled scanning, ordinary/linked worktree detection, reviewed new-project creation and draft additions, duplicate exclusion, partial-result warnings | No further discovery feature required by the current plan; nested/skipped paths require explicit addition |
 | Existing-commit squash | Consecutive linear tip selection, editable message, exact-tree replacement, backup refs, journal, guarded recovery including later file edits | No missing feature in the agreed initial Combine commits scope; arbitrary selections are outside this implementation |
 | Conflicts | Shared source/target and index-conflict guidance, external-editor resolution, stage resolution, ordinary merge/cherry-pick/rebase continuation and recovery, explicit reviewed Skip, interrupted-marker review, persistent squash review state | Integrated three-way conflict editor |
@@ -144,6 +144,14 @@ refer to the delivered runbook workflows on tested platforms.
   project format's 1,000-member limit.
 
 ## Verification and distribution outstanding
+
+B3 working-tree evidence on `2edd67c`: **226 frontend tests and 67 native checks
+pass on each platform**, and **196 Rust tests pass on Mac**. All five new group-push
+backend acceptance tests pass on Windows, but its full backend gate still stops
+before library assertions with `STATUS_ENTRYPOINT_NOT_FOUND`. This is distinct
+from the earlier Smart App Control block; neither issue is declared resolved.
+The normal unsigned Mac app was rebuilt. Installed apps and collected release
+packages were not replaced. See Build status for exact reports and source baselines.
 
 B2 working-tree evidence on `600f601`: 223 frontend tests and 65 native checks
 pass on each platform; 191 Rust tests pass on Mac, with separate 15/25/100-member

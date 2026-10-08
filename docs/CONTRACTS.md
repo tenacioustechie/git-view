@@ -217,6 +217,8 @@ interface OperationResult {
   repositoryId: RepositoryId | null;
   action: string;
   targetBranch?: string; // original shared local-branch name for group switch retries
+  destination?: string; // reviewed named remote/full branch for eligible group pushes
+  summary?: string; // reviewed push source ref/commit and scope
   state: JobState;
   startedAt: string | null;
   finishedAt: string | null;
@@ -366,7 +368,31 @@ Capability flags are explanatory; execution always revalidates the plan.
 
 Use backend-held preflight tokens for branch/remote operations. Index and worktree observations can race with outside clients; the UI must never promise total exclusion. Report Git's final outcome and refresh. A hook may legitimately alter content during commit.
 
-`plan_batch` accepts project ID/revision, candidate member IDs, action (`fetch`, `pull` or `switchBranch`), and optional exact current-branch filter. `switchBranch` requires `targetBranch`, one literal existing local branch name (not a full ref or revision expression); fetch/pull reject a supplied target. The backend owns eligibility and returns a plan ID plus all candidate rows with eligible/skipped reason and displayed destination. Switch plans echo `targetBranch`, and eligible candidates include a `summary` with reviewed source and target commits. The plan retains resolved repository identities and preconditions for five minutes; execution still revalidates. Replan after expiry or project edits. Do not make the renderer the sole source of eligibility.
+`plan_batch` accepts project ID/revision, candidate member IDs, action (`fetch`, `pull`, `push` or `switchBranch`), and optional exact current-branch filter. `switchBranch` requires `targetBranch`, one literal existing local branch name (not a full ref or revision expression); other actions reject a supplied target. The backend owns eligibility and returns a plan ID plus all candidate rows with eligible/skipped reason and displayed destination. Switch plans echo `targetBranch`, and eligible candidates include a `summary` with reviewed source and target commits. The plan retains resolved repository identities and preconditions for five minutes; execution still revalidates. Replan after expiry or project edits. Do not make the renderer the sole source of eligibility.
+
+B3 `push` accepts no renderer-provided remote/ref. It resolves exactly one
+`branch.<name>.remote` and `branch.<name>.merge` on an attached existing branch
+with locally available upstream information. Local (`.`) upstreams, conflicting
+effective push-remote overrides, ambiguous config, mirror remotes, multiple
+effective push URLs and unsupported configured push refspecs are ineligible.
+The existing single-repository push preflight checks state and refs; B3 also
+checks configuration across destination resolution/preflight and reuses the
+execution config/status guards. Dirty files are allowed, unfinished Git operations
+are not. The explicit refspec sends the reviewed full commit ID to the configured
+full branch ref, suppressing follow-tags, recursive submodule push and automatic
+upstream setup. It does not force, fetch, or contact remotes during preview.
+Normal remote push-URL/credentials/hooks/signing settings still apply. Missing
+remote branches can be created; remote state is authoritative at execution.
+
+Push candidate `summary` records source ref/commit and `destination` the named
+remote/full destination branch. These optional fields are also retained on each
+eligible push `OperationResult`, including aliases, failures and queued cancellations.
+Canonical repository aliases share one execution. Failed pushes are conservatively
+`outcome_uncertain`; inspect remote state rather than assuming no update.
+Cancel stops queued work; an already-running ordinary Git push is not terminated
+and can finish successfully. Successful remote updates are not rolled back.
+Retry selects explicit failed/skipped/canceled members and resolves current
+upstreams/commits into a fresh preview; it is not replay of the former destination.
 
 Group switch skips dirty, unavailable, detached/unborn, already-on-target, missing-target, symbolic-target, worktree-occupied and incompatible members. It uses the shared guarded existing-branch switch, with no branch guessing/creation, ignored-file overwrite, submodule recursion, stash, fetch or pull. Candidates and the common target stay frozen if renderer filters/input change. Every switch result, including skips and aliases, carries the original `targetBranch`; retries create a fresh plan for that target, never substitute later input. Hooks can fail after mutation; resulting HEAD is checked and uncertain outcomes require inspection, not rollback. Independent successful switches remain in place.
 

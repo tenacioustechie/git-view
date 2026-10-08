@@ -556,6 +556,42 @@ async function runGroupStatusSmoke(checks: string[]) {
   checks.push('Native Stop status scan retained completed rows; explicit Refresh completed a new scan without losing filters or selection and reenabled batch review');
 }
 
+async function runGroupPushSmoke(checks: string[]) {
+  await invoke('native_smoke_group_push_case', { inspect: false });
+  const inspect = () => invoke<{ local: string[]; remote: string[]; dirtyContents: string }>('native_smoke_group_push_case', { inspect: true });
+  const before = await inspect();
+  const group = await until('group-push project opens', () => {
+    const node = [...document.querySelectorAll<HTMLElement>('[aria-label="Repository group"]')].find(visible);
+    return node?.querySelector('h1')?.textContent === 'Native group push' ? node : null;
+  });
+  [...group.querySelectorAll<HTMLElement>('summary')].find(node => node.textContent === 'Push group upstreams')!.click();
+  await click('Preview push all (3)', group);
+  const preview = await region('Batch preview');
+  assert(preview.querySelectorAll('li').length === 3, 'Push preview must retain eligible and skipped members');
+  assert(preview.textContent?.includes(before.local[0]) && preview.textContent?.includes('origin refs/heads/upstream-name'), 'Preview must show exact source commit and configured upstream destination');
+  assert((await inspect()).remote.join() === before.remote.join(), 'Preview must not contact or change the remote');
+  type(group.querySelector<HTMLInputElement>('input[type="search"]')!, 'publish');
+  assert(preview.querySelectorAll('li').length === 3, 'Filter edits must not alter the fixed push preview');
+  checks.push('Native group push preview froze three members and exact source/upstream targets, skipped missing upstream and left both local fixture remotes unchanged before confirmation');
+  await click('Push 2 eligible upstreams', preview);
+  const results = await until('group push independent outcomes', async () => {
+    const rows = (await api.getOperations()).filter(row => row.batchId && row.action === 'push');
+    return rows.length === 3 && rows.every(row => !['queued', 'running'].includes(row.state)) ? rows : null;
+  });
+  assert(results.filter(row => row.state === 'succeeded').length === 1 && results.filter(row => row.state === 'failed').length === 1 && results.filter(row => row.state === 'skipped').length === 1, 'Push must retain success, remote rejection and missing-upstream skip');
+  assert(results.filter(row => row.state !== 'skipped').every(row => row.destination === 'origin refs/heads/upstream-name' && row.summary?.includes('refs/heads/main')), 'Push activity must retain reviewed source/destination');
+  const after = await inspect();
+  assert(after.remote[0] === before.local[0] && after.remote[1] === before.remote[1] && after.dirtyContents === 'keep my uncommitted bytes\n', 'Only accepted remote may move; dirty local bytes remain unchanged');
+  const retry = await until('failed push retry visible independently of filters', () => group.querySelector<HTMLInputElement>('[aria-label="Retry rejected"]'));
+  retry.click();
+  await click('Preview retry (1)', group);
+  const retryPreview = await region('Batch preview');
+  assert(retryPreview.querySelectorAll('li').length === 1 && retryPreview.textContent?.includes('rejected'), 'Retry must review only explicitly chosen failed member');
+  await click('Close preview', retryPreview);
+  assert((await inspect()).remote.join() === after.remote.join(), 'Canceled retry preview must not push');
+  checks.push('Native group push published one exact commit, preserved dirty bytes, reported independent remote rejection/skip with retained targets and reviewed a selected retry without executing it');
+}
+
 async function runGroupSwitchSmoke(checks: string[]) {
   await invoke('native_smoke_group_switch_case', { inspect: false });
   const group = await until('group-switch project opens', () => {
@@ -1468,7 +1504,7 @@ export async function runNativeSmoke(): Promise<void> {
     if (context.m3) await runCombineSmoke(checks);
     if (context.performance) await runPerformanceSmoke(checks);
     if (context.discovery) await runDiscoverySmoke(checks);
-    if (context.discovery) { await runGroupStatusSmoke(checks); await runGroupSwitchSmoke(checks); }
+    if (context.discovery) { await runGroupStatusSmoke(checks); await runGroupSwitchSmoke(checks); await runGroupPushSmoke(checks); }
     if (context.historySearch) await runHistorySearchSmoke(checks);
     if (context.remoteCheckout) await runRemoteCheckoutSmoke(checks);
     if (context.cherryPick) { await runCherryPickSmoke(checks); return; }

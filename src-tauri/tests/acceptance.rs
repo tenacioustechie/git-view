@@ -89,6 +89,410 @@ fn switch_request(project: &Project, branch: Option<&str>) -> BatchRequest {
     request.target_branch = Some("team/topic".into());
     request
 }
+
+fn push_repo(root: &Path, name: &str) -> (PathBuf, PathBuf, String) {
+    let repo = root.join(name);
+    init(&repo);
+    commit(&repo, "file", "base\n");
+    let remote = root.join(format!("{name}.git"));
+    git(root, &["init", "--bare", remote.to_str().unwrap()]);
+    git(
+        &repo,
+        &["remote", "add", "origin", remote.to_str().unwrap()],
+    );
+    git(&repo, &["push", "-u", "origin", "main:upstream-name"]);
+    let base = git(&repo, &["rev-parse", "HEAD"]);
+    commit(&repo, "file", "publish\n");
+    (repo, remote, base)
+}
+
+#[tokio::test]
+async fn group_push_cancel_stops_queued_jobs_but_reports_already_running_pushes() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path();
+    let names = ["first", "second", "third", "queued"];
+    let mut remotes = Vec::new();
+    for name in names {
+        let (repo, remote, base) = push_repo(root, name);
+        remotes.push((remote, base));
+        let hooks = repo.join(".git/hooks");
+        std::fs::create_dir_all(&hooks).unwrap();
+        let hook = hooks.join("pre-push");
+        std::fs::write(&hook, "#!/bin/sh\ntouch .git/push-started\nsleep 2\n").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        git(
+            &repo,
+            &["config", "core.hooksPath", hooks.to_str().unwrap()],
+        );
+    }
+    let (engine, catalog, project) = switch_project(root, &names).await;
+    let service = Operations::new(engine, catalog);
+    let plan = service
+        .plan_batch(request(&project, "push", None))
+        .await
+        .unwrap();
+    let batch = service.run_batch(&plan.plan_id).await.unwrap();
+    tokio::time::timeout(Duration::from_secs(20), async {
+        while names
+            .iter()
+            .filter(|name| root.join(name).join(".git/push-started").exists())
+            .count()
+            < 3
+        {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    service.cancel(&batch.batch_id).await.unwrap();
+    let results = finish(&service, &batch).await;
+    assert_eq!(
+        results
+            .iter()
+            .filter(|r| r.state == JobState::Succeeded)
+            .count(),
+        3
+    );
+    assert_eq!(
+        results
+            .iter()
+            .filter(|r| r.state == JobState::Canceled)
+            .count(),
+        1
+    );
+    for (result, (remote, base)) in results.iter().zip(remotes) {
+        let tip = git(&remote, &["rev-parse", "refs/heads/upstream-name"]);
+        if result.state == JobState::Canceled {
+            assert_eq!(tip, base);
+        } else {
+            assert_ne!(tip, base);
+            assert!(result.reason.as_ref().unwrap().contains("action completed"));
+        }
+    }
+}
+
+#[tokio::test]
+async fn group_push_reviews_exact_upstreams_preserves_dirty_bytes_and_shares_alias_results() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path();
+    let (repo, remote, base) = push_repo(root, "ready");
+    let (missing, _, _) = push_repo(root, "missing-upstream");
+    git(&missing, &["branch", "--unset-upstream"]);
+    let (detached, _, _) = push_repo(root, "detached");
+    git(&detached, &["switch", "--detach"]);
+    init(&root.join("unborn"));
+    std::fs::write(repo.join("file"), "keep dirty bytes\n").unwrap();
+    git(&repo, &["config", "push.followTags", "true"]);
+    git(&repo, &["config", "push.autoSetupRemote", "true"]);
+    git(
+        &repo,
+        &["tag", "-a", "unreviewed-tag", "-m", "never push this"],
+    );
+    let source = git(&repo, &["rev-parse", "HEAD"]);
+    let (engine, catalog, project) = switch_project(
+        root,
+        &[
+            "ready",
+            "ready",
+            "missing-upstream",
+            "detached",
+            "unborn",
+            "absent",
+        ],
+    )
+    .await;
+    let service = Operations::new(engine, catalog);
+    let preview = service
+        .plan_batch(request(&project, "push", None))
+        .await
+        .unwrap();
+    assert_eq!(preview.candidates.iter().filter(|c| c.eligible).count(), 2);
+    assert_eq!(
+        preview.candidates[0].destination.as_deref(),
+        Some("origin refs/heads/upstream-name")
+    );
+    assert!(preview.candidates[0]
+        .summary
+        .as_ref()
+        .unwrap()
+        .contains(&source));
+    assert_eq!(
+        git(&remote, &["rev-parse", "refs/heads/upstream-name"]),
+        base
+    );
+    let batch = service.run_batch(&preview.plan_id).await.unwrap();
+    assert_eq!(
+        service.run_batch(&preview.plan_id).await.unwrap().batch_id,
+        batch.batch_id
+    );
+    let results = finish(&service, &batch).await;
+    assert!(results[..2].iter().all(|r| r.state == JobState::Succeeded));
+    assert!(results[2..].iter().all(|r| r.state == JobState::Skipped));
+    assert_eq!(results[0].destination, preview.candidates[0].destination);
+    assert_eq!(results[1].summary, preview.candidates[1].summary);
+    assert!(results[1]
+        .reason
+        .as_ref()
+        .unwrap()
+        .contains("Same repository"));
+    assert_eq!(
+        git(&remote, &["rev-parse", "refs/heads/upstream-name"]),
+        source
+    );
+    assert!(git(&remote, &["tag", "--list"]).is_empty());
+    assert_eq!(
+        git(
+            &remote,
+            &["for-each-ref", "--format=%(refname)", "refs/heads"]
+        ),
+        "refs/heads/upstream-name"
+    );
+    assert_eq!(
+        git(&repo, &["config", "branch.main.merge"]),
+        "refs/heads/upstream-name"
+    );
+    assert_eq!(
+        std::fs::read_to_string(repo.join("file")).unwrap(),
+        "keep dirty bytes\n"
+    );
+}
+
+#[tokio::test]
+async fn group_push_rejects_ambiguous_config_and_rechecks_preview_state() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path();
+    let (repo, remote, base) = push_repo(root, "one");
+    let (engine, catalog, project) = switch_project(root, &["one"]).await;
+    let service = Operations::new(engine, catalog.clone());
+    for (key, value) in [
+        ("branch.main.pushRemote", "fork"),
+        ("remote.pushDefault", "fork"),
+        ("remote.origin.mirror", "true"),
+        ("remote.origin.push", "+main:refs/heads/upstream-name"),
+        ("remote.origin.push", "main:refs/heads/other"),
+    ] {
+        git(&repo, &["config", key, value]);
+        let plan = service
+            .plan_batch(request(&project, "push", None))
+            .await
+            .unwrap();
+        assert!(!plan.candidates[0].eligible, "{key}={value}");
+        git(&repo, &["config", "--unset-all", key]);
+    }
+    git(
+        &repo,
+        &["config", "--add", "branch.main.merge", "refs/heads/other"],
+    );
+    assert!(
+        !service
+            .plan_batch(request(&project, "push", None))
+            .await
+            .unwrap()
+            .candidates[0]
+            .eligible
+    );
+    git(
+        &repo,
+        &[
+            "config",
+            "--replace-all",
+            "branch.main.merge",
+            "refs/heads/upstream-name",
+        ],
+    );
+    git(
+        &repo,
+        &[
+            "config",
+            "--add",
+            "remote.origin.pushurl",
+            remote.to_str().unwrap(),
+        ],
+    );
+    git(
+        &repo,
+        &[
+            "config",
+            "--add",
+            "remote.origin.pushurl",
+            root.join("elsewhere.git").to_str().unwrap(),
+        ],
+    );
+    assert!(
+        !service
+            .plan_batch(request(&project, "push", None))
+            .await
+            .unwrap()
+            .candidates[0]
+            .eligible
+    );
+    git(&repo, &["config", "--unset-all", "remote.origin.pushurl"]);
+    assert!(
+        !service
+            .plan_batch(request(&project, "push", Some("other")))
+            .await
+            .unwrap()
+            .candidates[0]
+            .eligible
+    );
+    let preview = service
+        .plan_batch(request(&project, "push", Some("main")))
+        .await
+        .unwrap();
+    git(
+        &repo,
+        &[
+            "config",
+            "branch.main.merge",
+            "refs/heads/changed-after-preview",
+        ],
+    );
+    let result = finish(
+        &service,
+        &service.run_batch(&preview.plan_id).await.unwrap(),
+    )
+    .await;
+    assert_eq!(result[0].state, JobState::Skipped);
+    git(
+        &repo,
+        &["config", "branch.main.merge", "refs/heads/upstream-name"],
+    );
+    let preview = service
+        .plan_batch(request(&project, "push", None))
+        .await
+        .unwrap();
+    commit(&repo, "file", "new unreviewed commit\n");
+    let result = finish(
+        &service,
+        &service.run_batch(&preview.plan_id).await.unwrap(),
+    )
+    .await;
+    assert_eq!(result[0].state, JobState::Skipped);
+    let preview = service
+        .plan_batch(request(&project, "push", None))
+        .await
+        .unwrap();
+    std::fs::write(&project.display_path, b"{}").unwrap();
+    assert!(service.run_batch(&preview.plan_id).await.is_err());
+    assert_eq!(
+        git(&remote, &["rev-parse", "refs/heads/upstream-name"]),
+        base
+    );
+}
+
+#[tokio::test]
+async fn group_push_partial_failure_cancellation_and_fresh_retry_are_independent() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path();
+    let (_, good_remote, _) = push_repo(root, "good");
+    let (bad, bad_remote, base) = push_repo(root, "bad");
+    let other = root.join("other");
+    git(
+        root,
+        &[
+            "clone",
+            "-b",
+            "upstream-name",
+            bad_remote.to_str().unwrap(),
+            other.to_str().unwrap(),
+        ],
+    );
+    config(&other);
+    commit(&other, "different", "remote ahead\n");
+    git(&other, &["push", "origin", "HEAD:upstream-name"]);
+    let remote_tip = git(&bad_remote, &["rev-parse", "refs/heads/upstream-name"]);
+    let (engine, catalog, project) = switch_project(root, &["good", "bad"]).await;
+    let service = Operations::new(engine, catalog);
+    let preview = service
+        .plan_batch(request(&project, "push", None))
+        .await
+        .unwrap();
+    assert!(preview.candidates.iter().all(|c| c.eligible)); // Preview does not contact remote.
+    let results = finish(
+        &service,
+        &service.run_batch(&preview.plan_id).await.unwrap(),
+    )
+    .await;
+    assert_eq!(results[0].state, JobState::Succeeded);
+    assert_eq!(results[1].state, JobState::Failed);
+    assert!(results[1].outcome_uncertain);
+    assert_eq!(
+        git(&bad_remote, &["rev-parse", "refs/heads/upstream-name"]),
+        remote_tip
+    );
+    assert_ne!(
+        git(&good_remote, &["rev-parse", "refs/heads/upstream-name"]),
+        base
+    );
+    // New retry resolves a changed configured upstream, but never runs without review.
+    git(&bad, &["fetch", "origin"]);
+    git(&bad, &["merge", "--no-edit", "origin/upstream-name"]);
+    let mut retry = request(&project, "push", None);
+    retry.member_ids = vec![preview.candidates[1].member_id.clone()];
+    let retry = service.plan_batch(retry).await.unwrap();
+    assert!(retry.candidates[0].eligible);
+    assert_eq!(
+        git(&bad_remote, &["rev-parse", "refs/heads/upstream-name"]),
+        remote_tip
+    );
+    let batch = service.run_batch(&retry.plan_id).await.unwrap();
+    service.cancel(&batch.batch_id).await.unwrap();
+    assert_eq!(finish(&service, &batch).await[0].state, JobState::Canceled);
+    assert_eq!(
+        git(&bad_remote, &["rev-parse", "refs/heads/upstream-name"]),
+        remote_tip
+    );
+}
+
+#[tokio::test]
+async fn group_push_pins_the_reviewed_commit_even_if_a_hook_moves_the_local_branch() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path();
+    let (repo, remote, _) = push_repo(root, "one");
+    let reviewed = git(&repo, &["rev-parse", "HEAD"]);
+    git(&repo, &["switch", "-c", "other"]);
+    commit(&repo, "later", "not reviewed\n");
+    let unreviewed = git(&repo, &["rev-parse", "HEAD"]);
+    git(&repo, &["switch", "main"]);
+    let hooks = repo.join(".git/hooks");
+    std::fs::create_dir_all(&hooks).unwrap();
+    let hook = hooks.join("pre-push");
+    std::fs::write(
+        &hook,
+        format!("#!/bin/sh\ngit update-ref refs/heads/main {unreviewed}\n"),
+    )
+    .unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    git(
+        &repo,
+        &["config", "core.hooksPath", hooks.to_str().unwrap()],
+    );
+    let (engine, catalog, project) = switch_project(root, &["one"]).await;
+    let service = Operations::new(engine, catalog);
+    let preview = service
+        .plan_batch(request(&project, "push", None))
+        .await
+        .unwrap();
+    let results = finish(
+        &service,
+        &service.run_batch(&preview.plan_id).await.unwrap(),
+    )
+    .await;
+    assert_eq!(results[0].state, JobState::Succeeded);
+    assert_eq!(
+        git(&remote, &["rev-parse", "refs/heads/upstream-name"]),
+        reviewed
+    );
+    assert_eq!(git(&repo, &["rev-parse", "HEAD"]), unreviewed);
+}
 async fn switch_project(root: &Path, names: &[&str]) -> (GitEngine, Catalog, Project) {
     let engine = GitEngine::isolated();
     let catalog = Catalog::new();

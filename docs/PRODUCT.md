@@ -159,8 +159,12 @@ fresh plan for the original target. Progressive status for saved-project opening
 reload and refresh is now implemented: ordered partial rows, four concurrent
 catalog reads, Stop status scan, retained last-known values, manual retry, and
 generation-guarded publication. Batch review waits for complete status; navigation
-and selection remain usable. Create/save still wait for status. Explicit batch
-push remains a separate follow-up; platform acceptance is tracked in Build status.
+and selection remain usable. Create/save still wait for status. Configured-upstream
+batch push is implemented with reviewed exact commits and remote branch refs,
+independent outcomes and fresh retry previews. It rejects ambiguous destinations,
+does not force or set upstreams, and leaves dirty files local. Queued cancellation
+does not terminate already-running Git pushes. Editable per-member destinations
+remain excluded from this slice; platform acceptance is tracked in Build status.
 
 M2 discovery walks the chosen root to the chosen depth, recognizes `.git` directories and files, skips internal Git data and common dependency/build folders, avoids symlink traversal, and reports inaccessible folders. Stop descending inside a discovered repository by default. Review candidates before saving; rescan proposes additions rather than silently changing membership.
 
