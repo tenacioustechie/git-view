@@ -8,4 +8,7 @@ test-results/
 playwright-report/
 src-tauri/gen/
 artifacts/
+release-assets/
+downloaded-packages/
+/RELEASE_NOTES.md
 __pycache__/

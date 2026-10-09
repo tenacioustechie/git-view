@@ -1,7 +1,8 @@
 # Feature status
 
-Reviewed 5 October 2026, including configured-upstream group push based on
-progressive-status commit `2edd67c`, group switching at `8c8c3e4`
+Reviewed 9 October 2026, including the automatic packaging and draft-release
+workflow, configured-upstream group push based on progressive-status commit
+`2edd67c`, group switching at `8c8c3e4`
 (following blame commit `9a5ee62`) and guided linear rebase at source checkpoint
 `d9af4e6` and the earlier A1–A4 workflows, against the
 [product plan](PRODUCT.md). This is the current completion inventory;
@@ -233,10 +234,12 @@ was rebuilt; installed apps and collected packages remain unchanged.
   stashes beyond 1,000 entries or an 8 MiB reflog are excluded from this slice.
 - Local packages are unsigned; macOS notarization and public release delivery
   are not configured/completed.
-- The [GitHub workflow](../.github/workflows/build.yml) has only manual
-  `workflow_dispatch`, with read-only repository permissions. It runs checks and
-  builds packages as Actions artifacts. There are no push/PR triggers, native GUI
-  acceptance step, or GitHub Release publication job.
+- The [GitHub workflow](../.github/workflows/build.yml) runs checks and package
+  builds for pull requests, `main` pushes, version tags and manual dispatches on
+  macOS arm64/x64, Windows x64 and Linux x64. Tag runs assemble verified assets
+  into a draft GitHub Release; a person must review and publish it. Hosted results,
+  downloaded-package acceptance, signing/notarization and native GUI/installer
+  acceptance remain unverified.
 - Remote operations are tested against disposable local remotes; real remote-service
   authentication remains unverified.
 - Complete screen-reader/Tab traversal and long-group scroll restoration still

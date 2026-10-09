@@ -1,6 +1,6 @@
 # Build and installation guide
 
-Reviewed 23 September 2026 for Git View 0.1.0. The project pins Node 22,
+Reviewed 9 October 2026 for Git View 0.1.0. The project pins Node 22,
 pnpm 9.12.0, and Rust 1.98.1. The current tested release packages were built
 from source checkpoint `d9af4e6`; exact results and checksums are retained in
 [Build status](BUILD_STATUS.md) and `artifacts/manifest.json`.
@@ -284,23 +284,25 @@ after changing source code so a wrapper does not start an older executable.
 
 The repository has one workflow,
 [`.github/workflows/build.yml`](../.github/workflows/build.yml), named
-**Native verification**.
+**Build, test and package**.
 
 ### How it starts
 
-The workflow uses only `workflow_dispatch`, so someone must start it manually
-from GitHub Actions. It does not run automatically for pushes or pull requests.
-Its repository permission is read-only `contents: read`.
+The workflow runs for pull requests, pushes to `main`, version tags matching
+`v*`, and manual `workflow_dispatch` runs. Non-tag runs use read-only
+`contents: read` permission. Concurrent non-tag runs for the same branch or pull
+request cancel the older run; tag builds are never canceled this way.
 
-To start it, open the repository's **Actions** tab, select **Native
-verification**, choose **Run workflow**, select the branch, and start the run.
+To start it manually, open the repository's **Actions** tab, select **Build,
+test and package**, choose **Run workflow**, select the branch, and start the run.
 
 ### Build matrix
 
 One `verify` job runs independently on:
 
-- `macos-latest`
-- `windows-latest`
+- `macos-15` for Apple silicon
+- `macos-15-intel` for Intel x64
+- `windows-2022` for x64
 - `ubuntu-24.04`
 
 The matrix has `fail-fast: false`, allowing the other operating systems to
@@ -310,51 +312,80 @@ continue if one fails.
 
 For each operating system, the workflow:
 
-1. Checks out the source with `actions/checkout@v4`.
-2. Installs pnpm 9.12.0 with `pnpm/action-setup@v4`.
-3. Installs Node 22 and enables the pnpm cache with `actions/setup-node@v4`.
+1. Checks out the source with a commit-pinned `actions/checkout` and does not
+   retain repository credentials.
+2. Installs the package-manager version declared in `package.json` with a
+   commit-pinned `pnpm/action-setup`.
+3. Installs Node 22.22.0 and enables the pnpm cache with a commit-pinned
+   `actions/setup-node`.
 4. Installs Rust 1.98.1 with rustfmt and Clippy.
 5. Installs WebKitGTK and native packaging dependencies on Ubuntu.
-6. Runs `pnpm install --frozen-lockfile`.
-7. Runs TypeScript checking, ESLint, frontend tests, and the production frontend
+6. Verifies that the package, Cargo, lockfile, and Tauri versions agree, then
+   tests the release-assembly helpers.
+7. Runs `pnpm install --frozen-lockfile`.
+8. Runs TypeScript checking, ESLint, frontend tests, and the production frontend
    build.
-8. Runs Rust formatting, strict all-target Clippy, and Rust tests.
-9. Runs `pnpm tauri build`, using the bundle targets in `tauri.conf.json`.
-10. Uploads `src-tauri/target/release/bundle/**` as a GitHub Actions artifact
-    named `git-view-macOS`, `git-view-Windows`, or `git-view-Linux`.
+9. Runs Rust formatting, strict all-target Clippy with the native-smoke feature,
+   and the locked Rust test suite.
+10. Builds one package set for that matrix entry: arm64 or x64 DMG, x64 NSIS,
+    or x64 DEB and AppImage. macOS packages use ad-hoc signing; packages are not
+    notarized. Windows and Linux packages are unsigned.
+11. Runs bounded CLI checks against the release executable, copies only the
+    expected package formats, and records source revision, size, and SHA-256 in
+    a platform manifest.
+12. Uploads the normalized packages and manifest as `git-view-macos-arm64`,
+    `git-view-macos-x64`, `git-view-windows-x64`, or `git-view-linux-x64` for
+    14 days.
 
 The verification commands in the workflow are currently:
 
 ```sh
+node scripts/ci-release.mjs check
+node --test scripts/ci-release.test.mjs
 pnpm install --frozen-lockfile
 pnpm typecheck
 pnpm lint
-pnpm test
+pnpm test -- --maxWorkers=2
 pnpm build
 cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
-cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
-cargo test --manifest-path src-tauri/Cargo.toml
-pnpm tauri build
+cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets \
+  --features native-smoke -- -D warnings
+cargo test --manifest-path src-tauri/Cargo.toml --locked
 ```
 
-The Tauri build invokes the configured `pnpm build` before-build command again.
-After a job finishes, its operating-system package can be downloaded from the
-run's **Artifacts** section.
+The platform-specific Tauri command follows those checks and invokes the
+configured `pnpm build` before-build command again. After a job finishes, its
+package and source manifest can be downloaded from the run's **Artifacts**
+section.
+
+### Version-tag draft release
+
+A push of a tag matching `v*` must also match the version in `package.json`,
+`src-tauri/Cargo.toml`, `src-tauri/Cargo.lock`, and `src-tauri/tauri.conf.json`.
+After all four matrix jobs pass, a separate job downloads exactly those four
+artifacts, rejects missing, extra, renamed, empty, symlinked, revision-mismatched,
+or checksum-mismatched inputs, and writes `SHA256SUMS.txt`.
+
+The job then creates a new **draft** GitHub Release for the existing tag. It
+verifies that the remote tag still resolves to the tested commit and refuses to
+overwrite an existing release. The generated notes call out unsigned packages,
+platform limits, and the need for downloaded-package acceptance before a person
+publishes the draft. Pull requests, `main` pushes, and manual runs cannot create
+a release and do not receive `contents: write` permission.
 
 ### What the workflow does not currently do
 
-- It does not run automatically on a branch, push, or pull request.
 - It does not run `scripts/native-smoke.py` or the interactive Windows native
   desktop and installed-package checks.
-- It does not compare or collect packages into the repository's local
-  `artifacts/manifest.json` format.
 - It does not sign or notarize packages.
-- It does not create a GitHub Release or publish packages.
+- It does not publish a draft GitHub Release; publication remains a reviewed
+  manual action.
 - A hosted run has not yet been recorded as verified in Build status.
 
-The uploaded Actions artifacts are build outputs for inspection and download;
-they are not published releases. Local macOS arm64 and Windows 11 x64 results
-remain the current platform acceptance evidence in [Build status](BUILD_STATUS.md).
+The uploaded Actions artifacts and tag-triggered release drafts are build outputs
+for inspection. Local macOS arm64 and Windows 11 x64 results remain the current
+platform acceptance evidence until hosted jobs and downloaded packages are
+separately recorded in [Build status](BUILD_STATUS.md).
 
 ## Troubleshooting
 

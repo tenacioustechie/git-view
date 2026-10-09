@@ -34,8 +34,9 @@ Future user-facing changes must update both documents in the same change; see
 for local builds, package installation, and the current GitHub Actions pipeline.
 See [Build status](docs/BUILD_STATUS.md) for tested source revisions, native
 evidence, artifact paths, and remaining platform checks. Local macOS and Windows
-workflows are exercised with disposable repositories; Linux CI is configured
-but has not run.
+workflows are exercised with disposable repositories. Pushes, pull requests and
+version tags now start the four-platform packaging workflow; hosted results are
+recorded separately from local native acceptance.
 
 Install the pinned dependencies with `pnpm install --frozen-lockfile`. Run `pnpm tauri dev` for development. On macOS, `scripts/macos-build.sh --skip-deps --open` builds and opens the current source; add `--check --install` to run the full checks and replace `/Applications/Git View.app`. On Windows, use `.\scripts\windows-build.ps1 -SkipDeps -Launch`; add `-Check -Install` for full checks and per-user installation. Use `scripts/git-view` on macOS/Linux or `scripts\git-view.cmd` on Windows after building. These launchers preserve the invoking working directory. They are not installed globally.
 

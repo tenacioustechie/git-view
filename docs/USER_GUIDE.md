@@ -1,8 +1,8 @@
 # Git View user guide
 
-Reviewed 5 October 2026 for version 0.1.0, including configured-upstream group
-push based on progressive-status commit `2edd67c`, and
-group branch switching at `8c8c3e4`.
+Reviewed 9 October 2026 for version 0.1.0, including the automatic packaging and
+draft-release workflow, configured-upstream group push based on progressive-status
+commit `2edd67c`, and group branch switching at `8c8c3e4`.
 The latest collected native packages
 remain rebase checkpoint `d9af4e6` on macOS arm64 and Windows 11 x64; they do not
 include this workspace redesign. See [Build status](BUILD_STATUS.md) for exact
@@ -1105,6 +1105,9 @@ interactive rebase, editable per-member batch-push destinations, integrated conf
 multiple windows, group templates, and persisted group filters or commit drafts.
 The broader backlog and verification gaps are tracked in [Feature status](FEATURE_STATUS.md).
 
-The repository's GitHub workflow currently runs only when manually dispatched.
-It tests, builds, and uploads Actions artifacts; pushing does not trigger it and
-it does not publish a GitHub Release.
+The repository's GitHub workflow runs for pull requests, `main` pushes, version
+tags and manual dispatches. It tests and packages macOS arm64/x64, Windows x64
+and Linux x64 builds. A matching version tag creates a draft GitHub Release only
+after all packages and their source/checksum manifests pass validation; a person
+must review and publish the draft. Hosted packages remain unsigned and do not
+replace native GUI or installer acceptance on the target platforms.

@@ -1,5 +1,42 @@
 # Build status
 
+## 2026-10-09: automatic four-platform packages and guarded draft releases
+
+The GitHub workflow now runs for pull requests, `main` pushes, version tags and
+manual dispatches. Its matrix builds macOS arm64 and Intel x64 DMGs, a Windows
+x64 NSIS installer, and Linux x64 DEB/AppImage packages. Each job runs the locked
+frontend and Rust gates, checks the release executable, emits normalized package
+names and a manifest binding sizes/checksums to the exact source revision, and
+uploads only those files. Actions are commit-pinned and checkout credentials are
+not retained.
+
+Tag builds require `v<version>` to match all four version sources. A separate
+least-privilege job accepts exactly four platform artifacts, rejects missing,
+extra, empty, symlinked, renamed, revision/version/checksum-mismatched inputs,
+generates `SHA256SUMS.txt`, verifies that the remote tag still resolves to the
+tested commit, and creates a new draft GitHub Release. It does not overwrite or
+publish a release. Non-tag jobs retain read-only repository permission.
+
+Local preparation passes `node scripts/ci-release.mjs check`, all **18** Node
+packaging/release tests, `pnpm typecheck`, `pnpm lint`, all **226** frontend tests
+in 24 files, the production frontend build, Rust formatting, `git diff --check`,
+the release CLI smoke check, and the workflow's locked ad-hoc-signed macOS DMG
+command. The resulting local package is
+`src-tauri/target/release/bundle/dmg/Git View_0.1.0_aarch64.dmg`.
+The first DMG attempt could not run its temporary disk-image operation inside
+the restricted command sandbox; the same command passed with macOS disk-image
+access, so this was an execution-environment restriction rather than a package
+failure. The hosted matrix remains unverified until the pushed workflow runs.
+The local run also caught and corrected a smoke-path error: DMG packaging removes
+the intermediate app bundle, so every platform now checks the retained release
+executable in `src-tauri/target/release`.
+
+The configured Windows test host was unreachable during preparation because
+`thinkpadbm` did not resolve, so the outstanding `STATUS_ENTRYPOINT_NOT_FOUND`
+diagnostic was not rerun. The new hosted Windows Rust gate will provide an
+independent environment comparison; it is not treated as passing evidence before
+that run completes.
+
 ## 2026-10-05: B2 committed; B3 configured-upstream group push
 
 Committed B2 implementation/tests/docs as `2edd67c` (`Add progressive group status
