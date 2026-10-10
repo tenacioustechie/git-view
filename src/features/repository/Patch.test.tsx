@@ -86,4 +86,4 @@ it.each(['unified', 'split'] as const)('bounds large %s displays and retains an 
   expect(limitPatch('+line\n'.repeat(MAX_PATCH_LINES)).limited).toBe(false);
   expect(screen.getByRole('status').textContent).toContain('first 10,000 patch lines');
   expect(container.querySelectorAll(layout === 'split' ? '.split-row,.split-meta' : '.diff-line')).toHaveLength(MAX_PATCH_LINES);
-});
+}, 15_000);

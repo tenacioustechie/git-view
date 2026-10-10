@@ -37,6 +37,17 @@ diagnostic was not rerun. The new hosted Windows Rust gate will provide an
 independent environment comparison; it is not treated as passing evidence before
 that run completes.
 
+The first hosted run, [37913674192](https://github.com/tenacioustechie/git-view/actions/runs/37913674192),
+proved the full macOS arm64 path, including 226 frontend tests, 196 Rust tests,
+DMG collection and artifact upload. Linux, Windows x64 and Intel macOS each
+stopped at the same existing 10,000-line split-diff renderer test after 5.5–5.8
+seconds exceeded Vitest's default 5-second per-test limit; their Rust/package
+steps therefore did not run. The test still renders and asserts every bounded
+row. Its explicit timeout is now 15 seconds so slower hosted runners can complete
+the established acceptance rather than weakening its coverage. A follow-up
+hosted run is required for those three platform results and the Windows loader
+comparison.
+
 ## 2026-10-05: B2 committed; B3 configured-upstream group push
 
 Committed B2 implementation/tests/docs as `2edd67c` (`Add progressive group status
