@@ -16,6 +16,12 @@ fails. It uploads those diagnostics before preserving the failed job result so
 the missing entry point can be mapped to its importing dependency rather than
 guessed.
 
+The first diagnostic run reached a separate Windows renderer timing limit before
+the Rust gate: the progressive three-repository status test completed only its
+first update within Testing Library's default one-second wait. Its completion
+wait now allows five seconds while retaining every intermediate-state,
+selection, filter, navigation and final-state assertion.
+
 ## 2026-10-09: automatic four-platform packages and guarded draft releases
 
 The GitHub workflow now runs for pull requests, `main` pushes, version tags and

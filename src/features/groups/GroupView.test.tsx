@@ -82,7 +82,10 @@ describe('GroupView renderer', () => {
     expect(screen.getByRole('status').textContent).toContain('1 of 3');
     expect(screen.getByText('1 selected · 1 hidden by filters')).toBeTruthy();
     vi.mocked(api.getProjectStatus).mockResolvedValue({ ...project, statusScan: { ...scanningProject().statusScan!, state: 'complete', pendingMemberIds: [] } });
-    await waitFor(() => expect(screen.getByRole('status').textContent).toContain('3 of 3'));
+    await waitFor(
+      () => expect(screen.getByRole('status').textContent).toContain('3 of 3'),
+      { timeout: 5_000 },
+    );
     expect((screen.getByRole('button', { name: 'Fetch all (1)' }) as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(screen.getByRole('button', { name: 'Fetch selected (1)' }));
     await waitFor(() => expect(api.planBatch).toHaveBeenCalledWith(expect.objectContaining({ memberIds: ['web'] })));
