@@ -37,8 +37,16 @@ and integration harnesses but omitted the library unit-test harness. The build
 script now disables Tauri's equivalent bin-only manifest resource and supplies
 the same manifest through the general final-target linker directive. This gives
 the library harness and app binaries one resource each without duplicate
-resource ID 1. Full Windows Rust and package verification is required before
-treating this as resolved.
+resource ID 1.
+
+Windows checkpoint `0bf65455813d99ba650f75a8474eac4eab8ec8c0` verifies the
+fix: all **226 frontend tests**, **187 active Rust tests** (two explicit
+measurements ignored), formatting/Clippy, and **67 native desktop checks** pass
+on Windows 11 x64. The native suite includes the current group-push workflows
+and complete repository mutation/recovery coverage. A release build produced
+and smoke-checked `git-view.exe` and the 3,104,891-byte unsigned NSIS installer
+`Git View_0.1.0_x64-setup.exe`. Hosted Windows Server confirmation remains
+pending until this checkpoint is pushed and its matrix run completes.
 
 ## 2026-10-09: automatic four-platform packages and guarded draft releases
 

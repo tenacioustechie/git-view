@@ -147,13 +147,14 @@ refer to the delivered runbook workflows on tested platforms.
 
 ## Verification and distribution outstanding
 
-B3 working-tree evidence on `2edd67c`: **226 frontend tests and 67 native checks
-pass on each platform**, and **196 Rust tests pass on Mac**. All five new group-push
-backend acceptance tests pass on Windows, but its full backend gate still stops
-before library assertions with `STATUS_ENTRYPOINT_NOT_FOUND`. This is distinct
-from the earlier Smart App Control block; neither issue is declared resolved.
-The normal unsigned Mac app was rebuilt. Installed apps and collected release
-packages were not replaced. See Build status for exact reports and source baselines.
+B3 working-tree evidence now includes **226 frontend tests and 67 native checks
+on each tested platform**, **196 Rust tests on Mac**, and **187 active Rust tests
+on Windows** at loader-fix checkpoint `0bf6545` (two explicit measurements
+ignored on Windows). The missing Common Controls manifest on the Windows library
+test harness is fixed, and a new unsigned NSIS package builds and passes release
+CLI smoke checks. The normal unsigned Mac app was rebuilt earlier. Installed
+apps and collected release packages were not replaced. See Build status for
+exact reports and source baselines.
 
 B2 working-tree evidence on `600f601`: 223 frontend tests and 65 native checks
 pass on each platform; 191 Rust tests pass on Mac, with separate 15/25/100-member
@@ -204,9 +205,9 @@ exhaustive keyboard-only pass through every workflow. The unsigned Mac bundle
 was rebuilt; installed apps and collected packages remain unchanged.
 
 - The hosted GitHub workflow has passed its complete macOS arm64, macOS x64 and
-  Linux x64 check/package/artifact paths. Windows passes frontend checks and
-  strict Clippy but its Rust library-test executable still exits at load time
-  with `STATUS_ENTRYPOINT_NOT_FOUND`; failure diagnostics are now collected.
+  Linux x64 check/package/artifact paths. The Windows loader fix passes the full
+  local Windows 11 gate and NSIS build; its hosted Windows Server confirmation
+  remains pending. Failure diagnostics remain available if the loader regresses.
 - The repository activity-drawer working tree on `dd38547` passes **189 frontend
   tests and 57 native workflow checks on macOS**, with a rebuilt unsigned Mac app.
   Its initial Windows verification stalled before producing test output. The
@@ -242,8 +243,8 @@ was rebuilt; installed apps and collected packages remain unchanged.
   builds for pull requests, `main` pushes, version tags and manual dispatches on
   macOS arm64/x64, Windows x64 and Linux x64. Tag runs assemble verified assets
   into a draft GitHub Release; a person must review and publish it. A complete
-  four-platform run and tag-triggered draft creation remain unverified because
-  of the Windows loader failure. Downloaded-package acceptance,
+  four-platform run and tag-triggered draft creation remain unverified pending
+  hosted confirmation of the Windows fix. Downloaded-package acceptance,
   signing/notarization and native GUI/installer acceptance also remain open.
 - Remote operations are tested against disposable local remotes; real remote-service
   authentication remains unverified.
@@ -268,8 +269,9 @@ lint/typecheck and smoke builds. Exact evidence is recorded in Build status;
 this partial backend run is not a complete Windows Rust-suite pass.
 
 The items above are remaining features or evidence gaps, rather than passing
-acceptance claims. The Windows Application Control gate is an explicit outstanding
-verification blocker, not a known group-switch behavior failure.
+acceptance claims. Earlier Windows Application Control and missing-manifest
+failures are retained as historical evidence in Build status; neither blocks the
+current Windows 11 verification checkpoint.
 
 ## Explicitly outside initial scope
 
