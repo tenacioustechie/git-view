@@ -22,6 +22,13 @@ first update within Testing Library's default one-second wait. Its completion
 wait now allows five seconds while retaining every intermediate-state,
 selection, filter, navigation and final-state assertion.
 
+The next run uploaded the intended diagnostics, but its first probe selected a
+newer zero-test `git_view-*.exe` sibling rather than Cargo's failing library-test
+hash; that sibling loaded successfully and therefore did not identify the
+missing entry point. The workflow now retains Cargo's exact test log and uses
+the failed executable name from that log for PE, import, manifest and direct
+loader inspection.
+
 ## 2026-10-09: automatic four-platform packages and guarded draft releases
 
 The GitHub workflow now runs for pull requests, `main` pushes, version tags and

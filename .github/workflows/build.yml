@@ -81,7 +81,9 @@ jobs:
       - name: Run Rust tests
         id: rust-tests
         continue-on-error: ${{ runner.os == 'Windows' }}
-        run: cargo test --manifest-path src-tauri/Cargo.toml --locked
+        run: |
+          mkdir -p .tools/windows-loader-diagnostics
+          cargo test --manifest-path src-tauri/Cargo.toml --locked 2>&1 | tee .tools/windows-loader-diagnostics/cargo-test.log
       - name: Diagnose Windows test-loader failure
         if: runner.os == 'Windows' && steps.rust-tests.outcome == 'failure'
         shell: pwsh

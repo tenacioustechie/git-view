@@ -12,6 +12,7 @@ $diagnosticDirectory = Join-Path $repositoryPath '.tools/windows-loader-diagnost
 New-Item -ItemType Directory -Force -Path $diagnosticDirectory | Out-Null
 
 $summaryPath = Join-Path $diagnosticDirectory 'summary.txt'
+$cargoTestLogPath = Join-Path $diagnosticDirectory 'cargo-test.log'
 $importsPath = Join-Path $diagnosticDirectory 'git-view-library-test-imports.txt'
 $headersPath = Join-Path $diagnosticDirectory 'git-view-library-test-headers.txt'
 $manifestPath = Join-Path $diagnosticDirectory 'git-view-library-test.manifest'
@@ -42,15 +43,33 @@ try {
         throw 'dumpbin.exe was not found in the Visual Studio installation'
     }
 
-    $test = Get-ChildItem 'src-tauri/target/debug/deps/git_view-*.exe' |
+    $testCandidates = Get-ChildItem 'src-tauri/target/debug/deps/git_view-*.exe' |
         Where-Object BaseName -Match '^git_view-[0-9a-f]+$' |
-        Sort-Object LastWriteTime -Descending |
-        Select-Object -First 1
+        Sort-Object LastWriteTime -Descending
+    $failedTestName = $null
+    if (Test-Path -LiteralPath $cargoTestLogPath) {
+        $failedMatches = [regex]::Matches(
+            (Get-Content -LiteralPath $cargoTestLogPath -Raw),
+            'deps[\\/](git_view-[0-9a-f]+\.exe)'
+        )
+        if ($failedMatches.Count -gt 0) {
+            $failedTestName = $failedMatches[$failedMatches.Count - 1].Groups[1].Value
+        }
+    }
+    $test = if ($failedTestName) {
+        $testCandidates | Where-Object Name -EQ $failedTestName | Select-Object -First 1
+    } else {
+        $testCandidates | Select-Object -First 1
+    }
     if (-not $test) {
-        throw 'The git_view library test executable was not found'
+        throw "The failed git_view library test executable '$failedTestName' was not found"
     }
 
     Write-Output '== Test executable =='
+    Write-Output "Cargo failure selection: $failedTestName"
+    Write-Output 'Available git_view test executables:'
+    $testCandidates | Select-Object Name, Length, LastWriteTime
+    Write-Output 'Selected executable:'
     $test | Select-Object FullName, Length, LastWriteTime
     Get-AuthenticodeSignature -LiteralPath $test.FullName |
         Select-Object Status, StatusMessage, SignerCertificate
