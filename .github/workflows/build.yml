@@ -78,7 +78,25 @@ jobs:
       - run: pnpm build
       - run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
       - run: cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets --features native-smoke -- -D warnings
-      - run: cargo test --manifest-path src-tauri/Cargo.toml --locked
+      - name: Run Rust tests
+        id: rust-tests
+        continue-on-error: ${{ runner.os == 'Windows' }}
+        run: cargo test --manifest-path src-tauri/Cargo.toml --locked
+      - name: Diagnose Windows test-loader failure
+        if: runner.os == 'Windows' && steps.rust-tests.outcome == 'failure'
+        shell: pwsh
+        run: ./scripts/windows-diagnose.ps1
+      - name: Upload Windows loader diagnostics
+        if: always() && runner.os == 'Windows' && steps.rust-tests.outcome == 'failure'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: git-view-windows-loader-diagnostics
+          path: .tools/windows-loader-diagnostics/*
+          if-no-files-found: error
+          retention-days: 14
+      - name: Fail after Windows loader diagnosis
+        if: always() && runner.os == 'Windows' && steps.rust-tests.outcome == 'failure'
+        run: exit 1
       - name: Build macOS package (ad-hoc signed, not notarized)
         if: runner.os == 'macOS'
         env:

@@ -1,6 +1,7 @@
 # Feature status
 
-Reviewed 9 October 2026, including the automatic packaging and draft-release
+Reviewed 11 October 2026, including the first hosted packaging runs and Windows
+loader diagnosis, plus the automatic packaging and draft-release
 workflow, configured-upstream group push based on progressive-status commit
 `2edd67c`, group switching at `8c8c3e4`
 (following blame commit `9a5ee62`) and guided linear rebase at source checkpoint
@@ -202,7 +203,10 @@ in Build status. This does not establish full VoiceOver/NVDA acceptance or an
 exhaustive keyboard-only pass through every workflow. The unsigned Mac bundle
 was rebuilt; installed apps and collected packages remain unchanged.
 
-- Linux and Intel Mac execution, and the hosted GitHub workflow, remain unverified.
+- The hosted GitHub workflow has passed its complete macOS arm64, macOS x64 and
+  Linux x64 check/package/artifact paths. Windows passes frontend checks and
+  strict Clippy but its Rust library-test executable still exits at load time
+  with `STATUS_ENTRYPOINT_NOT_FOUND`; failure diagnostics are now collected.
 - The repository activity-drawer working tree on `dd38547` passes **189 frontend
   tests and 57 native workflow checks on macOS**, with a rebuilt unsigned Mac app.
   Its initial Windows verification stalled before producing test output. The
@@ -237,9 +241,10 @@ was rebuilt; installed apps and collected packages remain unchanged.
 - The [GitHub workflow](../.github/workflows/build.yml) runs checks and package
   builds for pull requests, `main` pushes, version tags and manual dispatches on
   macOS arm64/x64, Windows x64 and Linux x64. Tag runs assemble verified assets
-  into a draft GitHub Release; a person must review and publish it. Hosted results,
-  downloaded-package acceptance, signing/notarization and native GUI/installer
-  acceptance remain unverified.
+  into a draft GitHub Release; a person must review and publish it. A complete
+  four-platform run and tag-triggered draft creation remain unverified because
+  of the Windows loader failure. Downloaded-package acceptance,
+  signing/notarization and native GUI/installer acceptance also remain open.
 - Remote operations are tested against disposable local remotes; real remote-service
   authentication remains unverified.
 - Complete screen-reader/Tab traversal and long-group scroll restoration still

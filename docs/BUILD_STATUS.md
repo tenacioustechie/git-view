@@ -1,5 +1,21 @@
 # Build status
 
+## 2026-10-11: hosted package matrix and Windows loader diagnosis
+
+Follow-up run [38092478028](https://github.com/tenacioustechie/git-view/actions/runs/38092478028)
+passed the complete check, test, package, smoke and artifact-upload paths on
+macOS arm64, macOS x64 and Linux x64. The Windows Server 2022 job cleared all
+226 frontend tests and strict Clippy, then reproduced
+`STATUS_ENTRYPOINT_NOT_FOUND` while Windows loaded the generated
+`git_view-*.exe` Rust library-test process. This establishes that the failure is
+not confined to the original Windows 11 workstation or Smart App Control.
+
+The workflow now captures PE headers, imports, direct DLL resolution and
+versions, the embedded manifest, and a direct loader probe when this test step
+fails. It uploads those diagnostics before preserving the failed job result so
+the missing entry point can be mapped to its importing dependency rather than
+guessed.
+
 ## 2026-10-09: automatic four-platform packages and guarded draft releases
 
 The GitHub workflow now runs for pull requests, `main` pushes, version tags and
@@ -46,7 +62,7 @@ steps therefore did not run. The test still renders and asserts every bounded
 row. Its explicit timeout is now 15 seconds so slower hosted runners can complete
 the established acceptance rather than weakening its coverage. A follow-up
 hosted run is required for those three platform results and the Windows loader
-comparison.
+comparison. The 11 October entry records that follow-up.
 
 ## 2026-10-05: B2 committed; B3 configured-upstream group push
 
