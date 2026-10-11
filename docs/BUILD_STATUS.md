@@ -29,6 +29,17 @@ missing entry point. The workflow now retains Cargo's exact test log and uses
 the failed executable name from that log for PE, import, manifest and direct
 loader inspection.
 
+The corrected probe reproduced the same failure on Windows 11 and selected the
+exact library harness. That executable imports `comctl32.dll` but has no resource
+section, while the successfully loaded zero-test sibling contains the required
+Common Controls v6 manifest. Cargo's test-only linker directive reached binary
+and integration harnesses but omitted the library unit-test harness. The build
+script now disables Tauri's equivalent bin-only manifest resource and supplies
+the same manifest through the general final-target linker directive. This gives
+the library harness and app binaries one resource each without duplicate
+resource ID 1. Full Windows Rust and package verification is required before
+treating this as resolved.
+
 ## 2026-10-09: automatic four-platform packages and guarded draft releases
 
 The GitHub workflow now runs for pull requests, `main` pushes, version tags and
