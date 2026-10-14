@@ -1,6 +1,6 @@
 # Build and installation guide
 
-Reviewed 11 October 2026 for Git View 0.1.0. The project pins Node 22,
+Reviewed 15 October 2026 for Git View 0.1.0. The project pins Node 22,
 pnpm 9.12.0, and Rust 1.98.1. The current tested release packages were built
 from source checkpoint `d9af4e6`; exact results and checksums are retained in
 [Build status](BUILD_STATUS.md) and `artifacts/manifest.json`.
@@ -328,9 +328,9 @@ For each operating system, the workflow:
 9. Runs Rust formatting, strict all-target Clippy with the native-smoke feature,
    and the locked Rust test suite.
    If Windows cannot load the Rust library-test executable, the job captures its
-   PE headers, imports, resolved direct DLL versions, embedded manifest, and a
-   direct loader probe as `git-view-windows-loader-diagnostics`, then remains
-   failed.
+   exact Cargo test log, PE headers, imports, resolved direct DLL versions,
+   embedded manifest, and a direct loader probe as
+   `git-view-windows-loader-diagnostics`, then remains failed.
 10. Builds one package set for that matrix entry: arm64 or x64 DMG, x64 NSIS,
     or x64 DEB and AppImage. macOS packages use ad-hoc signing; packages are not
     notarized. Windows and Linux packages are unsigned.

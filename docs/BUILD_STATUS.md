@@ -1,5 +1,28 @@
 # Build status
 
+## 2026-10-15: complete hosted matrix; Windows loader and Git 2.56 fixed
+
+Hosted run [38637478186](https://github.com/tenacioustechie/git-view/actions/runs/38637478186)
+passes every check, test, package smoke and artifact-upload step at source
+`61756141562f1b2c33b33cb68e0d2c7fcd4520bc` on Windows x64, macOS arm64,
+macOS x64 and Linux x64. Because this was a `main` push rather than a version
+tag, the guarded draft-release job was correctly skipped.
+
+The Windows library harness now contains the Common Controls v6 manifest and
+runs its tests instead of exiting with `STATUS_ENTRYPOINT_NOT_FOUND`. The first
+hosted run after that correction revealed a second compatibility issue in Git
+for Windows 2.56: `GIT_CONFIG_GLOBAL=NUL` and `GIT_CONFIG_SYSTEM=NUL` were
+rejected as invalid paths. Product subprocess isolation and every direct Git
+test/native helper now use Git for Windows' portable `/dev/null` path. The final
+hosted job passes the full Rust suite, strict Clippy with `native-smoke`, the
+Windows NSIS build, release CLI smoke checks and normalized artifact upload.
+
+Windows 11 checkpoint `0bf6545` separately passed all **226 frontend tests**,
+**187 active Rust tests** (two explicit measurements ignored), formatting and
+Clippy, and **67 native desktop checks**, then built and smoke-checked the
+3,104,891-byte unsigned NSIS installer. The hosted Git 2.56 compatibility
+change is source-only and the final hosted matrix provides its package evidence.
+
 ## 2026-10-11: hosted package matrix and Windows loader diagnosis
 
 Follow-up run [38092478028](https://github.com/tenacioustechie/git-view/actions/runs/38092478028)

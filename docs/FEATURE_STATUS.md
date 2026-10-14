@@ -1,8 +1,8 @@
 # Feature status
 
-Reviewed 11 October 2026, including the first hosted packaging runs and Windows
-loader diagnosis, plus the automatic packaging and draft-release
-workflow, configured-upstream group push based on progressive-status commit
+Reviewed 15 October 2026, including the complete hosted packaging matrix,
+resolved Windows loader/Git 2.56 compatibility, and the automatic packaging and
+draft-release workflow, configured-upstream group push based on progressive-status commit
 `2edd67c`, group switching at `8c8c3e4`
 (following blame commit `9a5ee62`) and guided linear rebase at source checkpoint
 `d9af4e6` and the earlier A1–A4 workflows, against the
@@ -205,9 +205,9 @@ exhaustive keyboard-only pass through every workflow. The unsigned Mac bundle
 was rebuilt; installed apps and collected packages remain unchanged.
 
 - The hosted GitHub workflow has passed its complete macOS arm64, macOS x64 and
-  Linux x64 check/package/artifact paths. The Windows loader fix passes the full
-  local Windows 11 gate and NSIS build; its hosted Windows Server confirmation
-  remains pending. Failure diagnostics remain available if the loader regresses.
+  Linux x64 check/package/artifact paths, plus the complete Windows x64 Rust,
+  package, smoke and artifact path on Git for Windows 2.56. Failure diagnostics
+  remain available if the loader regresses.
 - The repository activity-drawer working tree on `dd38547` passes **189 frontend
   tests and 57 native workflow checks on macOS**, with a rebuilt unsigned Mac app.
   Its initial Windows verification stalled before producing test output. The
@@ -242,9 +242,9 @@ was rebuilt; installed apps and collected packages remain unchanged.
 - The [GitHub workflow](../.github/workflows/build.yml) runs checks and package
   builds for pull requests, `main` pushes, version tags and manual dispatches on
   macOS arm64/x64, Windows x64 and Linux x64. Tag runs assemble verified assets
-  into a draft GitHub Release; a person must review and publish it. A complete
-  four-platform run and tag-triggered draft creation remain unverified pending
-  hosted confirmation of the Windows fix. Downloaded-package acceptance,
+  into a draft GitHub Release; a person must review and publish it. The complete
+  four-platform hosted matrix is verified; tag-triggered draft creation remains
+  unverified. Downloaded-package acceptance,
   signing/notarization and native GUI/installer acceptance also remain open.
 - Remote operations are tested against disposable local remotes; real remote-service
   authentication remains unverified.
