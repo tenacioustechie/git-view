@@ -13,10 +13,7 @@ fn fixture(count: usize) -> (tempfile::TempDir, PathBuf) {
             .args(["init", "-b", "main"])
             .arg(&path)
             .env("GIT_CONFIG_NOSYSTEM", "1")
-            .env(
-                "GIT_CONFIG_GLOBAL",
-                if cfg!(windows) { "NUL" } else { "/dev/null" },
-            )
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
             .output()
             .unwrap();
         assert!(result.status.success());

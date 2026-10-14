@@ -87,10 +87,7 @@ fn git(path: &Path, args: &[&str]) -> String {
     let output = Command::new("git")
         .current_dir(path)
         .env("GIT_CONFIG_NOSYSTEM", "1")
-        .env(
-            "GIT_CONFIG_GLOBAL",
-            if cfg!(windows) { "NUL" } else { "/dev/null" },
-        )
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
         .args(args)
         .output()
         .expect("fixture Git");
@@ -1084,10 +1081,7 @@ pub async fn native_smoke_performance(state: State<'_, AppState>) -> AppResult<s
     let mut child = Command::new("git")
         .current_dir(&path)
         .env("GIT_CONFIG_NOSYSTEM", "1")
-        .env(
-            "GIT_CONFIG_GLOBAL",
-            if cfg!(windows) { "NUL" } else { "/dev/null" },
-        )
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
         .arg("fast-import")
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::null())
@@ -1709,10 +1703,7 @@ fn hunk_blob(path: &Path, revision: &str) -> Vec<u8> {
     let output = Command::new("git")
         .current_dir(path)
         .env("GIT_CONFIG_NOSYSTEM", "1")
-        .env(
-            "GIT_CONFIG_GLOBAL",
-            if cfg!(windows) { "NUL" } else { "/dev/null" },
-        )
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
         .args(["--no-replace-objects", "show", revision])
         .output()
         .expect("fixture blob read");

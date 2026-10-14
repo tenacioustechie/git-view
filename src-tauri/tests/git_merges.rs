@@ -3,7 +3,7 @@ use std::{path::Path, process::Command};
 use tempfile::TempDir;
 fn git(path: &Path, args: &[&str]) -> String {
     let mut command = Command::new("git");
-    let null = if cfg!(windows) { "NUL" } else { "/dev/null" };
+    let null = "/dev/null";
     command
         .current_dir(path)
         .env("GIT_CONFIG_GLOBAL", null)

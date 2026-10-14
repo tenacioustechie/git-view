@@ -3,7 +3,7 @@ use std::{path::Path, process::Command};
 use tempfile::TempDir;
 fn fixture_command(path: &Path) -> Command {
     let mut command = Command::new("git");
-    let null = if cfg!(windows) { "NUL" } else { "/dev/null" };
+    let null = "/dev/null";
     command
         .current_dir(path)
         .env("GIT_CONFIG_NOSYSTEM", "1")

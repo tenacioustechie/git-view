@@ -8,7 +8,7 @@ use tempfile::TempDir;
 
 fn command(path: &Path) -> Command {
     let mut cmd = Command::new("git");
-    let null = if cfg!(windows) { "NUL" } else { "/dev/null" };
+    let null = "/dev/null";
     cmd.current_dir(path)
         .env("GIT_CONFIG_NOSYSTEM", "1")
         .env("GIT_CONFIG_GLOBAL", null)

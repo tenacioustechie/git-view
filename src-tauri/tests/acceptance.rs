@@ -13,10 +13,7 @@ fn git(path: &Path, args: &[&str]) -> String {
     let output = Command::new("git")
         .current_dir(path)
         .env("GIT_CONFIG_NOSYSTEM", "1")
-        .env(
-            "GIT_CONFIG_GLOBAL",
-            if cfg!(windows) { "NUL" } else { "/dev/null" },
-        )
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
         .args(args)
         .output()
         .unwrap();

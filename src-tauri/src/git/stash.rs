@@ -1337,7 +1337,7 @@ impl GitEngine {
 mod tests {
     use super::*;
     fn git(path: &Path, args: &[&str]) -> String {
-        let null = if cfg!(windows) { "NUL" } else { "/dev/null" };
+        let null = "/dev/null";
         let mut command = std::process::Command::new("git");
         command
             .current_dir(path)

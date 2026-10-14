@@ -101,7 +101,7 @@ impl Runner {
             command.env("LC_ALL", locale);
         }
         if self.isolated {
-            let null = if cfg!(windows) { "NUL" } else { "/dev/null" };
+            let null = "/dev/null";
             command
                 .env("GIT_CONFIG_GLOBAL", null)
                 .env("GIT_CONFIG_SYSTEM", null)
