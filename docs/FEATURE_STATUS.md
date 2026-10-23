@@ -1,6 +1,7 @@
 # Feature status
 
-Reviewed 15 October 2026, including the complete hosted packaging matrix,
+Reviewed 22 October 2026, including the implemented selected-commit tag workflow,
+the complete hosted packaging matrix,
 resolved Windows loader/Git 2.56 compatibility, and the automatic packaging and
 draft-release workflow, configured-upstream group push based on progressive-status commit
 `2edd67c`, group switching at `8c8c3e4`
@@ -37,6 +38,7 @@ refer to the delivered runbook workflows on tested platforms.
 | --- | --- | --- |
 | Launch | Repository/nested-path CLI, JSON project CLI, discovery CLI, help/version, local wrappers, one-window forwarding with navigation guards | Installed PATH integration, further installation polish, additional windows, group templates |
 | History | Virtualized paged graph, persistent selected-row highlight, parent continuity, refs, branch/tag scopes, message/body and author/email search, full/prefix commit-ID search, snapshot paging | Advanced revision-query UI |
+| Tags | Local/fetched tag refs, History scopes and commit badges; reviewed annotated local-tag creation at an exact selected commit, with configured signing respected, dirty-file preservation and no implicit publication | Explicit tag publication, lightweight tags, replacement/deletion and broader management are deferred; remaining platform acceptance is tracked in [Create tag design](TAG_DESIGN.md) and Build status |
 | Details | Full messages/identities/parents, parent-specific filterable file browser with keyboard selection, collapsible commit information, independently scrolling unified/side-by-side diffs with line numbers/full-row colours, hunk navigation, binary/truncation states; read-only literal-path file history; committed-revision blame with attribution-commit inspection | Syntax highlighting, uncommitted-content blame, automatic rename-following file history and arbitrary-path browsing |
 | Working changes | Staged/unstaged/untracked/conflicted states, whole-file and explicit selected-subset stage/unstage, supported complete text-hunk stage/unstage, staged-only commit, session draft retention, hook/signing failure handling; named stash creation/inspection, retained Apply, reviewed exact-entry Delete and recovery | Individual-line staging; expanded hunk support for excluded file types |
 | Remotes | Fetch, clean-only fast-forward pull, explicit normal single-repository push, optional upstream setup; reviewed configured-upstream batch push | Editable per-member batch-push destinations; hosting integrations only if requested |

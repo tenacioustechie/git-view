@@ -481,6 +481,12 @@ pub enum RepositoryAction {
         start_oid: String,
         switch_after_create: bool,
     },
+    CreateTag {
+        commit_snapshot_id: String,
+        target_oid: String,
+        name: String,
+        message: String,
+    },
     SwitchBranch {
         status_snapshot_id: String,
         local_ref: String,
@@ -573,6 +579,7 @@ impl RepositoryAction {
             Self::Pull { .. } => "pull",
             Self::Push { .. } => "push",
             Self::CreateBranch { .. } => "createBranch",
+            Self::CreateTag { .. } => "createTag",
             Self::SwitchBranch { .. } => "switchBranch",
             Self::CheckoutRemoteBranch { .. } => "checkoutRemoteBranch",
             Self::Merge { .. } => "merge",
@@ -621,6 +628,7 @@ pub struct RewriteRecord {
     rename_all = "camelCase",
     rename_all_fields = "camelCase"
 )]
+#[allow(clippy::large_enum_variant)]
 pub enum RepositoryActionPlan {
     Eligible {
         plan_id: String,
@@ -629,6 +637,8 @@ pub enum RepositoryActionPlan {
         destination: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         rebase_preview: Option<RebasePreview>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        tag_preview: Option<TagPreview>,
     },
     Blocked {
         reason: String,
@@ -650,6 +660,16 @@ pub struct RebasePreview {
 pub struct RebaseCommit {
     pub oid: String,
     pub subject: String,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TagPreview {
+    pub name: String,
+    pub full_ref: String,
+    pub target_oid: String,
+    pub subject: String,
+    pub annotated: bool,
+    pub signing: String,
 }
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

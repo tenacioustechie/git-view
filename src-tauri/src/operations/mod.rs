@@ -134,6 +134,7 @@ impl Operations {
                 let summary = prepared.summary.clone();
                 let destination = prepared.destination.clone();
                 let rebase_preview = prepared.rebase.as_ref().and_then(|plan| plan.preview());
+                let tag_preview = prepared.tag.as_ref().map(|plan| plan.preview());
                 let mut state = self.state.lock().await;
                 state.plans.retain(|_, p| {
                     p.created.elapsed() < Duration::from_secs(300) || p.operation_id.is_some()
@@ -159,6 +160,7 @@ impl Operations {
                     summary,
                     destination,
                     rebase_preview,
+                    tag_preview,
                 }
             }
         }
@@ -173,7 +175,11 @@ impl Operations {
             return Err(stale());
         }
         let prepared = plan.prepared.clone();
-        let operation = queued(None, None, Some(plan.repository_id.clone()), &plan.action);
+        let mut operation = queued(None, None, Some(plan.repository_id.clone()), &plan.action);
+        if prepared.tag.is_some() {
+            operation.destination = prepared.destination.clone();
+            operation.summary = Some(prepared.summary.clone());
+        }
         state.plans.get_mut(plan_id).unwrap().operation_id = Some(operation.operation_id.clone());
         state.order.push_back(operation.operation_id.clone());
         state

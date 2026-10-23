@@ -45,6 +45,7 @@ Get changed paths from NUL-delimited metadata rather than patch headers. Use ind
 | Pull | Attached branch, upstream, clean status, no ongoing operation; explicit fast-forward-only, rebase disabled, autostash disabled |
 | Push | Show resolved remote and destination ref; push current branch to that one ref explicitly; explicitly disable follow-tags and recursive submodule push; no mirror/force; first push chooses remote/ref and optional upstream |
 | Create/switch branch | Validate name and resolve target; initial policy requires clean status and no ongoing operation; backend rechecks HEAD |
+| Create annotated tag | Bind an exact commit-detail snapshot/OID; validate the absent local tag ref, annotation, identity and signing configuration; allow dirty files but require idle operation state; never force or publish; verify the annotated object and peeled target |
 | Remote tracking checkout | Resolve explicit fetch mapping, require clean idle state and unused local name/config namespace, pin reviewed source during execution, create/switch with direct tracking, preserve ignored files, inspect actual post-hook state |
 | Cherry-pick (A2) | One full non-merge commit ID, clean existing attached target, source/target preview, ignored-content protection, persistent stopped-state context, reviewed Continue/Abort/empty Skip |
 | Stash (A3) | Named Create with opt-in untracked files; bounded inspection; clean-destination Apply retaining entry; separately reviewed exact-entry Delete with backup and explicit interrupted-deletion recovery |

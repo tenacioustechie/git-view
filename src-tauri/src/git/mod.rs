@@ -16,6 +16,7 @@ mod runner;
 mod stash;
 mod stash_atomic;
 mod status;
+mod tags;
 use crate::contracts::*;
 use sha2::{Digest, Sha256};
 use std::{
@@ -102,6 +103,7 @@ pub struct PreparedAction {
     pub(crate) rebase: Option<rebase::RebasePlan>,
     pub(crate) stash: Option<stash::StashPlan>,
     pub(crate) hunk: Option<hunks::HunkPlan>,
+    pub(crate) tag: Option<tags::TagPlan>,
 }
 impl PreparedAction {
     /// Restrict a filtered batch fetch to the HEAD observed in its preview.

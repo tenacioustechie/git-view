@@ -100,6 +100,7 @@ export type RepositoryAction =
   | { kind: 'pull'; statusSnapshotId: SnapshotId }
   | { kind: 'push'; statusSnapshotId: SnapshotId; remoteId: string; destinationRef: string; setUpstream: boolean }
   | { kind: 'createBranch'; statusSnapshotId: SnapshotId; name: string; startOid: Oid; switchAfterCreate: boolean }
+  | { kind: 'createTag'; commitSnapshotId: SnapshotId; targetOid: Oid; name: string; message: string }
   | { kind: 'switchBranch'; statusSnapshotId: SnapshotId; localRef: string }
   | { kind: 'checkoutRemoteBranch'; statusSnapshotId: SnapshotId; remoteId: string; sourceRef: string; name: string }
   | { kind: 'merge' | 'squashMerge'; statusSnapshotId: SnapshotId; sourceRef: string }
@@ -116,7 +117,7 @@ export type RepositoryAction =
   | { kind: 'recoverCombine'; statusSnapshotId: SnapshotId; recoveryId: string };
 
 export type RepositoryActionPlan =
-  | { kind: 'eligible'; planId: string; expiresAt: string; summary: string; destination: string | null; rebasePreview?: { branch: string; originalHead: Oid; ontoRef: string; ontoOid: Oid; baseOid: Oid; commits: { oid: Oid; subject: string }[] } }
+  | { kind: 'eligible'; planId: string; expiresAt: string; summary: string; destination: string | null; rebasePreview?: { branch: string; originalHead: Oid; ontoRef: string; ontoOid: Oid; baseOid: Oid; commits: { oid: Oid; subject: string }[] }; tagPreview?: { name: string; fullRef: string; targetOid: Oid; subject: string; annotated: true; signing: 'configured' | 'unsigned' } }
   | { kind: 'blocked'; reason: string; error: AppError | null };
 
 export interface DiffHunk {

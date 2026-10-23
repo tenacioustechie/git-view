@@ -20,6 +20,7 @@ import { useHistorySidebar } from './useHistorySidebar';
 import { ActivityDrawer } from './ActivityDrawer';
 import { FileHistory } from './FileHistory';
 import { Blame } from './Blame';
+import { CreateTag, type TagDraft } from './CreateTag';
 import { primaryShortcut, shortcutAria, shortcutLabel, shortcutsBlocked } from '../../app/shortcuts';
 import './repository.css';
 
@@ -29,7 +30,8 @@ const isCherryAction = (kind: string) => ['cherryPick', 'continueCherryPick', 'a
 const isRebaseAction = (kind: string) => ['startRebase', 'continueRebase', 'abortRebase', 'skipRebase'].includes(kind);
 const isHunkAction = (kind: string) => kind === 'stageHunk' || kind === 'unstageHunk';
 const isStashAction = (kind: string) => ['createStash', 'applyStash', 'deleteStash', 'finalizeStashDelete'].includes(kind);
-const actionLabels: Record<string, string> = { createStash: 'create stash', applyStash: 'apply stash', deleteStash: 'delete stash', finalizeStashDelete: 'finalize stash deletion', cherryPick: 'cherry-pick', continueCherryPick: 'continue cherry-pick', abortCherryPick: 'abort cherry-pick', skipCherryPick: 'skip empty cherry-pick', startRebase: 'rebase branch', continueRebase: 'continue rebase', abortRebase: 'abort rebase', skipRebase: 'skip commit' };
+const isTagAction = (kind: string) => kind === 'createTag';
+const actionLabels: Record<string, string> = { createTag: 'create local tag', createStash: 'create stash', applyStash: 'apply stash', deleteStash: 'delete stash', finalizeStashDelete: 'finalize stash deletion', cherryPick: 'cherry-pick', continueCherryPick: 'continue cherry-pick', abortCherryPick: 'abort cherry-pick', skipCherryPick: 'skip empty cherry-pick', startRebase: 'rebase branch', continueRebase: 'continue rebase', abortRebase: 'abort rebase', skipRebase: 'skip commit' };
 const actionLabel = (kind: string) => actionLabels[kind] ?? kind;
 const hasChange = (status: string | null) => Boolean(status?.trim() && status !== '.' && status !== '?');
 type Planned = { plan: Extract<RepositoryActionPlan, { kind: 'eligible' }>; action: RepositoryAction; cherryMarkerOnly?: boolean };
@@ -85,11 +87,13 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
   const [mergeSource, setMergeSource] = useState('');
   const [showCombine, setShowCombine] = useState(false);
   const [showStashes, setShowStashes] = useState(false);
+  const [tagDraft, setTagDraft] = useState<TagDraft | null>(null);
   const [refreshVersion, setRefreshVersion] = useState(0);
   const generation = useRef(0);
   const loadingPage = useRef<number | null>(null);
   const detailGeneration = useRef(0);
   const submittedDrafts = useRef(new Map<string, string>());
+  const submittedTags = useRef(new Map<string, TagDraft>());
   const seenOperations = useRef(new Map<string, string>());
   const dialog = useRef<HTMLDialogElement>(null);
   const switchControls = useRef<HTMLDetailsElement>(null);
@@ -199,13 +203,19 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
           const old = seenOperations.current.get(operation.operationId);
           if (terminal(operation) && old !== undefined && old !== operation.state) {
             changed = true;
-            if (operation.state === 'failed' || ((operation.action === 'checkoutRemoteBranch' || isCherryAction(operation.action) || isStashAction(operation.action) || isHunkAction(operation.action) || isRebaseAction(operation.action)) && !['succeeded', 'stopped'].includes(operation.state))) failure = operation.error?.message ?? operation.reason ?? `Operation ${operation.state}. Inspect activity and current repository state.`;
+            if (operation.state === 'failed' || ((operation.action === 'checkoutRemoteBranch' || isCherryAction(operation.action) || isStashAction(operation.action) || isHunkAction(operation.action) || isRebaseAction(operation.action) || isTagAction(operation.action)) && !['succeeded', 'stopped'].includes(operation.state))) failure = operation.error?.message ?? operation.reason ?? `Operation ${operation.state}. Inspect activity and current repository state.`;
           }
           seenOperations.current.set(operation.operationId, operation.state);
           if (terminal(operation) && submittedDrafts.current.has(operation.operationId)) {
             const submitted = submittedDrafts.current.get(operation.operationId);
             submittedDrafts.current.delete(operation.operationId);
             if (operation.state === 'succeeded' && drafts.get(id) === submitted) { drafts.delete(id); setDraft(''); }
+            changed = true;
+          }
+          if (terminal(operation) && submittedTags.current.has(operation.operationId)) {
+            const submitted = submittedTags.current.get(operation.operationId)!;
+            submittedTags.current.delete(operation.operationId);
+            if (operation.state === 'succeeded') setTagDraft(current => current?.targetOid === submitted.targetOid && current.name === submitted.name && current.message === submitted.message ? null : current);
             changed = true;
           }
         }
@@ -227,7 +237,7 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
   const inspect = async (oid: string, parent: string | null = null) => {
     setShowCombine(false); setShowStashes(false);
     const epoch = ++detailGeneration.current;
-    setSelected(oid); setDetails(null); setDiffRequest(null); setError(null);
+    setSelected(oid); setDetails(null); setTagDraft(null); setDiffRequest(null); setError(null);
     try { const result = await api.getCommit(id, oid, parent); if (epoch === detailGeneration.current) setDetails(result); }
     catch (cause) { if (epoch === detailGeneration.current) setError(errorMessage(cause)); }
   };
@@ -254,10 +264,15 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
         if (operation.state === 'succeeded' && drafts.get(id) === action.message) { drafts.delete(id); setDraft(''); }
         else if (!terminal(operation)) submittedDrafts.current.set(operation.operationId, action.message);
       }
+      if (action.kind === 'createTag') {
+        const submitted = { commitSnapshotId: action.commitSnapshotId, targetOid: action.targetOid, name: action.name, message: action.message };
+        if (operation.state === 'succeeded') setTagDraft(current => current?.targetOid === submitted.targetOid && current.name === submitted.name && current.message === submitted.message ? null : current);
+        else if (!terminal(operation)) submittedTags.current.set(operation.operationId, submitted);
+      }
       if (terminal(operation)) await currentRefresh.current();
-      if (operation.state === 'failed' || ((action.kind === 'checkoutRemoteBranch' || isCherryAction(action.kind) || isStashAction(action.kind) || isHunkAction(action.kind) || isRebaseAction(action.kind)) && terminal(operation) && !['succeeded', 'stopped'].includes(operation.state))) setError(operation.error?.message ?? operation.reason ?? `Operation ${operation.state}. Inspect activity and current repository state.`);
+      if (operation.state === 'failed' || ((action.kind === 'checkoutRemoteBranch' || isCherryAction(action.kind) || isStashAction(action.kind) || isHunkAction(action.kind) || isRebaseAction(action.kind) || isTagAction(action.kind)) && terminal(operation) && !['succeeded', 'stopped'].includes(operation.state))) setError(operation.error?.message ?? operation.reason ?? `Operation ${operation.state}. Inspect activity and current repository state.`);
     } catch (cause) {
-      if (action.kind === 'checkoutRemoteBranch' || isCherryAction(action.kind) || isStashAction(action.kind) || isHunkAction(action.kind) || isRebaseAction(action.kind)) await currentRefresh.current();
+      if (action.kind === 'checkoutRemoteBranch' || isCherryAction(action.kind) || isStashAction(action.kind) || isHunkAction(action.kind) || isRebaseAction(action.kind) || isTagAction(action.kind)) await currentRefresh.current();
       setError(errorMessage(cause));
     }
     finally { executing.current = false; setBusy(false); }
@@ -271,12 +286,21 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
     setBusy(true); setError(null);
     try {
       const plan = await api.planAction(id, action);
-      if ((action.kind === 'checkoutRemoteBranch' || isCherryAction(action.kind) || isStashAction(action.kind) || isHunkAction(action.kind) || isRebaseAction(action.kind)) && (epoch !== generation.current || ((action.kind === 'cherryPick' || isStashAction(action.kind) || isHunkAction(action.kind)) && detailEpoch !== detailGeneration.current) || (isHunkAction(action.kind) && diffEpoch !== diffGeneration.current) || (isCurrent && !isCurrent()))) {
+      if ((action.kind === 'checkoutRemoteBranch' || isCherryAction(action.kind) || isStashAction(action.kind) || isHunkAction(action.kind) || isRebaseAction(action.kind) || isTagAction(action.kind)) && (epoch !== generation.current || ((action.kind === 'cherryPick' || isStashAction(action.kind) || isHunkAction(action.kind) || isTagAction(action.kind)) && detailEpoch !== detailGeneration.current) || (isHunkAction(action.kind) && diffEpoch !== diffGeneration.current) || (isCurrent && !isCurrent()))) {
         if (isHunkAction(action.kind)) await currentRefresh.current();
-        setError(`Repository view changed while preparing ${action.kind === 'checkoutRemoteBranch' ? 'checkout' : isStashAction(action.kind) ? 'stash action' : isHunkAction(action.kind) ? 'hunk action' : isRebaseAction(action.kind) ? 'rebase' : 'cherry-pick'}. Review the source and create a new preview.`);
+        setError(`Repository view changed while preparing ${action.kind === 'checkoutRemoteBranch' ? 'checkout' : isStashAction(action.kind) ? 'stash action' : isHunkAction(action.kind) ? 'hunk action' : isRebaseAction(action.kind) ? 'rebase' : isTagAction(action.kind) ? 'tag' : 'cherry-pick'}. Review the source and create a new preview.`);
         return;
       }
-      if (plan.kind === 'blocked') { if (isStashAction(action.kind) || isHunkAction(action.kind)) await currentRefresh.current(); setError(plan.reason); }
+      if (plan.kind === 'blocked') {
+        if (isStashAction(action.kind) || isHunkAction(action.kind)) await currentRefresh.current();
+        if (action.kind === 'createTag' && plan.error?.code === 'stale_snapshot' && detailEpoch === detailGeneration.current && selected === action.targetOid) {
+          const refreshed = await api.getCommit(id, action.targetOid, details?.oid === action.targetOid ? details.selectedParent : null);
+          if (detailEpoch !== detailGeneration.current || selected !== action.targetOid) return;
+          setDetails(refreshed);
+          setTagDraft(current => current?.targetOid === action.targetOid ? { ...current, commitSnapshotId: refreshed.snapshotId } : current);
+          setError(`${plan.reason} Commit details were refreshed; preview the tag again.`);
+        } else setError(plan.reason);
+      }
       else if (preview) setPlanned({ plan, action, cherryMarkerOnly: action.kind === 'abortCherryPick' && status.gitState === 'other' && status.operationContext?.kind === 'cherryPick' });
       else await execute({ plan, action });
     } catch (cause) { if (isStashAction(action.kind) || isHunkAction(action.kind)) await currentRefresh.current(); setError(errorMessage(cause)); }
@@ -295,10 +319,10 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
     } catch (cause) { if (epoch === generation.current) setError(errorMessage(cause)); }
     finally { if (loadingPage.current === epoch) loadingPage.current = null; if (epoch === generation.current) setLoading(false); }
   };
-  const working = () => { detailGeneration.current++; setWorkspace('changes'); setSelected(null); setDetails(null); setDiffRequest(null); setShowCombine(false); setShowStashes(false); };
+  const working = () => { detailGeneration.current++; setWorkspace('changes'); setSelected(null); setDetails(null); setTagDraft(null); setDiffRequest(null); setShowCombine(false); setShowStashes(false); };
   const browseHistory = () => {
     if (workspace === 'history' && !showCombine && !showStashes) return;
-    detailGeneration.current++; setSelected(null); setDetails(null); setWorkspace('history'); setDiffRequest(null); setShowCombine(false); setShowStashes(false);
+    detailGeneration.current++; setSelected(null); setDetails(null); setTagDraft(null); setWorkspace('history'); setDiffRequest(null); setShowCombine(false); setShowStashes(false);
   };
   const cancelPreview = () => { const refreshStashes = planned && isStashAction(planned.action.kind); setPlanned(null); if (refreshStashes) void currentRefresh.current(); };
   const headLabel = status.head.kind === 'detached' ? `Detached at ${status.head.oid.slice(0, 8)}` : `${status.head.name}${status.head.kind === 'unborn' ? ' (no commits)' : ''}`;
@@ -414,6 +438,7 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
               <p>{details.parents.length > 1 ? 'Merge commits are not supported by this single-commit cherry-pick workflow.' : status.head.kind !== 'branch' ? 'Switch to an existing local branch before cherry-picking.' : status.gitState !== 'idle' ? 'Finish the current Git operation before cherry-picking.' : status.dirty || status.submoduleDirty ? 'Cherry-pick requires a clean index and working tree, including untracked files and submodules.' : active ? 'Wait for the current repository operation to finish.' : 'Apply this commit’s changes to the current branch, preserving its message and author.'}</p>
               <button disabled={active || details.parents.length > 1 || status.head.kind !== 'branch' || status.gitState !== 'idle' || status.dirty || status.submoduleDirty} onClick={() => { void act({ kind: 'cherryPick', statusSnapshotId: status.snapshotId, sourceOid: details.oid }, true); }}>Cherry-pick commit</button>
             </section>
+            <CreateTag details={details} status={status} active={active} draft={tagDraft} onDraft={setTagDraft} onPlan={action => { void act(action, true); }} />
             </div>
             <div className="commit-comparison">{details.parents.length > 0 ? <label>Compare with parent<select aria-label="Compare with parent" value={details.selectedParent ?? ''} onChange={event => { void inspect(details.oid, event.target.value); }}>{details.parents.map((parent, index) => <option key={parent} value={parent}>Parent {index + 1}: {parent.slice(0, 8)}</option>)}</select></label> : <p>Root commit · compared with empty tree</p>}</div>
             <CommitFiles key={details.snapshotId} files={details.files} selection={diffRequest} onSelect={file => setDiffRequest({ repositoryId: id, snapshotId: details.snapshotId, fileId: file.fileId, context: 'commit' }, file.displayPath)} diff={workspace === 'history' ? fileDiff : null} />
@@ -423,7 +448,7 @@ function RepositoryScreen({ repository, onBack }: { repository: RepositoryOpen; 
     </div>
     <ActivityDrawer operations={operations} />
     <dialog ref={dialog} onCancel={cancelPreview} aria-labelledby="action-preview-title">
-      {planned && <><h2 id="action-preview-title">Review {planned.cherryMarkerOnly ? 'clear interrupted cherry-pick' : planned.action.kind === 'checkoutRemoteBranch' ? 'remote checkout' : planned.action.kind === 'squashMerge' ? 'squash merge' : actionLabel(planned.action.kind)}</h2><p>{planned.plan.summary}</p>{(planned.action.kind === 'merge' || planned.action.kind === 'squashMerge') && <p><strong>Source:</strong> {planned.action.sourceRef}<br /><strong>Current target:</strong> {headLabel}</p>}{planned.plan.destination && <p><strong>Destination:</strong> {planned.plan.destination}</p>}{planned.action.kind === 'squashMerge' && <p>The result stays staged for review. You must explicitly create the normal commit afterward. Squash conflicts have no ordinary merge abort.</p>}{planned.action.kind === 'abortMerge' && <p>Abort the current ordinary merge. Git will attempt to restore the state before the merge; inspect any changes you made during conflict resolution before proceeding.</p>}{planned.cherryMarkerOnly && <p>Clear only the recorded app cherry-pick marker after Git state is rechecked. The reviewed branch, index, and working files remain unchanged.</p>}{planned.action.kind === 'abortCherryPick' && !planned.cherryMarkerOnly && <p>Abort this cherry-pick using the reviewed Git state. Git may discard edits made while resolving it, including unrelated staged edits, and restore files to the reviewed current HEAD. If original target context is unknown, no return to an earlier target is promised. Inspect actual state if Git cannot abort.</p>}{planned.action.kind === 'skipCherryPick' && <p>Finish this empty cherry-pick without creating a commit. The source commit will not be added to the target history.</p>}{planned.action.kind === 'applyStash' && <p>Apply retains the saved stash. Inspect actual working-file and index state after success or conflict; stash conflicts do not provide an ordinary merge abort.</p>}{planned.action.kind === 'deleteStash' && <p>Delete only the reviewed saved entry. Previously applied working changes remain; a recovery backup is retained.</p>}{planned.action.kind === 'finalizeStashDelete' && <p>Finalize may complete the previously reviewed stash deletion. The recovery backup remains; working files are not restored.</p>}{planned.action.kind === 'combineCommits' && <><p>This rewrites history and creates a backup. The selected commits may already be published.</p><ol>{planned.action.commitOids.map(oid => <li key={oid}><code>{oid}</code></li>)}</ol><pre className="commit-message">{planned.action.message}</pre></>}{planned.action.kind === 'recoverCombine' && <p>Recovery rechecks the original branch and backup, and preserves working-file edits. Later branch commits require manual review.</p>}{planned.plan.rebasePreview && <section aria-label="Rebase preview"><p><strong>Current branch:</strong> {planned.plan.rebasePreview.branch} at {planned.plan.rebasePreview.originalHead}</p><p><strong>Onto:</strong> {planned.plan.rebasePreview.ontoRef} at {planned.plan.rebasePreview.ontoOid}</p><p><strong>Merge base:</strong> {planned.plan.rebasePreview.baseOid}</p><p>These commits will be replayed in order with new IDs:</p><ol>{planned.plan.rebasePreview.commits.map(commit => <li key={commit.oid}>{commit.subject} · <code>{commit.oid}</code></li>)}</ol><p>A normal push may reject a branch whose old commits were published. Fetch and push are separate actions.</p></section>}{planned.action.kind === "skipRebase" && <p>Skip omits the commit being replayed. Git may discard edits made while resolving it. Review the exact commit and current files before confirming.</p>}{planned.action.kind === "abortRebase" && <p>Abort asks Git to restore the original branch and HEAD. Resolution edits may be discarded. Inspect actual files and refs afterward.</p>}<p>Preconditions are checked again before execution.</p><div className="dialog-actions"><button onClick={cancelPreview}>Cancel</button><button disabled={busy} onClick={() => { void execute(planned); }}>{planned.cherryMarkerOnly ? 'Clear interrupted cherry-pick' : planned.action.kind === 'checkoutRemoteBranch' ? 'Create and switch' : `Run ${actionLabel(planned.action.kind)}`}</button></div></>}
+      {planned && <><h2 id="action-preview-title">Review {planned.cherryMarkerOnly ? 'clear interrupted cherry-pick' : planned.action.kind === 'checkoutRemoteBranch' ? 'remote checkout' : planned.action.kind === 'squashMerge' ? 'squash merge' : actionLabel(planned.action.kind)}</h2><p>{planned.plan.summary}</p>{(planned.action.kind === 'merge' || planned.action.kind === 'squashMerge') && <p><strong>Source:</strong> {planned.action.sourceRef}<br /><strong>Current target:</strong> {headLabel}</p>}{planned.plan.destination && <p><strong>Destination:</strong> {planned.plan.destination}</p>}{planned.plan.tagPreview && <section aria-label="Tag preview"><p><strong>Name:</strong> {planned.plan.tagPreview.name}<br /><strong>Commit:</strong> <code>{planned.plan.tagPreview.targetOid}</code><br /><strong>Subject:</strong> {planned.plan.tagPreview.subject || '(no subject)'}</p><p>Annotated tag · {planned.plan.tagPreview.signing === 'configured' ? 'signing enabled by Git configuration' : 'unsigned by current Git configuration'} · local only</p></section>}{planned.action.kind === 'squashMerge' && <p>The result stays staged for review. You must explicitly create the normal commit afterward. Squash conflicts have no ordinary merge abort.</p>}{planned.action.kind === 'abortMerge' && <p>Abort the current ordinary merge. Git will attempt to restore the state before the merge; inspect any changes you made during conflict resolution before proceeding.</p>}{planned.cherryMarkerOnly && <p>Clear only the recorded app cherry-pick marker after Git state is rechecked. The reviewed branch, index, and working files remain unchanged.</p>}{planned.action.kind === 'abortCherryPick' && !planned.cherryMarkerOnly && <p>Abort this cherry-pick using the reviewed Git state. Git may discard edits made while resolving it, including unrelated staged edits, and restore files to the reviewed current HEAD. If original target context is unknown, no return to an earlier target is promised. Inspect actual state if Git cannot abort.</p>}{planned.action.kind === 'skipCherryPick' && <p>Finish this empty cherry-pick without creating a commit. The source commit will not be added to the target history.</p>}{planned.action.kind === 'applyStash' && <p>Apply retains the saved stash. Inspect actual working-file and index state after success or conflict; stash conflicts do not provide an ordinary merge abort.</p>}{planned.action.kind === 'deleteStash' && <p>Delete only the reviewed saved entry. Previously applied working changes remain; a recovery backup is retained.</p>}{planned.action.kind === 'finalizeStashDelete' && <p>Finalize may complete the previously reviewed stash deletion. The recovery backup remains; working files are not restored.</p>}{planned.action.kind === 'combineCommits' && <><p>This rewrites history and creates a backup. The selected commits may already be published.</p><ol>{planned.action.commitOids.map(oid => <li key={oid}><code>{oid}</code></li>)}</ol><pre className="commit-message">{planned.action.message}</pre></>}{planned.action.kind === 'recoverCombine' && <p>Recovery rechecks the original branch and backup, and preserves working-file edits. Later branch commits require manual review.</p>}{planned.plan.rebasePreview && <section aria-label="Rebase preview"><p><strong>Current branch:</strong> {planned.plan.rebasePreview.branch} at {planned.plan.rebasePreview.originalHead}</p><p><strong>Onto:</strong> {planned.plan.rebasePreview.ontoRef} at {planned.plan.rebasePreview.ontoOid}</p><p><strong>Merge base:</strong> {planned.plan.rebasePreview.baseOid}</p><p>These commits will be replayed in order with new IDs:</p><ol>{planned.plan.rebasePreview.commits.map(commit => <li key={commit.oid}>{commit.subject} · <code>{commit.oid}</code></li>)}</ol><p>A normal push may reject a branch whose old commits were published. Fetch and push are separate actions.</p></section>}{planned.action.kind === "skipRebase" && <p>Skip omits the commit being replayed. Git may discard edits made while resolving it. Review the exact commit and current files before confirming.</p>}{planned.action.kind === "abortRebase" && <p>Abort asks Git to restore the original branch and HEAD. Resolution edits may be discarded. Inspect actual files and refs afterward.</p>}<p>Preconditions are checked again before execution.</p><div className="dialog-actions"><button onClick={cancelPreview}>Cancel</button><button disabled={busy} onClick={() => { void execute(planned); }}>{planned.cherryMarkerOnly ? 'Clear interrupted cherry-pick' : planned.action.kind === 'checkoutRemoteBranch' ? 'Create and switch' : planned.action.kind === 'createTag' ? 'Create local tag' : `Run ${actionLabel(planned.action.kind)}`}</button></div></>}
     </dialog>
   </section>;
 }
