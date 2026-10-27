@@ -1,5 +1,51 @@
 # Build status
 
+## 2026-10-22: selected-commit annotated tag implementation and 0.2.0 release preparation
+
+The 0.2.0 release candidate based on source `33a937f` adds reviewed creation of one annotated
+local tag at the exact commit selected in History. The renderer sends a
+commit-detail snapshot and full object ID, shows the short name, full local ref,
+subject, configured signing state and local-only scope, and retains input after a
+rejected plan or operation. Success refreshes refs/history, keeps the commit
+selected and clears the completed draft.
+
+The backend validates the snapshot/OID pair, short ref name, bounded nonblank
+annotation, tagger identity, configured signing, idle Git state and absent tag at
+planning. It rechecks relevant state under the shared repository lock, invokes
+`git --no-replace-objects tag --annotate --file=- -- <name> <oid>` without force,
+and verifies the annotated object, peeled target, HEAD, index and working-file
+observation afterward. Existing Push paths still suppress automatic tag
+following.
+
+The release version is `0.2.0` in the package, Cargo manifest/lockfile and Tauri
+configuration. Local release-smoke and artifact-collection helpers now read that
+version from `package.json` instead of retaining a version-specific filename or
+CLI assertion.
+
+Final local checks against this working tree:
+
+- `pnpm test`: **229 passed** across 24 files.
+- `pnpm build` and `pnpm lint`: passed.
+- `node scripts/ci-release.mjs check` validated all four `0.2.0` version
+  sources; all **18** release-helper tests passed.
+- `cargo test --manifest-path src-tauri/Cargo.toml --locked`: **198 active tests
+  passed**, two explicit measurements ignored.
+- Strict all-target Clippy passed both normally and with
+  `--features native-smoke,tauri/custom-protocol`; `cargo fmt --manifest-path
+  src-tauri/Cargo.toml -- --check` also passed.
+- Focused backend cases prove an annotated nested-name tag at a non-HEAD commit,
+  annotation/tagger metadata, exact peeling, configured-signing preview, unchanged
+  HEAD and staged/unstaged/untracked bytes, duplicate/invalid-name refusal, blank
+  annotation refusal, snapshot/OID mismatch refusal and active-operation blocking.
+  Focused renderer cases cover exact action fields, full-target and local/signing
+  preview language, cancel/retry retention, expired-token refresh without draft
+  loss, success refresh, draft clearing and retained selected-row highlight.
+
+No native desktop smoke, Windows run, signed-tag execution, package build or
+installer check has been run for this 0.2.0 source. The previously
+collected packages do not contain it. Broader edge/platform acceptance remains
+listed in [Create tag design](TAG_DESIGN.md).
+
 ## 2026-10-15: complete hosted matrix; Windows loader and Git 2.56 fixed
 
 Hosted run [38637478186](https://github.com/tenacioustechie/git-view/actions/runs/38637478186)

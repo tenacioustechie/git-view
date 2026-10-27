@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
 """Check release CLI exit behavior and startup on a disposable repository."""
 import pathlib
+import json
 import subprocess
 import sys
 import tempfile
 import time
 
 binary = pathlib.Path(sys.argv[1]).resolve()
+version = json.loads((pathlib.Path(__file__).resolve().parent.parent / 'package.json').read_text())['version']
 with tempfile.TemporaryDirectory(prefix='git-view-release-') as tmp:
     cwd = pathlib.Path(tmp)
-    for flag, expected in [('--help', 'Usage:'), ('--version', 'Git View 0.1.0')]:
+    for flag, expected in [('--help', 'Usage:'), ('--version', f'Git View {version}')]:
         result = subprocess.run([str(binary), flag], cwd=cwd, capture_output=True, text=True, timeout=10)
         assert result.returncode == 0 and expected in result.stdout, (flag, result)
     for args in [('repo', 'missing'), ('group', '--scan', 'missing'), ('group', '--scan', '.', '--depth', '11')]:

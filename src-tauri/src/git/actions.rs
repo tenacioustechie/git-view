@@ -52,6 +52,7 @@ impl GitEngine {
         let mut rebase = None;
         let mut stash = None;
         let mut hunk = None;
+        let mut tag = None;
         let finish_squash = matches!(action, RepositoryAction::Commit { .. })
             && status.git_state == GitState::SquashMerge;
         let snapshot_id = match &action {
@@ -112,6 +113,7 @@ impl GitEngine {
                 status_snapshot_id, ..
             } => Some(status_snapshot_id),
             RepositoryAction::Fetch { .. }
+            | RepositoryAction::CreateTag { .. }
             | RepositoryAction::StageHunk { .. }
             | RepositoryAction::UnstageHunk { .. } => None,
         };
@@ -320,6 +322,31 @@ impl GitEngine {
                 }
                 args = runner::args(&["commit", "--file=-"]);
                 input = Some(message.as_bytes().to_vec());
+            }
+            RepositoryAction::CreateTag {
+                commit_snapshot_id,
+                target_oid,
+                name,
+                message,
+            } => {
+                let prepared = self
+                    .prepare_tag(&repo, status, commit_snapshot_id, target_oid, name, message)
+                    .await?;
+                args = runner::args(&[
+                    "--no-replace-objects",
+                    "tag",
+                    "--annotate",
+                    "--file=-",
+                    "--",
+                    name,
+                    target_oid,
+                ]);
+                input = Some(message.as_bytes().to_vec());
+                destination = Some(prepared.preview().full_ref.clone());
+                summary = Some(format!(
+                    "Create annotated local tag {name} at selected commit {target_oid}. The tag is not pushed."
+                ));
+                tag = Some(prepared);
             }
             RepositoryAction::CreateBranch {
                 name,
@@ -719,7 +746,8 @@ impl GitEngine {
             || cherry.is_some()
             || rebase.is_some()
             || stash.is_some()
-            || hunk.is_some())
+            || hunk.is_some()
+            || tag.is_some())
             && config_fingerprint != initial_config
         {
             return Err(AppError::new(
@@ -744,6 +772,7 @@ impl GitEngine {
             rebase,
             stash,
             hunk,
+            tag,
             action,
             args,
             input,
@@ -857,6 +886,9 @@ impl GitEngine {
         }
         if let Some(stash) = &plan.stash {
             return Box::pin(self.execute_stash(plan, stash, &canceled)).await;
+        }
+        if let Some(tag) = &plan.tag {
+            return Box::pin(self.execute_tag(plan, tag, &canceled)).await;
         }
         let _squash_activity = plan
             .squash_start

@@ -7,6 +7,7 @@ import subprocess
 import sys
 
 root = pathlib.Path(__file__).resolve().parent.parent
+version = json.loads((root / 'package.json').read_text())['version']
 revision = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=root, text=True).strip()
 windows_revision = subprocess.check_output([
     'ssh', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes',
@@ -17,10 +18,10 @@ if windows_revision != revision:
 out = root / 'artifacts'
 out.mkdir(exist_ok=True)
 app = root / 'src-tauri/target/release/bundle/macos/Git View.app'
-archive = out / 'Git-View_0.1.0_macos-arm64.zip'
+archive = out / f'Git-View_{version}_macos-arm64.zip'
 subprocess.run(['ditto', '-c', '-k', '--keepParent', str(app), str(archive)], check=True)
-installer = out / 'Git-View_0.1.0_windows-x64-setup.exe'
-subprocess.run(['scp', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes', 'git-view-windows:C:/codeme/git-view/src-tauri/target/release/bundle/nsis/Git View_0.1.0_x64-setup.exe', str(installer)], check=True)
+installer = out / f'Git-View_{version}_windows-x64-setup.exe'
+subprocess.run(['scp', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes', f'git-view-windows:C:/codeme/git-view/src-tauri/target/release/bundle/nsis/Git View_{version}_x64-setup.exe', str(installer)], check=True)
 manifest = {'sourceRevision': revision, 'windowsSourceRevision': windows_revision, 'unsigned': True, 'artifacts': []}
 for path in [archive, installer]:
     manifest['artifacts'].append({'file': path.name, 'bytes': path.stat().st_size, 'sha256': hashlib.sha256(path.read_bytes()).hexdigest()})

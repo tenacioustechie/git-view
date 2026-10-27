@@ -1,6 +1,7 @@
 # Git View user guide
 
-Reviewed 9 October 2026 for version 0.1.0, including the automatic packaging and
+Reviewed 22 October 2026 for version 0.2.0 and the selected-commit local tag
+workflow on source baseline `33a937f`, including the automatic packaging and
 draft-release workflow, configured-upstream group push based on progressive-status
 commit `2edd67c`, and group branch switching at `8c8c3e4`.
 The latest collected native packages
@@ -25,6 +26,7 @@ packages, and platform limitations.
 - [Inspect repository activity](#inspect-repository-activity)
 - [Stage files and commit](#stage-files-and-commit)
 - [Fetch, pull, and push](#fetch-pull-and-push)
+- [Create a tag on a selected commit](#create-a-tag-on-a-selected-commit)
 - [Create and switch branches](#create-and-switch-branches)
 - [Cherry-pick a commit](#cherry-pick-a-commit)
 - [Rebase a branch](#rebase-a-branch)
@@ -762,6 +764,42 @@ conservatively marked uncertain; inspect the remote before retrying because a
 connection or hook failure does not prove the remote was unchanged. Network
 operations use the installed Git's credential helpers and SSH configuration;
 remote-service authentication still needs verification in your own environment.
+
+## Create a tag on a selected commit
+
+Git View can create one annotated local tag on any commit you explicitly select,
+including a root or merge commit. Ordinary staged, unstaged, untracked, and
+submodule changes are allowed because this action does not change the index or
+working files. Finish any merge, cherry-pick, rebase, squash review, or other
+repository operation first.
+
+1. Choose **History** and select the exact target commit. If commit details are
+   hidden, choose **Show details**.
+2. Under the commit message, choose **Create tag…**. Check the displayed subject
+   and full commit ID.
+3. Enter a short **Tag name**, such as `v0.2.0` or `release/0.2`, and a nonblank
+   **Annotation**. Enter the short name without `refs/tags/`. Nested names are
+   allowed.
+4. Choose **Preview tag**. Review the full local ref, full target ID and subject,
+   and whether current Git configuration enables tag signing. The preview states
+   that the tag is local only.
+5. Choose **Create local tag**. After success, Git View refreshes the History
+   scopes and commit badges while keeping the commit selected.
+
+Git View creates an annotated tag with the normal Git tagger identity and honors
+`tag.gpgSign` and `tag.forceSignAnnotated`. Configure `user.name` and `user.email`
+before previewing. A configured signing program or key must also work normally.
+The action never forces, moves, deletes, or replaces an existing tag. If the name
+already exists, enter another name. Invalid names, blank annotations, expired or
+changed commit selections, and active operations are blocked before mutation. If
+the commit snapshot expires while the same target remains selected, Git View
+refreshes its details, keeps the form values, and asks you to preview again.
+Failed previews and executions keep the form values for correction; choosing a
+different commit clears them.
+
+Creating the tag does not contact a remote. Existing Git View Push and group Push
+continue to suppress automatic tag following, so use an external Git command or
+another separately reviewed workflow if you later intend to publish the tag.
 
 ## Create and switch branches
 

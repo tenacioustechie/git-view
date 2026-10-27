@@ -170,6 +170,7 @@ type RepositoryAction =
   | { kind: 'pull'; statusSnapshotId: SnapshotId }
   | { kind: 'push'; statusSnapshotId: SnapshotId; remoteId: string; destinationRef: string; setUpstream: boolean }
   | { kind: 'createBranch'; statusSnapshotId: SnapshotId; name: string; startOid: Oid; switchAfterCreate: boolean }
+  | { kind: 'createTag'; commitSnapshotId: SnapshotId; targetOid: Oid; name: string; message: string }
   | { kind: 'switchBranch'; statusSnapshotId: SnapshotId; localRef: string }
   | { kind: 'checkoutRemoteBranch'; statusSnapshotId: SnapshotId; remoteId: string; sourceRef: string; name: string }
   | { kind: 'merge' | 'squashMerge'; statusSnapshotId: SnapshotId; sourceRef: string }
@@ -186,7 +187,9 @@ type RepositoryAction =
 type RepositoryActionPlan =
   | { kind: 'eligible'; planId: string; expiresAt: string; summary: string; destination: string | null;
       rebasePreview?: { branch: string; originalHead: Oid; ontoRef: string; ontoOid: Oid;
-        baseOid: Oid; commits: { oid: Oid; subject: string }[] } }
+        baseOid: Oid; commits: { oid: Oid; subject: string }[] };
+      tagPreview?: { name: string; fullRef: string; targetOid: Oid; subject: string;
+        annotated: true; signing: 'configured' | 'unsigned' } }
   | { kind: 'blocked'; reason: string; error: AppError | null };
 
 interface DiffHunk {
@@ -363,6 +366,16 @@ reported as success. Unknown or externally started rebase states expose no app
 mutation controls. The backup and per-worktree record remain internal backend
 state. The [rebase design](REBASE_DESIGN.md) records the scope and recovery gate.
 Capability flags are explanatory; execution always revalidates the plan.
+
+`createTag` binds a backend-issued commit-detail snapshot and its exact full
+`targetOid`; it has no status snapshot because unrelated working-file edits do
+not invalidate the target. Planning validates the short name as
+`refs/tags/<name>`, requires a nonblank bounded annotation and tagger identity,
+checks configured signing and requires the destination ref to be absent. The
+eligible `tagPreview` shows the full ref, full selected commit ID and subject,
+annotated form, and configured/unsigned signing state. Execution repeats the
+snapshot, target, operation-state, configuration and missing-ref checks under the
+shared repository lock. It never replaces a ref or publishes the tag.
 
 `plan_repository_action` receives the discriminated action and repository ID and creates a backend-held plan, expiring after five minutes. Record resolved refs/destinations and required HEAD/index/status observations in that plan. `run_repository_action(planId)` revalidates and executes it; submitting a plan twice returns the existing operation. Simple file actions can plan and run from one UI gesture; remote/branch/merge actions show the resolved target where required. M2 adds normal merge, merge continue/abort, and squash-merge variants; return an unsupported error until implemented. No arbitrary argv variant.
 

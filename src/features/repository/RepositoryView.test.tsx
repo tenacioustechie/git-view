@@ -327,6 +327,85 @@ describe('repository workflows (mocked IPC)', () => {
     fireEvent.change(parents, { target: { value: fixtures.mergeCommit.parents[1] } });
     await waitFor(() => expect(api.getCommit).toHaveBeenLastCalledWith(repository.repositoryId, fixtures.mergeCommit.oid, fixtures.mergeCommit.parents[1]));
   });
+  it('previews an annotated local tag on the exact selected commit and retains rejected input', async () => {
+    vi.mocked(api.planAction).mockResolvedValue({
+      kind: 'eligible', planId: 'tag-plan', expiresAt: '2030-01-01T00:00:00Z',
+      summary: `Create annotated local tag releases/v1 at selected commit ${fixtures.mergeCommit.oid}. The tag is not pushed.`,
+      destination: 'refs/tags/releases/v1',
+      tagPreview: { name: 'releases/v1', fullRef: 'refs/tags/releases/v1', targetOid: fixtures.mergeCommit.oid, subject: 'Merge feature', annotated: true, signing: 'unsigned' },
+    });
+    render(<RepositoryView repository={repository} />);
+    fireEvent.click(screen.getByRole('button', { name: 'History' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Merge feature/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Create tag…' }));
+    fireEvent.change(screen.getByLabelText('Tag name'), { target: { value: 'releases/v1' } });
+    fireEvent.change(screen.getByLabelText('Tag annotation'), { target: { value: 'First release' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Preview tag' }));
+
+    const preview = await screen.findByRole('dialog');
+    expect(api.planAction).toHaveBeenLastCalledWith(repository.repositoryId, {
+      kind: 'createTag', commitSnapshotId: fixtures.mergeCommit.snapshotId, targetOid: fixtures.mergeCommit.oid,
+      name: 'releases/v1', message: 'First release',
+    });
+    expect(within(preview).getByLabelText('Tag preview').textContent).toContain(fixtures.mergeCommit.oid);
+    expect(within(preview).getByLabelText('Tag preview').textContent).toContain('unsigned by current Git configuration');
+    expect(within(preview).getByLabelText('Tag preview').textContent).toContain('local only');
+    expect(api.runAction).not.toHaveBeenCalled();
+    fireEvent.click(within(preview).getByRole('button', { name: 'Cancel' }));
+
+    vi.mocked(api.planAction).mockResolvedValue({ kind: 'blocked', reason: 'A tag with this name already exists.', error: null });
+    fireEvent.click(screen.getByRole('button', { name: 'Preview tag' }));
+    expect(await screen.findByRole('alert')).toHaveProperty('textContent', expect.stringContaining('already exists'));
+    expect((screen.getByLabelText('Tag name') as HTMLInputElement).value).toBe('releases/v1');
+    expect((screen.getByLabelText('Tag annotation') as HTMLTextAreaElement).value).toBe('First release');
+    expect(api.runAction).not.toHaveBeenCalled();
+  });
+  it('keeps the selected commit visible and clears the tag form after success', async () => {
+    vi.mocked(api.planAction).mockResolvedValue({
+      kind: 'eligible', planId: 'tag-plan', expiresAt: '2030-01-01T00:00:00Z', summary: 'Create annotated local tag v1', destination: 'refs/tags/v1',
+      tagPreview: { name: 'v1', fullRef: 'refs/tags/v1', targetOid: fixtures.mergeCommit.oid, subject: 'Merge feature', annotated: true, signing: 'unsigned' },
+    });
+    vi.mocked(api.runAction).mockResolvedValue({
+      operationId: 'tag-operation', batchId: null, memberId: null, repositoryId: repository.repositoryId,
+      action: 'createTag', destination: 'refs/tags/v1', summary: 'Created v1', state: 'succeeded',
+      startedAt: '2026-10-20T00:00:00Z', finishedAt: '2026-10-20T00:00:01Z', exitCode: 0,
+      reason: null, error: null, outputTruncated: false, outcomeUncertain: false,
+    });
+    render(<RepositoryView repository={repository} />);
+    fireEvent.click(screen.getByRole('button', { name: 'History' }));
+    const row = await screen.findByRole('button', { name: /Merge feature/ });
+    fireEvent.click(row);
+    fireEvent.click(await screen.findByRole('button', { name: 'Create tag…' }));
+    fireEvent.change(screen.getByLabelText('Tag name'), { target: { value: 'v1' } });
+    fireEvent.change(screen.getByLabelText('Tag annotation'), { target: { value: 'Release one' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Preview tag' }));
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Create local tag' }));
+    await waitFor(() => expect(api.runAction).toHaveBeenCalledWith('tag-plan'));
+    await waitFor(() => expect(screen.getByRole('button', { name: /Merge feature/ }).getAttribute('aria-pressed')).toBe('true'));
+    expect(screen.queryByLabelText('Tag name')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Create tag…' })).toBeTruthy();
+    expect(api.getHistory).toHaveBeenCalledTimes(2);
+  });
+  it('refreshes an expired commit token without losing the tag draft or target', async () => {
+    vi.mocked(api.getCommit).mockResolvedValueOnce(fixtures.mergeCommit).mockResolvedValueOnce({ ...fixtures.mergeCommit, snapshotId: 'fresh-commit-snapshot' });
+    vi.mocked(api.planAction)
+      .mockResolvedValueOnce({ kind: 'blocked', reason: 'Refresh the repository selection.', error: { code: 'stale_snapshot', message: 'Refresh the repository selection.', retryable: false } })
+      .mockResolvedValueOnce({ kind: 'eligible', planId: 'fresh-tag-plan', expiresAt: '2030-01-01T00:00:00Z', summary: 'Create tag', destination: 'refs/tags/v1' });
+    render(<RepositoryView repository={repository} />);
+    fireEvent.click(screen.getByRole('button', { name: 'History' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Merge feature/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Create tag…' }));
+    fireEvent.change(screen.getByLabelText('Tag name'), { target: { value: 'v1' } });
+    fireEvent.change(screen.getByLabelText('Tag annotation'), { target: { value: 'Retained message' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Preview tag' }));
+    expect(await screen.findByRole('alert')).toHaveProperty('textContent', expect.stringContaining('Commit details were refreshed'));
+    expect((screen.getByLabelText('Tag name') as HTMLInputElement).value).toBe('v1');
+    fireEvent.click(screen.getByRole('button', { name: 'Preview tag' }));
+    await screen.findByRole('dialog');
+    expect(api.planAction).toHaveBeenLastCalledWith(repository.repositoryId, {
+      kind: 'createTag', commitSnapshotId: 'fresh-commit-snapshot', targetOid: fixtures.mergeCommit.oid, name: 'v1', message: 'Retained message',
+    });
+  });
   it('uses exact historical file tokens and clears the file filter and preview on parent changes', async () => {
     const historical = { ...file, fileId: 'history-file', displayPath: 'src/first.ts', indexStatus: null, worktreeStatus: null };
     vi.mocked(api.getCommit).mockResolvedValueOnce({ ...fixtures.mergeCommit, snapshotId: 'parent-one', files: [historical] })

@@ -274,6 +274,13 @@
 .commit-identities summary { color:var(--muted); cursor:pointer; }
 .commit-overview .cherry-pick-selection { margin:12px 0 0; padding:10px; background:var(--bg); }
 .commit-overview .cherry-pick-selection p { margin:0 0 8px; overflow-wrap:anywhere; font-size:12px; }
+.commit-overview .create-tag { margin:12px 0 0; padding:10px; border:1px solid var(--border); border-radius:6px; background:var(--bg); font-size:12px; }
+.commit-overview .create-tag p { margin:0 0 8px; overflow-wrap:anywhere; }
+.commit-overview .create-tag form { display:grid; gap:8px; }
+.commit-overview .create-tag label { display:grid; gap:4px; }
+.commit-overview .create-tag input,.commit-overview .create-tag textarea { width:100%; box-sizing:border-box; }
+.commit-overview .create-tag small { overflow-wrap:anywhere; color:var(--muted); }
+.commit-overview .tag-actions { display:flex; justify-content:flex-end; gap:8px; }
 .commit-comparison { flex-shrink:0; padding:8px 16px; font-size:12px; border-bottom:1px solid var(--border); }
 .commit-comparison label { justify-content:space-between; }
 .commit-comparison p { margin:0; color:var(--muted); }

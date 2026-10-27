@@ -1,6 +1,6 @@
 # Build and installation guide
 
-Reviewed 15 October 2026 for Git View 0.1.0. The project pins Node 22,
+Reviewed 22 October 2026 for Git View 0.2.0 source. The project pins Node 22,
 pnpm 9.12.0, and Rust 1.98.1. The current tested release packages were built
 from source checkpoint `d9af4e6`; exact results and checksums are retained in
 [Build status](BUILD_STATUS.md) and `artifacts/manifest.json`.
@@ -226,7 +226,7 @@ pnpm.cmd tauri build --bundles nsis
 The installer is written below:
 
 ```text
-src-tauri\target\release\bundle\nsis\Git View_0.1.0_x64-setup.exe
+src-tauri\target\release\bundle\nsis\Git View_0.2.0_x64-setup.exe
 ```
 
 When the helper is given `-Check`, it checks the release CLI and launches the

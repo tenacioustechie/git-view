@@ -21,6 +21,7 @@ workflows. Confirmed next-stage sequencing and scope are in the
 | --- | --- | --- | --- |
 | Launch | CLI path, nested working directory, JSON project group | Folder discovery, installation polish, additional windows | Group templates |
 | History | Paged DAG, refs, commit selection, branch scope | Search by message/author/OID | Advanced revision query UI |
+| Tags | Read/display tag refs, scopes and commit badges | Create an annotated local tag at an exact selected commit | Explicit remote tag publication and broader tag management |
 | Details | Message, identities, parents, changed files, unified diff | Side-by-side diff and richer navigation | Blame and file history |
 | Working changes | Staged/unstaged/untracked/conflicted states; file stage/unstage; commit | Hunk staging, stash | Line staging |
 | Remotes | Fetch, fast-forward pull, normal single-repo push | Explicit batch push | Hosting integrations if requested |
@@ -30,6 +31,12 @@ workflows. Confirmed next-stage sequencing and scope are in the
 | Conflicts | Detect and explain in-progress operations | Ordinary merge continue/abort, external resolution | Integrated three-way conflict editor |
 
 Both squash-merge and combining existing commits are confirmed product requirements. M2 merge and squash-merge are the first stretch work after M1 passes; M3 adds combining existing commits, initially a consecutive linear sequence ending at HEAD with backup and recovery. These are separate UI actions: “Squash merge branch” and “Combine commits.” The overnight target is a subset of the full product scope; completing M1 does not complete both squash requirements.
+
+The selected-commit tag slice creates an annotated local tag at the exact commit
+selected in History. Remote publication, replacement/deletion, signed-tag
+controls and general tag management remain separate. See the
+[tag design](TAG_DESIGN.md) for the delivered interaction, contracts, Git
+safeguards and remaining acceptance work.
 
 ## CLI behavior
 

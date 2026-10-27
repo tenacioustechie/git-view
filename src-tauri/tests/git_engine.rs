@@ -1,4 +1,4 @@
-use git_view::{contracts::*, git::GitEngine};
+use git_view::{catalog::Catalog, contracts::*, git::GitEngine, operations::Operations};
 use std::{path::Path, process::Command};
 use tempfile::TempDir;
 fn fixture_command(path: &Path) -> Command {
@@ -162,6 +162,190 @@ async fn status_identity_and_literal_staging() {
         engine.get_status(&opened.repository_id).await.unwrap().head,
         Head::Detached { .. }
     ));
+}
+
+#[tokio::test]
+async fn annotated_tag_targets_selected_history_commit_and_preserves_dirty_files() {
+    let dir = repo();
+    write(dir.path(), "file", "one\n");
+    commit(dir.path(), "first release");
+    let target = git(dir.path(), &["rev-parse", "HEAD"]);
+    write(dir.path(), "file", "two\n");
+    commit(dir.path(), "later work");
+    let head = git(dir.path(), &["rev-parse", "HEAD"]);
+    write(dir.path(), "file", "dirty\n");
+    write(dir.path(), "staged", "staged\n");
+    git(dir.path(), &["add", "staged"]);
+    write(dir.path(), "untracked", "untracked\n");
+    let status_before = git(dir.path(), &["status", "--porcelain=v1"]);
+
+    let engine = GitEngine::isolated();
+    let opened = engine.open_repository(dir.path()).await.unwrap();
+    let details = engine
+        .get_commit(&opened.repository_id, &target, None)
+        .await
+        .unwrap();
+    let service = Operations::new(engine, Catalog::new());
+    let plan = service
+        .plan_action(
+            &opened.repository_id,
+            RepositoryAction::CreateTag {
+                commit_snapshot_id: details.snapshot_id,
+                target_oid: details.oid.clone(),
+                name: "releases/v1".into(),
+                message: "First tested release".into(),
+            },
+        )
+        .await;
+    let RepositoryActionPlan::Eligible {
+        plan_id,
+        tag_preview: Some(preview),
+        ..
+    } = plan
+    else {
+        panic!("tag creation should be eligible")
+    };
+    assert_eq!(preview.full_ref, "refs/tags/releases/v1");
+    assert_eq!(preview.target_oid, target);
+    assert_eq!(preview.subject, "first release");
+    assert!(preview.annotated);
+    assert_eq!(preview.signing, "unsigned");
+
+    let queued = service.run_action(&plan_id).await.unwrap();
+    tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        loop {
+            let operation = service
+                .get(None)
+                .await
+                .into_iter()
+                .find(|operation| operation.operation_id == queued.operation_id)
+                .unwrap();
+            if !matches!(operation.state, JobState::Queued | JobState::Running) {
+                assert_eq!(
+                    operation.state,
+                    JobState::Succeeded,
+                    "{:?}",
+                    operation.error
+                );
+                assert_eq!(
+                    operation.destination.as_deref(),
+                    Some("refs/tags/releases/v1")
+                );
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+
+    assert_eq!(
+        git(dir.path(), &["cat-file", "-t", "refs/tags/releases/v1"]),
+        "tag"
+    );
+    assert_eq!(
+        git(dir.path(), &["rev-parse", "refs/tags/releases/v1^{}"]),
+        target
+    );
+    let tag_object = git(dir.path(), &["cat-file", "-p", "refs/tags/releases/v1"]);
+    assert!(tag_object.contains(&format!("object {target}\ntype commit\ntag releases/v1\n")));
+    assert!(tag_object.contains("tagger Fixture <fixture@example.invalid>"));
+    assert!(tag_object.ends_with("\n\nFirst tested release"));
+    assert_eq!(git(dir.path(), &["rev-parse", "HEAD"]), head);
+    assert_eq!(
+        git(dir.path(), &["status", "--porcelain=v1"]),
+        status_before
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("file")).unwrap(),
+        "dirty\n"
+    );
+}
+
+#[tokio::test]
+async fn tag_creation_rejects_replacement_invalid_input_and_changed_selection() {
+    let dir = repo();
+    write(dir.path(), "file", "one\n");
+    commit(dir.path(), "one");
+    let first = git(dir.path(), &["rev-parse", "HEAD"]);
+    write(dir.path(), "file", "two\n");
+    commit(dir.path(), "two");
+    let second = git(dir.path(), &["rev-parse", "HEAD"]);
+    git(
+        dir.path(),
+        &["tag", "-a", "existing", "-m", "existing", &first],
+    );
+
+    let engine = GitEngine::isolated();
+    let opened = engine.open_repository(dir.path()).await.unwrap();
+    let details = engine
+        .get_commit(&opened.repository_id, &first, None)
+        .await
+        .unwrap();
+    let make = |name: &str, message: &str, target: &str| RepositoryAction::CreateTag {
+        commit_snapshot_id: details.snapshot_id.clone(),
+        target_oid: target.into(),
+        name: name.into(),
+        message: message.into(),
+    };
+
+    let error = engine
+        .prepare_action(&opened.repository_id, make("existing", "new", &first))
+        .await
+        .err()
+        .unwrap();
+    assert_eq!(error.code, "tag_exists");
+    assert_eq!(
+        git(dir.path(), &["rev-parse", "refs/tags/existing^{}"]),
+        first
+    );
+    for name in ["-force", "refs/tags/full", "bad..name", "line\nbreak"] {
+        assert_eq!(
+            engine
+                .prepare_action(&opened.repository_id, make(name, "message", &first))
+                .await
+                .err()
+                .unwrap()
+                .code,
+            "invalid_tag_name"
+        );
+    }
+    assert_eq!(
+        engine
+            .prepare_action(&opened.repository_id, make("blank-message", "  \n", &first))
+            .await
+            .err()
+            .unwrap()
+            .code,
+        "invalid_tag_message"
+    );
+    assert_eq!(
+        engine
+            .prepare_action(
+                &opened.repository_id,
+                make("wrong-target", "message", &second)
+            )
+            .await
+            .err()
+            .unwrap()
+            .code,
+        "precondition_changed"
+    );
+    git(dir.path(), &["config", "tag.gpgSign", "true"]);
+    let service = Operations::new(engine, Catalog::new());
+    let RepositoryActionPlan::Eligible {
+        tag_preview: Some(preview),
+        ..
+    } = service
+        .plan_action(
+            &opened.repository_id,
+            make("configured-signing", "message", &first),
+        )
+        .await
+    else {
+        panic!("configured signing preview should be eligible")
+    };
+    assert_eq!(preview.signing, "configured");
 }
 #[tokio::test]
 async fn pull_policy_dirty_and_stale() {
@@ -1085,6 +1269,10 @@ async fn in_progress_states_block_conflicting_actions() {
     commit(dir.path(), "root");
     let engine = GitEngine::isolated();
     let opened = engine.open_repository(dir.path()).await.unwrap();
+    let commit_details = engine
+        .get_commit(&opened.repository_id, "HEAD", None)
+        .await
+        .unwrap();
     for (name, state, is_dir) in [
         ("MERGE_HEAD", GitState::Merge, false),
         ("rebase-merge", GitState::Rebase, true),
@@ -1108,6 +1296,20 @@ async fn in_progress_states_block_conflicting_actions() {
                     name: "blocked".into(),
                     start_oid: git(dir.path(), &["rev-parse", "HEAD"]),
                     switch_after_create: false,
+                },
+            )
+            .await
+            .err()
+            .unwrap();
+        assert_eq!(error.code, "operation_in_progress");
+        let error = engine
+            .prepare_action(
+                &opened.repository_id,
+                RepositoryAction::CreateTag {
+                    commit_snapshot_id: commit_details.snapshot_id.clone(),
+                    target_oid: commit_details.oid.clone(),
+                    name: format!("blocked-{name}"),
+                    message: "blocked while an operation is active".into(),
                 },
             )
             .await

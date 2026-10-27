@@ -23,7 +23,8 @@ Unified and Side-by-side; working/history previews also offer hunk navigation.
 **File history** opens paged, read-only path history from a selected working or
 historical file, with explicit revision scope and current/previous rename paths.
 **Blame** shows committed line attribution and opens the attributed commit's
-patch. Working-file entry points explicitly read recorded HEAD, not local edits.
+patch. A selected commit can create a reviewed annotated local tag without
+publishing it. Working-file entry points explicitly read recorded HEAD, not local edits.
 These changes
 are not yet in the collected native packages.
 See [Feature status](docs/FEATURE_STATUS.md) for what is implemented and what remains.
@@ -44,10 +45,11 @@ Install the pinned dependencies with `pnpm install --frozen-lockfile`. Run `pnpm
 
 | Document | Purpose |
 | --- | --- |
-| [User guide](docs/USER_GUIDE.md) | Opening repositories, groups, discovery, history, commits, text-hunk staging, remote actions, cherry-pick, guided rebase, stashes, merges, and recovery |
+| [User guide](docs/USER_GUIDE.md) | Opening repositories, groups, discovery, history, commits, local tags, text-hunk staging, remote actions, cherry-pick, guided rebase, stashes, merges, and recovery |
 | [Build and installation guide](docs/BUILD_GUIDE.md) | Prerequisites, local development, source checks, release packages, installation, and the current GitHub Actions pipeline |
 | [Feature status](docs/FEATURE_STATUS.md) | Current completion inventory, remaining roadmap, and verification gaps |
 | [Next feature stage](docs/NEXT_STAGE.md) | Confirmed delivery sequence, feature boundaries, acceptance criteria, and implementation preparation |
+| [Create tag design](docs/TAG_DESIGN.md) | Implemented local annotated tag creation at an exact selected commit, with safeguards and remaining acceptance work |
 | [Development machine setup](Dev-Machine-Setup.md) | Mac and Windows prerequisites, SSH access, and readiness checks |
 | [Product and UX](docs/PRODUCT.md) | Scope, screens, CLI behavior, workflows, and feature milestones |
 | [Decisions](docs/DECISIONS.md) | Confirmed requirements, open questions, and working defaults |
