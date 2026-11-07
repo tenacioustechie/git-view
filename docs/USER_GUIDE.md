@@ -1,6 +1,7 @@
 # Git View user guide
 
-Reviewed 22 October 2026 for version 0.2.0 and the selected-commit local tag
+Reviewed 7 November 2026 for pull with untracked-only changes on branch
+`fix/pull-with-untracked-files` (based on `40fb5d3`); previously reviewed 22 October 2026 for version 0.2.0 and the selected-commit local tag
 workflow on source baseline `33a937f`, including the automatic packaging and
 draft-release workflow, configured-upstream group push based on progressive-status
 commit `2edd67c`, and group branch switching at `8c8c3e4`.
@@ -304,8 +305,11 @@ repository or discovery screen.
 3. Choose **Run N eligible**. Each repository is checked again before execution.
 4. Read **Batch activity** for each result. One failure does not stop other members.
 
-Pull is fast-forward-only and skips dirty repositories, including untracked
-files. It does not automatically stash, rebase, or create a merge commit. Missing
+Pull is fast-forward-only. It skips repositories with staged, unstaged, or
+conflicted files, or a dirty submodule. Repositories whose only changes are
+untracked files are pulled; Git leaves those files untouched, and the pull fails
+for that repository without changing it if an incoming file would overwrite one.
+Pull does not automatically stash, rebase, or create a merge commit. Missing
 upstreams and incompatible Git operations also prevent pulling.
 
 To retry, select failed, skipped, or canceled entries in **Batch activity** and
@@ -752,7 +756,10 @@ hook/external changes are reported for inspection without an automatic rollback.
 - **Pull:** choose **Pull**, review the configured upstream, and run it. A badge
   shows the last-known behind count when nonzero; it can be stale until Fetch. Pull uses
   the current branch's upstream, which may differ from the toolbar's remote
-  selection. It requires a clean worktree and fast-forward-compatible history.
+  selection. It requires fast-forward-compatible history and no staged, unstaged,
+  or conflicted files or dirty submodules. Untracked files do not block Pull and are
+  kept; if an incoming file would overwrite one, Git stops the pull without changing
+  the branch or the file.
 - **Push:** choose a remote in the toolbar selector, open **Push**, and check **Destination ref**
   (for example, `refs/heads/main`). Optionally select **Set upstream**. Choose
   **Preview push**, inspect the destination, then run the action.
@@ -1130,7 +1137,8 @@ acceptance remain outstanding.
 | --- | --- |
 | Repository missing from discovery | Check scan depth and warnings; try a smaller root or **Add repositories**. Nested checkouts and skipped folders may need explicit selection. |
 | Project member unavailable | Use **Locate**, save the corrected path, or check filesystem access. Removing it only changes project membership. |
-| Pull skipped as dirty | Review staged, unstaged, untracked, and conflicted files. Commit or otherwise resolve them before previewing another pull. |
+| Pull skipped as dirty | Review staged, unstaged, and conflicted files and dirty submodules. Commit or otherwise resolve them before previewing another pull. Untracked files alone do not cause this skip. |
+| Pull stopped: incoming commits would overwrite untracked files | The incoming commits add a file at the path of an untracked file (on macOS and Windows, also when only letter case differs). Nothing was changed. The message names up to five of the files (repository **Activity** shows Git's full output). Move, rename, or delete them, then preview Pull again. |
 | Missing upstream or non-fast-forward pull | Inspect branch/upstream state. Configure the intended upstream or reconcile history explicitly with Git; pull does not do this automatically. |
 | Preview or history snapshot expired | Refresh, inspect current state, and create a new preview/search. |
 | Hook, signing, identity, or credential failure | Correct the installed Git configuration, then retry. Read the operation error; do not assume the action completed. |

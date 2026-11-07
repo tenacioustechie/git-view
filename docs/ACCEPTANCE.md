@@ -4,11 +4,12 @@ These are build acceptance criteria. Current results and platform evidence are r
 
 ## First integration gate: the user's group workflow
 
-Create temporary local repositories and a project JSON file with paths relative to that file. Include a clean repository behind its remote, a dirty repository, a diverged repository, and a missing path. Open the project from a CLI whose cwd is elsewhere.
+Create temporary local repositories and a project JSON file with paths relative to that file. Include a clean repository behind its remote, a dirty repository, a repository with only untracked files, a diverged repository, and a missing path. Open the project from a CLI whose cwd is elsewhere.
 
 - All rows appear with the right branch, working state, and availability.
 - Pull all previews the entire candidate set; dirty/missing entries show skipped reasons.
 - The clean behind repository advances to the upstream commit.
+- The untracked-only repository advances and keeps its untracked files; one whose untracked file collides with an incoming path fails without changes.
 - The dirty repository's HEAD, index, tracked/untracked content, and branch remain unchanged by the batch.
 - Divergence reports failure and preserves local commits; no automatic merge/rebase/stash occurs.
 - One failure does not suppress another repository's success. Results remain visible.
@@ -48,7 +49,7 @@ Generate isolated repositories under test-owned temporary directories and local 
 | Root commit, two-parent and octopus merges | Actual parent relationships preserved; root/selected-parent diffs correct |
 | Shallow clone, missing object, binary/oversized file | Explicit boundary/unavailable/truncated state, no false history or hang |
 | Ref changes between history pages | No pages mixed across snapshots; refresh/restart is explicit |
-| User pull config enabling rebase/autostash | Batch still obeys fast-forward-only and dirty-skip policy |
+| User pull config enabling rebase/autostash | Batch still obeys fast-forward-only and dirty-skip policy (untracked-only allowed) |
 | Branch/upstream/HEAD changes after preview | Stale plan rejected or skipped before mutation |
 | Shared worktrees and duplicate aliases | Separate worktree state; common lock serializes mutations; aliases not double-pulled |
 | Dirty submodule | Dirty status and skip policy; no recursive updates |

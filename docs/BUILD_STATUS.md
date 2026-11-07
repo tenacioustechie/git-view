@@ -1,5 +1,44 @@
 # Build status
 
+## 2026-11-07: pull allowed with untracked-only changes
+
+Branch `fix/pull-with-untracked-files`, based on `40fb5d3` (uncommitted working
+tree at the time of these checks). Pull previously refused any repository whose
+status was dirty, including one whose only changes were untracked files. The
+single-repository and group Pull eligibility check now blocks only staged,
+unstaged or conflicted entries and dirty submodules. `RepositoryStatus.dirty`,
+the status summary, the Dirty filter and every other clean-state action are
+unchanged. Git's fast-forward already refuses to overwrite an untracked path; that
+failure is now reported as `untracked_would_be_overwritten` with up to five
+paths parsed from Git's unredacted stderr (English Git messages only; other
+locales fall back to `git_failed`). The group hint and all affected guides and
+specifications were updated.
+
+Manual Git 2.51.2 probes in disposable repositories using the app's pull flags
+confirmed: an unrelated untracked file is kept through a fast-forward; a
+colliding untracked file, including a case-only variant on macOS, aborts the
+pull with HEAD and contents unchanged. They also confirmed an existing,
+unchanged limitation: pull overwrites an ignored file at an incoming path, and
+`git pull` rejects `--no-overwrite-ignore`.
+
+Local checks on macOS against this working tree:
+
+- `cargo test --manifest-path src-tauri/Cargo.toml --locked`: **205 active tests
+  passed**, two explicit measurements ignored. New cases: untracked-only pull
+  fast-forwards and keeps files (including nested), colliding untracked file is
+  refused with the new code and unchanged HEAD/bytes, staged/modified/staged-deletion
+  still block, a group pull runs an untracked-only member, fails a colliding one
+  and skips a modified one, plus three parser unit tests. `pull_policy_dirty_and_stale`
+  now expects an untracked-only repository to be eligible and a modified one to be
+  blocked.
+- `cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --locked -- -D warnings`
+  and `cargo fmt -- --check`: passed. The `native-smoke` feature Clippy variant
+  was not rerun.
+- `pnpm test`: **229 passed** across 24 files; `pnpm lint` and `pnpm build`: passed.
+- Not run: native smoke, packaged builds, and Windows/Linux. Windows
+  case-insensitive collision behaviour is documented from Git's behaviour, not
+  verified on Windows here.
+
 ## 2026-10-22: selected-commit annotated tag implementation and 0.2.0 release preparation
 
 The 0.2.0 release candidate based on source `33a937f` adds reviewed creation of one annotated
