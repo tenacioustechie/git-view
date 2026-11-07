@@ -149,10 +149,14 @@ impl GitEngine {
                 destination = Some(remote.name.clone());
             }
             RepositoryAction::Pull { .. } => {
-                if status.dirty {
+                // Untracked files alone do not block a fast-forward pull: Git
+                // aborts without changes if an incoming path would overwrite one.
+                let counts = &status.counts;
+                if counts.staged + counts.unstaged + counts.conflicted > 0 || status.submodule_dirty
+                {
                     return Err(AppError::new(
                         "dirty",
-                        "Working tree has changes; resolve them before pulling.",
+                        "Working tree has staged, modified or conflicted files; resolve them before pulling. Untracked files alone do not block pull.",
                     ));
                 }
                 if status.git_state != GitState::Idle {
@@ -910,6 +914,11 @@ impl GitEngine {
         if let Some(journal) = &plan.squash_start {
             merge::finish_attempt(&plan.repository, &journal.operation_id)?;
         }
+        // Read Git's line-structured stderr before `checked` redacts it into one line.
+        let overwrite_paths = (output.code != 0
+            && matches!(plan.action, RepositoryAction::Pull { .. }))
+        .then(|| untracked_overwrite_paths(&String::from_utf8_lossy(&output.stderr)))
+        .flatten();
         let output=runner::checked(output).map_err(|mut error| {
             if matches!(plan.action, RepositoryAction::Push { .. }) {
                 error.code="outcome_uncertain".into();
@@ -918,6 +927,10 @@ impl GitEngine {
             if matches!(plan.action, RepositoryAction::SwitchBranch { .. }) {
                 error.code="outcome_uncertain".into();
                 error.message=format!("Switch returned an error and may already have changed HEAD or files (for example, before a hook failed). Refresh and inspect before retrying. {}", error.message);
+            }
+            if let Some(paths) = &overwrite_paths {
+                error.code="untracked_would_be_overwritten".into();
+                error.message=format!("Pull stopped without changes: incoming commits would overwrite untracked files ({paths}). Move, rename or delete them, then preview Pull again.");
             }
             if !matches!(plan.action,RepositoryAction::Fetch{..}|RepositoryAction::Push{..}) && plan.repository.git_dir.join("index.lock").exists() {
                 error.code="lock_conflict".into();
@@ -951,5 +964,60 @@ impl GitEngine {
             exit_code: output.code,
             output_truncated: output.truncated,
         })
+    }
+}
+/// Paths Git listed when a fast-forward refused to overwrite untracked files, or
+/// `None` when the output is not that refusal (for example, a translated message).
+fn untracked_overwrite_paths(details: &str) -> Option<String> {
+    const LIMIT: usize = 5;
+    let mut lines = details
+        .lines()
+        .skip_while(|line| !line.contains("untracked working tree files would be overwritten"));
+    lines.next()?;
+    let paths: Vec<&str> = lines
+        .take_while(|line| line.starts_with('\t'))
+        .map(str::trim)
+        .collect();
+    if paths.is_empty() {
+        return None;
+    }
+    let mut listed = paths
+        .iter()
+        .take(LIMIT)
+        .copied()
+        .collect::<Vec<_>>()
+        .join(", ");
+    if paths.len() > LIMIT {
+        listed.push_str(&format!(" and {} more", paths.len() - LIMIT));
+    }
+    Some(listed)
+}
+#[cfg(test)]
+mod untracked_overwrite_tests {
+    use super::untracked_overwrite_paths;
+    #[test]
+    fn lists_paths_from_git_refusal() {
+        let details = "From /remote\n   1..2  main -> origin/main\nUpdating 1..2\nerror: The following untracked working tree files would be overwritten by merge:\n\tincoming.txt\n\tdir/other\nPlease move or remove them before you merge.\nAborting\n";
+        assert_eq!(
+            untracked_overwrite_paths(details).as_deref(),
+            Some("incoming.txt, dir/other")
+        );
+    }
+    #[test]
+    fn caps_long_lists() {
+        let files: String = (1..=7).map(|n| format!("\tf{n}\n")).collect();
+        let details = format!("error: The following untracked working tree files would be overwritten by merge:\n{files}Aborting\n");
+        assert_eq!(
+            untracked_overwrite_paths(&details).as_deref(),
+            Some("f1, f2, f3, f4, f5 and 2 more")
+        );
+    }
+    #[test]
+    fn ignores_other_failures() {
+        assert_eq!(
+            untracked_overwrite_paths("fatal: Not possible to fast-forward, aborting.\n"),
+            None
+        );
+        assert_eq!(untracked_overwrite_paths(""), None);
     }
 }

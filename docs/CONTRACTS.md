@@ -383,6 +383,8 @@ Use backend-held preflight tokens for branch/remote operations. Index and worktr
 
 `plan_batch` accepts project ID/revision, candidate member IDs, action (`fetch`, `pull`, `push` or `switchBranch`), and optional exact current-branch filter. `switchBranch` requires `targetBranch`, one literal existing local branch name (not a full ref or revision expression); other actions reject a supplied target. The backend owns eligibility and returns a plan ID plus all candidate rows with eligible/skipped reason and displayed destination. Switch plans echo `targetBranch`, and eligible candidates include a `summary` with reviewed source and target commits. The plan retains resolved repository identities and preconditions for five minutes; execution still revalidates. Replan after expiry or project edits. Do not make the renderer the sole source of eligibility.
 
+Pull (single-repository and batch) rejects or skips a repository with `dirty` only for staged, unstaged or conflicted entries or a dirty submodule; untracked-only worktrees remain eligible while `RepositoryStatus.dirty` stays `true`. When Git refuses a fast-forward because an incoming path would overwrite an untracked file, the operation fails with `untracked_would_be_overwritten`, a message naming up to five paths, and Git's redacted output in `details`; HEAD and the files are unchanged. A translated Git message falls back to `git_failed`.
+
 B3 `push` accepts no renderer-provided remote/ref. It resolves exactly one
 `branch.<name>.remote` and `branch.<name>.merge` on an attached existing branch
 with locally available upstream information. Local (`.`) upstreams, conflicting

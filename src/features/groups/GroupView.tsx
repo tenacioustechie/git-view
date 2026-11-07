@@ -291,7 +291,7 @@ export function GroupView({ project: initial, onOpenRepository, onProjectChange 
       <button disabled={busy || batchBlocked || !selectedIds.length} onClick={() => void plan('fetch', selectedIds, `${selectedIds.length} selected members, including ${hiddenCount} hidden by filters`, null)}>Fetch selected ({selectedIds.length})</button>
       <span>{selectedIds.length} selected{hiddenCount > 0 ? ` · ${hiddenCount} hidden by filters` : ''}</span>
     </div>
-    <p className="group-hint">Pull all uses the matching rows below. Pull selected includes checked rows hidden by filters. Pull is fast-forward only; dirty repositories are skipped. Ahead/behind counts reflect the last known upstream state.</p>
+    <p className="group-hint">Pull all uses the matching rows below. Pull selected includes checked rows hidden by filters. Pull is fast-forward only; repositories with staged, modified or conflicted files are skipped, while untracked-only repositories are pulled without touching those files. Ahead/behind counts reflect the last known upstream state.</p>
     <details className="group-switch"><summary>Switch group branch</summary>
       <p>Switch to the same existing local branch in each repository. No branch creation, fetch, pull or automatic stash. Completed switches are not rolled back if another member fails.</p>
       <div className="group-toolbar"><label>Target local branch <input value={targetBranch} placeholder="e.g. main" autoComplete="off" spellCheck={false} maxLength={1024} onChange={event => setTargetBranch(event.target.value)} /></label>

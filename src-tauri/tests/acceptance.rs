@@ -907,6 +907,99 @@ async fn mixed_group_pull_preserves_dirty_and_diverged_and_reports_aliases() {
     assert_eq!(finish(&service, &batch).await[0].state, JobState::Succeeded);
 }
 #[tokio::test]
+async fn group_pull_includes_untracked_only_members_and_never_overwrites_their_files() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path();
+    let seed = root.join("seed");
+    init(&seed);
+    commit(&seed, "base", "base\n");
+    let remote = root.join("remote.git");
+    git(
+        root,
+        &[
+            "clone",
+            "--bare",
+            seed.to_str().unwrap(),
+            remote.to_str().unwrap(),
+        ],
+    );
+    for name in ["untracked", "collide", "modified"] {
+        let path = root.join(name);
+        git(
+            root,
+            &["clone", remote.to_str().unwrap(), path.to_str().unwrap()],
+        );
+        config(&path);
+    }
+    let untracked = root.join("untracked");
+    let collide = root.join("collide");
+    let modified = root.join("modified");
+    std::fs::write(untracked.join("notes"), "keep\n").unwrap();
+    std::fs::write(collide.join("incoming"), "mine\n").unwrap();
+    std::fs::write(modified.join("base"), "local\n").unwrap();
+    std::fs::write(modified.join("notes"), "keep\n").unwrap();
+    let collide_head = git(&collide, &["rev-parse", "HEAD"]);
+    let modified_head = git(&modified, &["rev-parse", "HEAD"]);
+    commit(&seed, "incoming", "remote\n");
+    git(&seed, &["push", remote.to_str().unwrap(), "main"]);
+    let new_head = git(&seed, &["rev-parse", "HEAD"]);
+    let file = root.join("project.git-view.json");
+    std::fs::write(&file, r#"{"version":1,"name":"Untracked","repositories":[{"path":"untracked"},{"path":"collide"},{"path":"modified"}]}"#).unwrap();
+    let engine = GitEngine::isolated();
+    let catalog = Catalog::new();
+    let project = catalog.open(&engine, &file).await.unwrap();
+    let service = Operations::new(engine.clone(), catalog.clone());
+    let plan = service
+        .plan_batch(request(&project, "pull", None))
+        .await
+        .unwrap();
+    assert!(plan.candidates[0].eligible);
+    assert!(plan.candidates[1].eligible);
+    assert!(!plan.candidates[2].eligible);
+    assert!(plan.candidates[2]
+        .reason
+        .as_deref()
+        .unwrap()
+        .contains("Untracked files alone do not block pull"));
+    let batch = service.run_batch(&plan.plan_id).await.unwrap();
+    let ops = finish(&service, &batch).await;
+    let state = |id: &str| {
+        ops.iter()
+            .find(|o| o.member_id.as_deref() == Some(id))
+            .unwrap()
+            .state
+            .clone()
+    };
+    let collide_op = ops
+        .iter()
+        .find(|o| o.member_id.as_deref() == Some(&plan.candidates[1].member_id))
+        .unwrap();
+    assert_eq!(
+        collide_op.error.as_ref().unwrap().code,
+        "untracked_would_be_overwritten",
+        "{:?}",
+        collide_op.error
+    );
+    assert_eq!(state(&plan.candidates[0].member_id), JobState::Succeeded);
+    assert_eq!(state(&plan.candidates[1].member_id), JobState::Failed);
+    assert_eq!(state(&plan.candidates[2].member_id), JobState::Skipped);
+    assert_eq!(git(&untracked, &["rev-parse", "HEAD"]), new_head);
+    assert_eq!(
+        std::fs::read_to_string(untracked.join("notes")).unwrap(),
+        "keep\n"
+    );
+    assert_eq!(git(&collide, &["rev-parse", "HEAD"]), collide_head);
+    assert_eq!(
+        std::fs::read_to_string(collide.join("incoming")).unwrap(),
+        "mine\n"
+    );
+    assert_eq!(git(&modified, &["rev-parse", "HEAD"]), modified_head);
+    assert_eq!(
+        std::fs::read_to_string(modified.join("base")).unwrap(),
+        "local\n"
+    );
+}
+#[tokio::test]
 async fn stale_status_and_project_preview_never_mutate() {
     let temp = tempfile::tempdir().unwrap();
     let repo = temp.path().join("repo");

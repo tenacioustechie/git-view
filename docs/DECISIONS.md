@@ -50,6 +50,8 @@ the user separately selected every engineering detail.
 - Define repository groups in a project file; JSON is the selected proposed format.
 - Prioritize group status and quickly pulling the latest changes across repositories.
 - Skip dirty repositories and let the user handle their changes or conflicts manually.
+  Refined 7 November 2026: untracked files alone do not block single-repository or
+  group pull; Git refuses to overwrite them, so the user still handles any collision.
 
 ## Questions asked; answers pending
 

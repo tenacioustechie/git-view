@@ -1,4 +1,9 @@
-use git_view::{catalog::Catalog, contracts::*, git::GitEngine, operations::Operations};
+use git_view::{
+    catalog::Catalog,
+    contracts::*,
+    git::{GitEngine, PreparedAction},
+    operations::Operations,
+};
 use std::{path::Path, process::Command};
 use tempfile::TempDir;
 fn fixture_command(path: &Path) -> Command {
@@ -404,6 +409,20 @@ async fn pull_policy_dirty_and_stale() {
         engine.execute(&plan).await.err().unwrap().code,
         "precondition_changed"
     );
+    // An untracked-only worktree can be previewed again.
+    let status = engine.get_status(&opened.repository_id).await.unwrap();
+    assert!(status.dirty && status.counts.untracked == 1);
+    engine
+        .prepare_action(
+            &opened.repository_id,
+            RepositoryAction::Pull {
+                status_snapshot_id: status.snapshot_id,
+            },
+        )
+        .await
+        .unwrap();
+    // A modified tracked file still blocks pull.
+    write(clone.path(), "a", "local edit");
     let status = engine.get_status(&opened.repository_id).await.unwrap();
     assert_eq!(
         engine
@@ -423,6 +442,105 @@ async fn pull_policy_dirty_and_stale() {
         std::fs::read_to_string(clone.path().join("dirty")).unwrap(),
         "mine"
     );
+}
+async fn pull_fixture() -> (
+    tempfile::TempDir,
+    tempfile::TempDir,
+    tempfile::TempDir,
+    GitEngine,
+    String,
+) {
+    let source = repo();
+    write(source.path(), "a", "one");
+    commit(source.path(), "one");
+    let bare = tempfile::tempdir().unwrap();
+    git(bare.path(), &["init", "--bare"]);
+    git(
+        source.path(),
+        &["remote", "add", "origin", bare.path().to_str().unwrap()],
+    );
+    git(source.path(), &["push", "-u", "origin", "main"]);
+    let clone = tempfile::tempdir().unwrap();
+    git(
+        clone.path(),
+        &["clone", "-b", "main", bare.path().to_str().unwrap(), "."],
+    );
+    write(source.path(), "incoming", "remote");
+    commit(source.path(), "incoming");
+    git(source.path(), &["push"]);
+    let engine = GitEngine::isolated();
+    let id = engine
+        .open_repository(clone.path())
+        .await
+        .unwrap()
+        .repository_id;
+    (source, bare, clone, engine, id)
+}
+async fn plan_pull(engine: &GitEngine, id: &str) -> AppResult<PreparedAction> {
+    let status = engine.get_status(id).await.unwrap();
+    engine
+        .prepare_action(
+            id,
+            RepositoryAction::Pull {
+                status_snapshot_id: status.snapshot_id,
+            },
+        )
+        .await
+}
+#[tokio::test]
+async fn pull_with_only_untracked_files_fast_forwards_and_keeps_them() {
+    let (source, _bare, clone, engine, id) = pull_fixture().await;
+    write(clone.path(), "notes", "mine");
+    std::fs::create_dir(clone.path().join("scratch")).unwrap();
+    write(&clone.path().join("scratch"), "deep", "nested");
+    let plan = plan_pull(&engine, &id).await.unwrap();
+    engine.execute(&plan).await.unwrap();
+    assert_eq!(
+        git(clone.path(), &["rev-parse", "HEAD"]),
+        git(source.path(), &["rev-parse", "HEAD"])
+    );
+    assert_eq!(
+        std::fs::read_to_string(clone.path().join("notes")).unwrap(),
+        "mine"
+    );
+    assert_eq!(
+        std::fs::read_to_string(clone.path().join("scratch/deep")).unwrap(),
+        "nested"
+    );
+    let status = engine.get_status(&id).await.unwrap();
+    assert_eq!(status.counts.untracked, 2);
+    assert_eq!(status.counts.staged + status.counts.unstaged, 0);
+}
+#[tokio::test]
+async fn pull_refuses_to_overwrite_a_colliding_untracked_file() {
+    let (_source, _bare, clone, engine, id) = pull_fixture().await;
+    let before = git(clone.path(), &["rev-parse", "HEAD"]);
+    write(clone.path(), "incoming", "mine");
+    let plan = plan_pull(&engine, &id).await.unwrap();
+    let error = engine.execute(&plan).await.err().unwrap();
+    assert_eq!(error.code, "untracked_would_be_overwritten", "{error:?}");
+    assert!(error.message.contains("(incoming)"), "{}", error.message);
+    assert_eq!(git(clone.path(), &["rev-parse", "HEAD"]), before);
+    assert_eq!(
+        std::fs::read_to_string(clone.path().join("incoming")).unwrap(),
+        "mine"
+    );
+    assert!(git(clone.path(), &["stash", "list"]).is_empty());
+}
+#[tokio::test]
+async fn pull_still_blocks_staged_and_modified_changes() {
+    let (_source, _bare, clone, engine, id) = pull_fixture().await;
+    write(clone.path(), "notes", "untracked too");
+    write(clone.path(), "a", "staged");
+    git(clone.path(), &["add", "a"]);
+    assert_eq!(plan_pull(&engine, &id).await.err().unwrap().code, "dirty");
+    git(clone.path(), &["restore", "--staged", "a"]);
+    assert_eq!(plan_pull(&engine, &id).await.err().unwrap().code, "dirty");
+    git(clone.path(), &["restore", "a"]);
+    git(clone.path(), &["rm", "--cached", "-q", "a"]);
+    assert_eq!(plan_pull(&engine, &id).await.err().unwrap().code, "dirty");
+    git(clone.path(), &["reset", "-q"]);
+    plan_pull(&engine, &id).await.unwrap();
 }
 #[cfg(unix)]
 #[tokio::test]
