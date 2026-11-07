@@ -1,6 +1,12 @@
 # Build status
 
-## 2026-11-07: pull allowed with untracked-only changes
+## 2026-11-07: pull allowed with untracked-only changes; 0.2.1 release preparation
+
+The version is `0.2.1` in the package, Cargo manifest/lockfile and Tauri
+configuration; `node scripts/ci-release.mjs check` validated all four sources and
+all **18** release-helper tests passed. The hosted matrix and tag-triggered
+draft release for `v0.2.1` are the release build evidence; their results are not
+recorded here.
 
 Branch `fix/pull-with-untracked-files`, based on `40fb5d3` (uncommitted working
 tree at the time of these checks). Pull previously refused any repository whose
