@@ -78,6 +78,7 @@ fn request(project: &Project, action: &str, branch: Option<&str>) -> BatchReques
         action: action.into(),
         branch_filter: branch.map(str::to_owned),
         target_branch: None,
+        pull_mode: None,
     }
 }
 

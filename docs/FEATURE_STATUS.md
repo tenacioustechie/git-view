@@ -1,6 +1,7 @@
 # Feature status
 
-Reviewed 12 November 2026 for single-repository pull modes (branch
+Reviewed 12 November 2026 for group pull modes (branch
+`feature/group-pull-modes`, based on `8db9823`), single-repository pull modes (branch
 `feature/pull-modes`, based on `02b6ef1`) and the update availability check
 (branch `feature/update-check`, based on `1008d83`); previously reviewed 7 November 2026
 for pull with untracked-only changes (branch
@@ -46,7 +47,7 @@ refer to the delivered runbook workflows on tested platforms.
 | Tags | Local/fetched tag refs, History scopes and commit badges; reviewed annotated local-tag creation at an exact selected commit, with configured signing respected, dirty-file preservation and no implicit publication | Explicit tag publication, lightweight tags, replacement/deletion and broader management are deferred; remaining platform acceptance is tracked in [Create tag design](TAG_DESIGN.md) and Build status |
 | Details | Full messages/identities/parents, parent-specific filterable file browser with keyboard selection, collapsible commit information, independently scrolling unified/side-by-side diffs with line numbers/full-row colours, hunk navigation, binary/truncation states; read-only literal-path file history; committed-revision blame with attribution-commit inspection | Syntax highlighting, uncommitted-content blame, automatic rename-following file history and arbitrary-path browsing |
 | Working changes | Staged/unstaged/untracked/conflicted states, whole-file and explicit selected-subset stage/unstage, supported complete text-hunk stage/unstage, staged-only commit, session draft retention, hook/signing failure handling; named stash creation/inspection, retained Apply, reviewed exact-entry Delete and recovery | Individual-line staging; expanded hunk support for excluded file types |
-| Remotes | Fetch; single-repository pull that fetches, reviews and then rebases (default), merges or fast-forwards only, with conflicts stopping for the existing rebase/merge guidance; group fast-forward pull (allowed with untracked-only changes); explicit normal single-repository push, optional upstream setup; reviewed configured-upstream batch push | Group pull with rebase/merge (conflicting members auto-aborted and flagged, as decided 12 November 2026); editable per-member batch-push destinations; hosting integrations only if requested |
+| Remotes | Fetch; single-repository pull that fetches, reviews and then rebases (default), merges or fast-forwards only, with conflicts stopping for the existing rebase/merge guidance; group pull in the same modes, fetched in preview, with conflicting members aborted back to their original commit and marked needs attention; explicit normal single-repository push, optional upstream setup; reviewed configured-upstream batch push | Parallel fetching for large group pull previews; editable per-member batch-push destinations; hosting integrations only if requested |
 | Branches | Local create/switch with previews, explicit remote tracking checkout, ordinary merge, squash merge from local or remote refs, reviewed single non-merge cherry-pick; guided linear rebase onto an existing local or fetched remote branch with Continue, reviewed Skip, Abort, backup and stopped-state guidance | Merge-preserving or arbitrary interactive rebase; multi-commit and merge-commit cherry-pick excluded from A2 |
 | Groups | Versioned JSON, create/edit/save/save-as, labels, locate/remove/add, external-edit protection, state/branch/name filters, selection, batch fetch/pull (untracked-only members included); reviewed shared-local-branch switching (B1); progressive saved-project opening/refresh, bounded reads, stop/retry and generation guards (B2); reviewed configured-upstream push with pinned commits, independent outcomes, queued cancellation and fresh retries (B3) | Further large-group tuning; per-member switch targets/remote branch creation excluded from B1; editable per-member push destinations excluded from B3; create/save still wait for status |
 | Discovery | Bounded depth-controlled scanning, ordinary/linked worktree detection, reviewed new-project creation and draft additions, duplicate exclusion, partial-result warnings | No further discovery feature required by the current plan; nested/skipped paths require explicit addition |
@@ -253,10 +254,12 @@ was rebuilt; installed apps and collected packages remain unchanged.
   four-platform hosted matrix is verified; tag-triggered draft creation remains
   unverified. Downloaded-package acceptance,
   signing/notarization and native GUI/installer acceptance also remain open.
-- Single-repository pull modes are covered by Rust integration tests in
-  disposable repositories and component tests on macOS. They are not yet in the
-  native smoke suite, and Windows/Linux runs, real remote services and
-  case-insensitive path collisions remain unverified for the new modes.
+- Pull modes are covered by Rust integration tests in disposable repositories,
+  component tests, and on macOS the native smoke group Pull all (default rebase).
+  Single-repository pull is not driven by native smoke. Windows/Linux native
+  runs, real remote services and case-insensitive path collisions remain
+  unverified for the new modes. A group pull preview fetches members one at a
+  time.
 - The update check is unit/component-tested, and an explicitly run Rust test
   reached GitHub successfully on macOS; it is not covered by native smoke runs (which never
   contact the network). Proxy environments, Windows/Linux live checks and the

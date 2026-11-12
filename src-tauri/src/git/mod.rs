@@ -8,6 +8,7 @@ mod history;
 mod hunks;
 mod merge;
 mod pull;
+pub use pull::batch_pull_summary;
 mod rebase;
 mod ref_guard;
 mod remote_checkout;
@@ -106,10 +107,16 @@ pub struct PreparedAction {
     pub(crate) hunk: Option<hunks::HunkPlan>,
     pub(crate) tag: Option<tags::TagPlan>,
     pub(crate) pull: Option<PullPreview>,
+    /// Batch pulls never leave a member mid-rebase or mid-merge.
+    pub(crate) abort_on_conflict: bool,
 }
 impl PreparedAction {
     pub fn pull_preview(&self) -> Option<PullPreview> {
         self.pull.clone()
+    }
+    /// Marks a strategy pull so a conflict stop is aborted automatically.
+    pub fn abort_pull_on_conflict(&mut self) {
+        self.abort_on_conflict = self.pull.is_some();
     }
 }
 impl PreparedAction {

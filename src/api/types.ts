@@ -185,9 +185,9 @@ export interface ProjectContent { version: 1; name: string; repositories: { path
 export interface ProjectStatusScan { scanId: string; state: 'running' | 'complete' | 'canceled' | 'failed'; pendingMemberIds: string[]; error: string | null }
 export interface Project { projectId: string; revision: string; displayPath: string; name: string; content: ProjectContent; members: RepositoryRow[]; stale: boolean; error: AppError | null; statusScan?: ProjectStatusScan | null }
 export type BatchAction = 'fetch' | 'pull' | 'push' | 'switchBranch';
-export interface BatchRequest { projectId: string; revision: string; memberIds: string[]; action: BatchAction; branchFilter: string | null; targetBranch?: string | null }
+export interface BatchRequest { projectId: string; revision: string; memberIds: string[]; action: BatchAction; branchFilter: string | null; targetBranch?: string | null; pullMode?: PullMode }
 export interface BatchCandidate { memberId: string; repositoryId: string | null; label: string; eligible: boolean; reason: string | null; destination: string | null; summary?: string | null }
-export interface BatchPlan { planId: string; expiresAt: string; candidates: BatchCandidate[]; action: BatchAction; targetBranch?: string | null }
+export interface BatchPlan { planId: string; expiresAt: string; candidates: BatchCandidate[]; action: BatchAction; targetBranch?: string | null; pullMode?: PullMode }
 export interface Batch { batchId: string; operationIds: string[] }
 export interface LaunchRequest { requestId: string; kind: 'repository' | 'project' | 'welcome' | 'discovery'; path: string | null; error: AppError | null; scanDepth?: number | null }
 export interface DiscoveryCandidate { repositoryId: string; displayPath: string; label: string }

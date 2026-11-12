@@ -18,6 +18,7 @@ import { ViewPreferencesMenu } from './ViewPreferencesMenu';
 import { PanelDivider } from './PanelDivider';
 import { useHistorySidebar } from './useHistorySidebar';
 import { ActivityDrawer } from './ActivityDrawer';
+import { PULL_MODES, pullModeLabels, pullModeNames } from './pullModes';
 import { FileHistory } from './FileHistory';
 import { Blame } from './Blame';
 import { CreateTag, type TagDraft } from './CreateTag';
@@ -33,9 +34,6 @@ const isStashAction = (kind: string) => ['createStash', 'applyStash', 'deleteSta
 const isTagAction = (kind: string) => kind === 'createTag';
 const actionLabels: Record<string, string> = { createTag: 'create local tag', createStash: 'create stash', applyStash: 'apply stash', deleteStash: 'delete stash', finalizeStashDelete: 'finalize stash deletion', cherryPick: 'cherry-pick', continueCherryPick: 'continue cherry-pick', abortCherryPick: 'abort cherry-pick', skipCherryPick: 'skip empty cherry-pick', startRebase: 'rebase branch', continueRebase: 'continue rebase', abortRebase: 'abort rebase', skipRebase: 'skip commit' };
 const actionLabel = (kind: string) => actionLabels[kind] ?? kind;
-export const PULL_MODES: PullMode[] = ['rebase', 'merge', 'fastForward'];
-export const pullModeLabels: Record<PullMode, string> = { rebase: 'Pull with rebase', merge: 'Pull with merge', fastForward: 'Pull fast-forward only' };
-const pullModeNames: Record<PullMode, string> = { rebase: 'Rebase', merge: 'Merge', fastForward: 'Fast-forward only' };
 const pullRunLabels: Record<PullMode, string> = { rebase: 'Rebase onto upstream', merge: 'Merge upstream', fastForward: 'Fast-forward' };
 function pullResult(preview: PullPreview) {
   const upstream = preview.upstreamRef.replace(/^refs\/remotes\//, '');

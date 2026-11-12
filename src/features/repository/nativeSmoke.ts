@@ -1321,14 +1321,19 @@ export async function runNativeSmoke(): Promise<void> {
     }, 120000);
     assert(batch.some(item => item.repositoryId === clean.repositoryId && item.state === 'succeeded'), 'Clean repository pull must succeed');
     assert(batch.some(item => item.repositoryId === dirty.repositoryId && item.state === 'skipped'), 'Dirty repository pull must be skipped');
-    assert(batch.some(item => item.state === 'failed'), 'Diverged fixture must report failure alongside success');
+    // Default Pull with rebase replays the Diverged fixture's unrelated local commit onto the fetched upstream.
+    const diverged = project.members.find(member => member.kind === 'ready' && member.label === 'Diverged');
+    assert(diverged?.kind === 'ready', 'Diverged fixture must be a group member');
+    assert(batch.some(item => item.repositoryId === diverged.repositoryId && item.state === 'succeeded'), 'Diverged repository must rebase onto its upstream');
+    const divergedAfter = await api.getStatus(diverged.repositoryId);
+    assert(divergedAfter.upstream?.ahead === 1 && divergedAfter.upstream?.behind === 0, 'Rebased Diverged branch must be one commit ahead of its upstream and not behind');
     const cleanAfter = await api.getStatus(clean.repositoryId);
     const dirtyAfter = await api.getStatus(dirty.repositoryId);
     assert(JSON.stringify(cleanAfter.head) !== cleanBefore, 'Clean pull must advance HEAD');
     assert(JSON.stringify({ head: dirtyAfter.head, counts: dirtyAfter.counts, dirty: dirtyAfter.dirty }) === dirtyBefore, 'Dirty repository HEAD and working state must remain unchanged');
     const activity = await region('Batch activity');
-    await until('mixed outcomes render', () => ['succeeded', 'failed', 'skipped'].every(state => activity.textContent?.includes(state)));
-    checks.push('DOM Pull all preview and run: clean advanced, dirty skipped unchanged, divergence failed, independent outcomes rendered');
+    await until('mixed outcomes render', () => ['succeeded', 'skipped'].every(state => activity.textContent?.includes(state)));
+    checks.push('DOM Pull all (default rebase) preview and run: clean fast-forwarded, diverged rebased onto upstream, dirty skipped unchanged, independent outcomes rendered');
 
     const cleanMember = project.members.find(member => member.kind === 'ready' && member.repositoryId === clean.repositoryId);
     assert(cleanMember, 'Clean fixture must be a group member');

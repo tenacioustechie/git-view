@@ -1,7 +1,9 @@
 # Git View user guide
 
-Reviewed 12 November 2026 for repository **Pull** modes (rebase, merge,
-fast-forward only) on branch `feature/pull-modes` (based on `02b6ef1`), and for
+Reviewed 12 November 2026 for group **Pull mode** (branch
+`feature/group-pull-modes`, based on `8db9823`), repository **Pull** modes
+(rebase, merge, fast-forward only) on branch `feature/pull-modes` (based on
+`02b6ef1`), and for
 the app-bar **Updates** menu (update availability check) on branch
 `feature/update-check` (based on `1008d83`); previously reviewed 7 November 2026 for pull with untracked-only changes on branch
 `fix/pull-with-untracked-files` (based on `40fb5d3`); previously reviewed 22 October 2026 for version 0.2.0 and the selected-commit local tag
@@ -331,21 +333,42 @@ repository or discovery screen.
 
 | Action | Scope |
 | --- | --- |
+| **Pull mode** | **Rebase** (default), **Merge** or **Fast-forward only** for group pulls; shared with the repository **Pull** button |
 | **Pull all (N)** / **Fetch all (N)** | All rows matching the current filters |
 | **Pull selected (N)** / **Fetch selected (N)** | All checked rows, including checked rows hidden by filters |
 | Header checkbox | Select or deselect all currently matching rows |
 
-1. Choose the appropriate fetch or pull action.
-2. Review the fixed candidate list, destinations, and skip reasons.
-3. Choose **Run N eligible**. Each repository is checked again before execution.
+1. For a pull, check **Pull mode**. Then choose the appropriate fetch or pull
+   action.
+2. Review the fixed candidate list, destinations, and skip reasons. A pull
+   preview fetches every eligible repository first, so it can take a few
+   seconds per repository. Each eligible row then shows its plan, for example
+   *Fast-forward to origin/main…* or *Rebase 2 local commit(s) onto origin/main…*.
+3. Choose **Run N eligible**. Each repository is checked again before execution
+   and integrates exactly the upstream commit shown in the preview.
 4. Read **Batch activity** for each result. One failure does not stop other members.
 
-Pull is fast-forward-only. It skips repositories with staged, unstaged, or
-conflicted files, or a dirty submodule. Repositories whose only changes are
-untracked files are pulled; Git leaves those files untouched, and the pull fails
-for that repository without changing it if an incoming file would overwrite one.
-Pull does not automatically stash, rebase, or create a merge commit. Missing
-upstreams and incompatible Git operations also prevent pulling.
+Group pull follows the same rules as [repository pull](#pull-a-repository):
+
+- A repository that is only behind fast-forwards in every mode.
+- When a repository has both local and upstream commits, **Rebase** replays the
+  local commits onto the upstream and **Merge** creates a merge commit.
+  **Fast-forward only** skips that repository in the preview with the reason.
+- A repository that already includes its upstream is skipped as *Nothing to pull*.
+- Repositories with staged, modified or conflicted files, a dirty submodule, a
+  missing upstream or an operation in progress are skipped. Untracked and ignored
+  files are kept; a repository is skipped if one sits at a path the pull would write.
+
+**Conflicts in a group pull.** A group pull never leaves a repository in the
+middle of a rebase or merge. If one stops on conflicts (or on a rebased commit
+that became empty), Git View aborts it immediately. It checks that the branch is
+back at its original commit, and shows the repository as **needs attention**. The
+details name the upstream and the number of conflicted files. Nothing in that
+repository changes, and the backup from the attempted rebase is kept. The other
+repositories still complete. Open that repository and use its **Pull** button to
+resolve the conflicts with full guidance. If the automatic abort cannot be
+confirmed, the result is marked *outcome uncertain*. Open the repository, then
+continue or abort the operation there.
 
 To retry, select failed, skipped, or canceled entries in **Batch activity** and
 choose **Preview retry (N)** after the batch finishes. Fix the reported cause
@@ -841,7 +864,8 @@ limits: at most 100 local commits, no merge commits among them, and no shallow
 clone. When one of those applies, the message suggests **Pull with merge**.
 
 Pull never stashes, never pushes, and never force-updates anything. Group
-**Pull all** and **Pull selected** are unchanged: they remain fast-forward only.
+**Pull all** and **Pull selected** use the same modes; see
+[Check and update a group](#check-and-update-a-group).
 
 The repository Push form is a normal single-repository push. Groups also offer
 **Push group upstreams**, described above. There is no force-push control.
@@ -1219,7 +1243,8 @@ acceptance remain outstanding.
 | Pull skipped as dirty | Review staged, unstaged, and conflicted files and dirty submodules. Commit or otherwise resolve them before previewing another pull. Untracked files alone do not cause this skip. |
 | Pull stopped: incoming commits would overwrite untracked files | The incoming commits add a file at the path of an untracked file (on macOS and Windows, also when only letter case differs). Nothing was changed. The message names up to five of the files (repository **Activity** shows Git's full output). Move, rename, or delete them, then preview Pull again. |
 | Missing upstream | Configure the intended upstream with Git, for example by pushing with **Set upstream**, then pull again. |
-| Pull fast-forward only says the branch has diverged | Choose **Pull with rebase** or **Pull with merge** from the chevron beside **Pull**. Group pulls remain fast-forward only; pull that repository on its own. |
+| Pull fast-forward only says the branch has diverged | Choose **Pull with rebase** or **Pull with merge** from the chevron beside **Pull**, or change the group **Pull mode**. |
+| A group pull shows **needs attention** | That repository's rebase or merge hit conflicts and was aborted; nothing changed. Open the repository and pull it on its own to resolve the conflicts. |
 | Pull refused: a local path would be overwritten | An untracked or ignored file is at a path the incoming commits write. Move or delete it, then pull again. |
 | Pull with rebase is unavailable | The local commits include a merge, exceed 100 commits, or the clone is shallow. Use **Pull with merge** instead. |
 | Preview or history snapshot expired | Refresh, inspect current state, and create a new preview/search. |
