@@ -1,5 +1,17 @@
 # Build status
 
+## 2026-11-12: 0.3.0 release preparation
+
+Branch `release/0.3.0`, based on `9f79deb` (main after PR #5). The version is
+`0.3.0` in the package, Cargo manifest/lockfile and Tauri configuration;
+`node scripts/ci-release.mjs check` validated all four sources and all **18**
+release-helper tests passed. No code changed since `9f79deb`, whose hosted
+matrix (run 43142905112) passed on all four platforms. 0.3.0 contains the
+**Updates** menu (PR #3), repository Pull modes (PR #4) and group Pull modes
+(PR #5). The `v0.2.1` draft was never published, so 0.3.0 also carries its
+untracked-only pull fix. The hosted matrix and tag-triggered draft release for
+`v0.3.0` are the release build evidence; their results are not recorded here.
+
 ## 2026-11-12: group pull modes with automatic conflict abort
 
 Branch `feature/group-pull-modes`, based on `8db9823` (uncommitted working tree
