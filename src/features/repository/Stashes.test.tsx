@@ -200,7 +200,8 @@ describe('stash workspace (mocked IPC)', () => {
     expect(screen.getByLabelText('Git operation').textContent).toContain('saved.txt');
     expect(screen.queryByRole('button', { name: /Continue merge|Abort merge/ })).toBeNull();
     expect((screen.getByRole('button', { name: 'Apply stash' }) as HTMLButtonElement).disabled).toBe(true);
-    expect(api.listStashes).toHaveBeenCalledTimes(2);
+    // The stash list reloads from an effect after the status refresh renders.
+    await waitFor(() => expect(api.listStashes).toHaveBeenCalledTimes(2));
   });
   it('requires explicit reviewed finalization and exposes manual recovery when automatic completion is unavailable', async () => {
     vi.mocked(api.listStashes).mockResolvedValue({ ...list, recovery: { recoveryId: 'recovery-token', message: 'Review interrupted deletion', canFinalize: false, backupRef: 'refs/git-view/stash-backup/id' } });
