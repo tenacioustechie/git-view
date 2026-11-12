@@ -836,6 +836,7 @@ impl GitEngine {
             hunk,
             tag,
             pull,
+            abort_on_conflict: false,
             action,
             args,
             input,

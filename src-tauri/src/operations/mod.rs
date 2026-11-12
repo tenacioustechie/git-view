@@ -214,11 +214,20 @@ impl Operations {
         operation.state = JobState::Running;
         operation.started_at = Some(now());
         self.store(operation.clone()).await;
-        match self
+        let result = match self
             .engine
             .execute_cancelable(&prepared, cancel.clone())
             .await
         {
+            Err(stop)
+                if prepared.abort_on_conflict
+                    && (stop.code == "rebase_stopped" || stop.code == "merge_stopped") =>
+            {
+                Err(self.engine.abort_stopped_pull(&prepared, stop).await)
+            }
+            other => other,
+        };
+        match result {
             Ok(outcome) => {
                 operation.state = JobState::Succeeded;
                 operation.exit_code = Some(outcome.exit_code);
@@ -283,6 +292,12 @@ impl Operations {
             return Err(AppError::new(
                 "invalid_action",
                 "A target branch is only valid for a switch batch.",
+            ));
+        }
+        if request.pull_mode.is_some() && request.action != "pull" {
+            return Err(AppError::new(
+                "invalid_action",
+                "A pull mode is only valid for a pull batch.",
             ));
         }
         let project = self
@@ -364,13 +379,14 @@ impl Operations {
                             _ => return Err(AppError::new("invalid_head", "Group switching requires an attached, existing source branch. Inspect this repository individually.")),
                         }
                         RepositoryAction::SwitchBranch { status_snapshot_id: status.snapshot_id, local_ref: format!("refs/heads/{target}") }
-                    } else if request.action == "pull" { RepositoryAction::Pull { status_snapshot_id:status.snapshot_id, mode: None } } else {
+                    } else if request.action == "pull" { RepositoryAction::Pull { status_snapshot_id:status.snapshot_id, mode: request.pull_mode } } else {
                         let remotes = self.engine.list_remotes(&repository_id).await?;
                         let remote = remotes.iter().find(|r|r.default_fetch).ok_or_else(||AppError::new("no_remote", "Choose a remote in the repository screen."))?;
                         RepositoryAction::Fetch {remote_id:remote.id.clone()}
                     };
                     let mut prepared = self.engine.prepare_action(&repository_id,action).await?;
                     if request.action == "fetch" && request.branch_filter.is_some() { prepared.guard_head(status.head); }
+                    prepared.abort_pull_on_conflict();
                     Ok(prepared)
                 }.await;
                 match outcome {
@@ -379,6 +395,9 @@ impl Operations {
                         candidate.destination = plan.destination.clone();
                         if matches!(request.action.as_str(), "switchBranch" | "push") {
                             candidate.summary = Some(plan.summary.clone());
+                        }
+                        if let Some(pull) = plan.pull_preview() {
+                            candidate.summary = Some(crate::git::batch_pull_summary(&pull));
                         }
                         let key = plan.fetch_coalesce_key().unwrap_or(repository_id);
                         alias = aliases.get(&key).copied();
@@ -407,6 +426,7 @@ impl Operations {
             candidates: entries.iter().map(|e| e.candidate.clone()).collect(),
             action: request.action,
             target_branch: request.target_branch,
+            pull_mode: request.pull_mode,
         };
         let mut state = self.state.lock().await;
         state

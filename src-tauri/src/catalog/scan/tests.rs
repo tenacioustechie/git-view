@@ -89,6 +89,7 @@ async fn fifteen_members_publish_around_a_slow_row_and_keep_unavailable_errors()
             action: "fetch".into(),
             branch_filter: None,
             target_branch: None,
+            pull_mode: None,
         })
         .await
         .unwrap_err();

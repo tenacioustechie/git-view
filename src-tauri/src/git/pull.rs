@@ -347,3 +347,116 @@ impl GitEngine {
         })
     }
 }
+
+/// One-line plan for a group pull preview row.
+pub fn batch_pull_summary(pull: &PullPreview) -> String {
+    let upstream = pull
+        .upstream_ref
+        .strip_prefix("refs/remotes/")
+        .unwrap_or(&pull.upstream_ref);
+    let short = &pull.upstream_oid[..pull.upstream_oid.len().min(8)];
+    match pull.strategy {
+        PullMode::FastForward => format!(
+            "Fast-forward to {upstream} at {short} ({} new commit(s)).",
+            pull.incoming
+        ),
+        PullMode::Merge => format!(
+            "Merge {upstream} at {short} ({} new) with {} local commit(s) in a merge commit.",
+            pull.incoming, pull.local
+        ),
+        PullMode::Rebase => format!(
+            "Rebase {} local commit(s) onto {upstream} at {short} ({} new); their IDs change.",
+            pull.local, pull.incoming
+        ),
+    }
+}
+
+impl GitEngine {
+    /// After a batch pull stops on conflicts, abort it and confirm the branch is
+    /// back at its reviewed original commit. Returns the error to report.
+    pub(crate) async fn abort_stopped_pull(
+        &self,
+        plan: &PreparedAction,
+        stop: AppError,
+    ) -> AppError {
+        let Some(pull) = plan.pull.as_ref() else {
+            return stop;
+        };
+        let repo = &plan.repository;
+        let short = &pull.head_oid[..pull.head_oid.len().min(8)];
+        let upstream = pull
+            .upstream_ref
+            .strip_prefix("refs/remotes/")
+            .unwrap_or(&pull.upstream_ref)
+            .to_owned();
+        let mut detail = String::new();
+        let outcome: AppResult<()> = async {
+            let status = self.get_status(&repo.id).await?;
+            detail = if status.counts.conflicted > 0 {
+                format!("{} conflicted file(s)", status.counts.conflicted)
+            } else {
+                status
+                    .operation_context
+                    .as_ref()
+                    .map(|c| c.reason.clone())
+                    .unwrap_or_else(|| "stopped for review".into())
+            };
+            let action = match status.git_state {
+                GitState::Rebase => RepositoryAction::AbortRebase {
+                    status_snapshot_id: status.snapshot_id,
+                },
+                GitState::Merge => RepositoryAction::AbortMerge {
+                    status_snapshot_id: status.snapshot_id,
+                },
+                _ => {
+                    return Err(AppError::new(
+                        "outcome_uncertain",
+                        "No stopped rebase or merge was found.",
+                    ))
+                }
+            };
+            let abort = self.prepare_action(&repo.id, action).await?;
+            self.execute(&abort).await?;
+            let after = self.get_status(&repo.id).await?;
+            if after.git_state != GitState::Idle
+                || !matches!(&after.head, Head::Branch { name, oid } if *name == pull.branch && *oid == pull.head_oid)
+            {
+                return Err(AppError::new(
+                    "outcome_uncertain",
+                    "After aborting, the branch is not at its original commit.",
+                ));
+            }
+            Ok(())
+        }
+        .await;
+        let attempt = if pull.strategy == PullMode::Merge {
+            format!("merge of {upstream}")
+        } else {
+            format!("rebase onto {upstream}")
+        };
+        match outcome {
+            Ok(()) => {
+                let mut error = AppError::new(
+                    "pull_conflicts_aborted",
+                    format!(
+                        "Needs attention: the {attempt} stopped ({detail}). It was aborted and {} is back at {short}; nothing changed. Open this repository and pull it on its own to resolve the conflicts.",
+                        pull.branch
+                    ),
+                );
+                error.details = Some(stop.message);
+                error
+            }
+            Err(abort) => {
+                let mut error = AppError::new(
+                    "outcome_uncertain",
+                    format!(
+                        "The {attempt} stopped ({detail}) and the automatic abort did not finish: {} Open this repository to inspect it, then continue or abort the operation.",
+                        abort.message
+                    ),
+                );
+                error.details = Some(stop.message);
+                error
+            }
+        }
+    }
+}

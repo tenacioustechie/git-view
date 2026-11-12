@@ -49,7 +49,8 @@ Generate isolated repositories under test-owned temporary directories and local 
 | Root commit, two-parent and octopus merges | Actual parent relationships preserved; root/selected-parent diffs correct |
 | Shallow clone, missing object, binary/oversized file | Explicit boundary/unavailable/truncated state, no false history or hang |
 | Ref changes between history pages | No pages mixed across snapshots; refresh/restart is explicit |
-| User pull config enabling rebase/autostash | Batch still obeys fast-forward-only and dirty-skip policy (untracked-only allowed) |
+| User pull config enabling rebase/autostash | Pull obeys the app's chosen mode and dirty-skip policy (untracked-only allowed), never the user's pull settings |
+| Group pull member conflicts during rebase/merge | That member is aborted to its original commit and marked needs attention; other members complete |
 | Branch/upstream/HEAD changes after preview | Stale plan rejected or skipped before mutation |
 | Shared worktrees and duplicate aliases | Separate worktree state; common lock serializes mutations; aliases not double-pulled |
 | Dirty submodule | Dirty status and skip policy; no recursive updates |

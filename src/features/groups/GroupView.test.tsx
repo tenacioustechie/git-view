@@ -7,6 +7,7 @@ import type { BatchPlan, OperationResult, Project, RepositoryRow } from '../../a
 import { GroupView } from './GroupView';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { withNavigationBlock } from '../../api/navigation';
+import { VIEW_STORAGE_KEY } from '../repository/useViewPreferences';
 
 vi.mock('../../api/client', () => ({ api: { refreshProject: vi.fn(), getProjectStatus: vi.fn(), cancelProjectStatus: vi.fn(), openProject: vi.fn(), saveProject: vi.fn(), createProject: vi.fn(), planBatch: vi.fn(), runBatch: vi.fn(), cancelBatch: vi.fn(), getOperations: vi.fn() }, errorMessage: (error: unknown) => error instanceof Error ? error.message : String(error) }));
 vi.mock('@tauri-apps/plugin-dialog', () => ({ open: vi.fn(), save: vi.fn() }));
@@ -15,6 +16,7 @@ const project: Project = { projectId: 'project', revision: 'revision-1', display
 const plan: BatchPlan = { planId: 'plan-1', action: 'pull', expiresAt: '2099-01-01T00:00:00Z', candidates: [{ memberId: 'api', repositoryId: 'api', label: 'api', eligible: true, destination: 'origin/main', reason: null }, { memberId: 'web', repositoryId: 'web', label: 'web', eligible: false, destination: null, reason: 'Dirty worktree' }, { memberId: 'missing', repositoryId: null, label: 'missing', eligible: false, destination: null, reason: 'Path does not exist' }] };
 const result = (id: string, state: OperationResult['state']): OperationResult => ({ ...fixtures.failedAction, operationId: `op-${id}`, batchId: 'batch-1', memberId: id, repositoryId: id, action: 'pull', state, error: state === 'failed' ? { code: 'diverged', message: 'Fast-forward required', retryable: true } : null, reason: state === 'skipped' ? 'Dirty worktree' : null });
 beforeEach(() => {
+  localStorage.clear();
   vi.resetAllMocks();
   vi.mocked(api.refreshProject).mockResolvedValue(project);
   vi.mocked(api.getOperations).mockResolvedValue([]);
@@ -242,7 +244,7 @@ describe('GroupView renderer', () => {
     render(<GroupView project={project} onOpenRepository={vi.fn()} />);
     fireEvent.click(screen.getByRole('button', { name: 'Pull all (3)' }));
     const preview = await screen.findByRole('region', { name: 'Batch preview' });
-    expect(api.planBatch).toHaveBeenCalledWith({ projectId: 'project', revision: 'revision-1', memberIds: ['api', 'web', 'missing'], action: 'pull', branchFilter: null });
+    expect(api.planBatch).toHaveBeenCalledWith({ projectId: 'project', revision: 'revision-1', memberIds: ['api', 'web', 'missing'], action: 'pull', branchFilter: null, pullMode: 'rebase' });
     expect(within(preview).getAllByRole('listitem')).toHaveLength(3);
     expect(preview.textContent).toContain('Dirty worktree');
     expect(preview.textContent).toContain('Path does not exist');
@@ -389,5 +391,29 @@ describe('GroupView renderer', () => {
     await act(async () => resolveRefresh(project));
     expect(screen.getByRole('heading', { name: 'Copied project' })).toBeTruthy();
     expect(onProjectChange).toHaveBeenCalledTimes(1);
+  });
+  it('pulls with the shared saved mode, shows each member plan and marks aborted conflicts as needs attention', async () => {
+    localStorage.setItem(VIEW_STORAGE_KEY, JSON.stringify({ version: 1, preferences: { pullMode: 'merge' } }));
+    const pullPlan: BatchPlan = { ...plan, pullMode: 'merge', candidates: plan.candidates.map(candidate => candidate.eligible ? { ...candidate, summary: 'Merge origin/main at bbbbbbbb (3 new) with 1 local commit(s) in a merge commit.' } : candidate) };
+    vi.mocked(api.planBatch).mockResolvedValue(pullPlan);
+    render(<GroupView project={project} onOpenRepository={vi.fn()} />);
+    const mode = screen.getByRole('combobox', { name: 'Pull mode' }) as HTMLSelectElement;
+    expect(mode.value).toBe('merge');
+    fireEvent.change(mode, { target: { value: 'fastForward' } });
+    expect(JSON.parse(localStorage.getItem(VIEW_STORAGE_KEY)!).preferences.pullMode).toBe('fastForward');
+    fireEvent.change(mode, { target: { value: 'merge' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Pull all (3)' }));
+    const preview = await screen.findByRole('region', { name: 'Batch preview' });
+    expect(vi.mocked(api.planBatch).mock.calls[0][0].pullMode).toBe('merge');
+    expect(within(preview).getByRole('heading').textContent).toBe('Pull with merge preview');
+    expect(preview.textContent).toContain('Merge origin/main at bbbbbbbb');
+    expect(preview.textContent).toContain('marked needs attention');
+    const aborted: OperationResult = { ...result('api', 'failed'), error: { code: 'pull_conflicts_aborted', message: 'Needs attention: the merge of origin/main stopped (1 conflicted file(s)).', retryable: false } };
+    vi.mocked(api.runBatch).mockResolvedValue({ batchId: 'batch-1', operationIds: ['op-api'] });
+    vi.mocked(api.getOperations).mockResolvedValue([aborted]);
+    await act(async () => { fireEvent.click(within(preview).getByRole('button', { name: 'Run 1 eligible' })); });
+    const activity = await screen.findByRole('region', { name: 'Batch activity' });
+    await waitFor(() => expect(within(activity).getByText('needs attention')).toBeTruthy());
+    expect(activity.textContent).toContain('Needs attention: the merge of origin/main stopped');
   });
 });

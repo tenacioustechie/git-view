@@ -782,6 +782,11 @@ pub struct BatchRequest {
     pub action: String,
     pub branch_filter: Option<String>,
     pub target_branch: Option<String>,
+    /// Pull strategy for a pull batch. Omitted keeps fetch-and-fast-forward.
+    /// With a mode, preview fetches each member and a member whose rebase or
+    /// merge stops on conflicts is aborted back to its original commit.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pull_mode: Option<PullMode>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -804,6 +809,8 @@ pub struct BatchPlan {
     pub action: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub target_branch: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pull_mode: Option<PullMode>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

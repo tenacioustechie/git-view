@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { api, errorMessage } from '../../api/client';
 import { withNavigationBlock } from '../../api/navigation';
-import type { BatchAction, BatchPlan, DiscoveryCandidate, OperationResult, Project, ProjectContent, RepositoryOpen } from '../../api/types';
+import type { BatchAction, BatchPlan, DiscoveryCandidate, OperationResult, Project, ProjectContent, PullMode, RepositoryOpen } from '../../api/types';
+import { PULL_MODES, pullModeLabels, pullModeNames } from '../repository/pullModes';
+import { useViewPreferences } from '../repository/useViewPreferences';
 import { DiscoveryPicker } from './DiscoveryView';
 import { branchName, matchesFilters, workingState, type GroupFilters } from './groupState';
 import { primaryShortcut, shortcutAria, shortcutLabel, shortcutsBlocked } from '../../app/shortcuts';
@@ -11,6 +13,8 @@ import './groups.css';
 interface Props { project: Project; onOpenRepository: (repository: RepositoryOpen) => void; onProjectChange?: (project: Project) => void }
 const terminal = (operation: OperationResult) => !['queued', 'running'].includes(operation.state);
 const identity = (project: Project) => JSON.stringify([project.projectId, project.revision, project.stale, project.statusScan?.scanId]);
+/** Batch pulls abort a conflicting member back to its original commit. */
+const stateLabel = (result: OperationResult) => result.error?.code === 'pull_conflicts_aborted' ? 'needs attention' : result.state;
 const actionLabel = (action: string) => action === 'switchBranch' ? 'Switch branch' : action === 'pull' ? 'Pull' : action === 'push' ? 'Push' : action === 'fetch' ? 'Fetch' : action;
 
 export function GroupView({ project: initial, onOpenRepository, onProjectChange }: Props) {
@@ -18,6 +22,8 @@ export function GroupView({ project: initial, onOpenRepository, onProjectChange 
   const [filters, setFilters] = useState<GroupFilters>({ search: '', branch: '', state: 'all' });
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [preview, setPreview] = useState<BatchPlan | null>(null);
+  const view = useViewPreferences();
+  const pullMode = view.preferences.pullMode;
   const [previewScope, setPreviewScope] = useState('');
   const [targetBranch, setTargetBranch] = useState('');
   const [busy, setBusy] = useState(false);
@@ -181,7 +187,7 @@ export function GroupView({ project: initial, onOpenRepository, onProjectChange 
     await perform(async () => {
       const requestedGeneration = generation.current;
       setPreview(null);
-      const result = await api.planBatch({ projectId: project.projectId, revision: project.revision, memberIds: ids, action, branchFilter, ...(action === 'switchBranch' ? { targetBranch: target } : {}) });
+      const result = await api.planBatch({ projectId: project.projectId, revision: project.revision, memberIds: ids, action, branchFilter, ...(action === 'switchBranch' ? { targetBranch: target } : {}), ...(action === 'pull' ? { pullMode } : {}) });
       if (requestedGeneration !== generation.current) return;
       setPreview(result); setPreviewScope(scope);
     });
@@ -285,13 +291,14 @@ export function GroupView({ project: initial, onOpenRepository, onProjectChange 
       <button onClick={() => setFilters({ search: '', branch: '', state: 'all' })}>Clear filters</button>
     </div>
     <div className="group-toolbar">
+      <label className="group-pull-mode">Pull mode <select value={pullMode} disabled={busy} onChange={event => view.update({ pullMode: event.target.value as PullMode })}>{PULL_MODES.map(mode => <option key={mode} value={mode}>{pullModeNames[mode]}</option>)}</select></label>
       <button className="group-primary" disabled={busy || batchBlocked || !rows.length} onClick={() => void plan('pull', rows.map(row => row.memberId), `All ${rows.length} matching members`, filters.branch || null)}>Pull all ({rows.length})</button>
       <button disabled={busy || batchBlocked || !rows.length} onClick={() => void plan('fetch', rows.map(row => row.memberId), `All ${rows.length} matching members`, filters.branch || null)}>Fetch all ({rows.length})</button>
       <button disabled={busy || batchBlocked || !selectedIds.length} onClick={() => void plan('pull', selectedIds, `${selectedIds.length} selected members, including ${hiddenCount} hidden by filters`, null)}>Pull selected ({selectedIds.length})</button>
       <button disabled={busy || batchBlocked || !selectedIds.length} onClick={() => void plan('fetch', selectedIds, `${selectedIds.length} selected members, including ${hiddenCount} hidden by filters`, null)}>Fetch selected ({selectedIds.length})</button>
       <span>{selectedIds.length} selected{hiddenCount > 0 ? ` · ${hiddenCount} hidden by filters` : ''}</span>
     </div>
-    <p className="group-hint">Pull all uses the matching rows below. Pull selected includes checked rows hidden by filters. Pull is fast-forward only; repositories with staged, modified or conflicted files are skipped, while untracked-only repositories are pulled without touching those files. Ahead/behind counts reflect the last known upstream state.</p>
+    <p className="group-hint">Pull all uses the matching rows below. Pull selected includes checked rows hidden by filters. The preview fetches each repository and shows its plan; a repository that is only behind fast-forwards in every mode. With Rebase or Merge, a repository that hits conflicts is aborted back to where it was and marked needs attention, while the others complete. Repositories with staged, modified or conflicted files are skipped; untracked files are kept. Pull mode is shared with the repository Pull button.</p>
     <details className="group-switch"><summary>Switch group branch</summary>
       <p>Switch to the same existing local branch in each repository. No branch creation, fetch, pull or automatic stash. Completed switches are not rolled back if another member fails.</p>
       <div className="group-toolbar"><label>Target local branch <input value={targetBranch} placeholder="e.g. main" autoComplete="off" spellCheck={false} maxLength={1024} onChange={event => setTargetBranch(event.target.value)} /></label>
@@ -307,10 +314,11 @@ export function GroupView({ project: initial, onOpenRepository, onProjectChange 
       </div><p className="group-hint">Missing upstreams, detached/unborn branches, busy repositories and ambiguous push configuration are skipped. Remote state is checked by Git during push, not by this preview. Save or cancel project edits first.</p>
     </details>
     {preview && <section className="group-preview" aria-label="Batch preview">
-      <h2>{actionLabel(preview.action)} preview{preview.action === 'switchBranch' ? ` → ${preview.targetBranch}` : ''}</h2><p>{previewScope}. This candidate list and target are fixed; changing filters or the target input does not change this preview.</p>
+      <h2>{preview.action === 'pull' && preview.pullMode ? pullModeLabels[preview.pullMode] : actionLabel(preview.action)} preview{preview.action === 'switchBranch' ? ` → ${preview.targetBranch}` : ''}</h2><p>{previewScope}. This candidate list and target are fixed; changing filters or the target input does not change this preview.</p>
       <p>Plan expires {new Date(preview.expiresAt).toLocaleTimeString()}. Each repository is rechecked before it runs.</p>
       <ul>{preview.candidates.map(candidate => <li key={candidate.memberId}><strong>{candidate.label}</strong> — {candidate.eligible ? 'Eligible' : 'Skipped'}{candidate.destination ? ` → ${candidate.destination}` : ''}{candidate.reason ? `: ${candidate.reason}` : ''}{candidate.summary && <small className="group-switch-summary">{candidate.summary}</small>}</li>)}</ul>
       {preview.action === 'switchBranch' && <p>Review each source and target commit. Successful switches update working files and the index. Hooks run normally; inspect actual state after any failure. There is no cross-repository rollback.</p>}
+      {preview.action === 'pull' && preview.pullMode && <p>Each repository was fetched for this preview, and exactly the reviewed upstream commit is integrated. Rebases change local commit IDs. If a rebase or merge hits conflicts, it is aborted and the repository is marked needs attention; nothing in it changes. Completed pulls are not rolled back if another member fails.</p>}
       {preview.action === 'push' && <p>Review every source commit and remote branch. This publishes committed history using each remote's configured push URL. Git may reject a non-fast-forward update; a missing remote branch may be created. Hooks and credentials apply. Successful pushes are not rolled back if another member fails or you cancel.</p>}
       <button disabled={busy || batchBlocked || (['switchBranch', 'push'].includes(preview.action) && Boolean(draft)) || !preview.candidates.some(candidate => candidate.eligible)} onClick={() => void perform(async () => { const batch = await api.runBatch(preview.planId); trackedBatches.current.add(batch.batchId); setPreview(null); await loadOperations(); })}>{preview.action === 'switchBranch' ? `Switch ${preview.candidates.filter(candidate => candidate.eligible).length} eligible to ${preview.targetBranch}` : preview.action === 'push' ? `Push ${preview.candidates.filter(candidate => candidate.eligible).length} eligible upstreams` : `Run ${preview.candidates.filter(candidate => candidate.eligible).length} eligible`}</button>
       <button disabled={busy} onClick={() => setPreview(null)}>Close preview</button>
@@ -322,7 +330,7 @@ export function GroupView({ project: initial, onOpenRepository, onProjectChange 
         <td>{row.kind === 'ready' ? <button className="group-link" onClick={() => onOpenRepository({ repositoryId: row.repositoryId, displayPath: row.displayPath, status: row.status })}>{row.label}</button> : <strong>{row.label}</strong>}<span className="group-path" title={row.displayPath}>{row.displayPath}</span>{row.kind === 'unavailable' && <button disabled={busy} onClick={() => { startEdit(); void pickFolders(project.members.findIndex(member => member.memberId === row.memberId)); }}>Locate</button>}</td>
         <td title={branchName(row)}>{branchName(row)}{row.kind === 'ready' && row.status.head.kind === 'unborn' ? ' (unborn)' : ''}</td><td>{row.kind === 'loading' ? (scanning ? 'Waiting for status' : 'Not checked') : workingState(row)}{pendingMembers.has(row.memberId) && row.kind !== 'loading' && <small>{scanning ? 'Checking · last known status' : 'Not checked · last known status'}</small>}</td>
         <td>{row.kind === 'ready' ? <>{row.status.upstream ? <span title={row.status.upstream.ref}>Ahead {row.status.upstream.ahead ?? '?'} · Behind {row.status.upstream.behind ?? '?'}</span> : 'No upstream'}<small>Observed {new Date(row.status.observedAt).toLocaleTimeString()}</small><small>{row.status.lastSuccessfulFetchAt ? `Fetched ${new Date(row.status.lastSuccessfulFetchAt).toLocaleString()}` : 'Fetch time unknown'}</small></> : 'Unknown'}</td>
-        <td>{latest.get(row.memberId)?.state ?? 'No activity'}{latest.get(row.memberId)?.reason && <small>{latest.get(row.memberId)?.reason}</small>}</td>
+        <td>{latest.has(row.memberId) ? stateLabel(latest.get(row.memberId)!) : 'No activity'}{latest.get(row.memberId)?.reason && <small>{latest.get(row.memberId)?.reason}</small>}</td>
       </tr>)}</tbody></table></div>
     {!rows.length && <p>No repositories match these filters.</p>}
     <section aria-label="Batch activity"><h2>Batch activity</h2><p>Results stay visible independently of filters. Cancel stops queued work and requests cancellation of running jobs; it does not undo completed changes.</p>
@@ -342,7 +350,7 @@ function BatchActivity({ id, results, labels, busy, blocked, onCancel, onRetry }
   return <article className="group-activity"><h3>{actionLabel(action)} batch{action === 'switchBranch' ? ` → ${target ?? 'target unavailable'}` : ''} <small>{id}</small></h3>
     <table className="group-table"><thead><tr><th>Retry</th><th>Repository</th><th>State</th><th>Details</th></tr></thead><tbody>{results.map(result => <tr key={result.operationId}>
       <td>{retryable.includes(result) && result.memberId && <input type="checkbox" aria-label={`Retry ${labels.get(result.memberId) ?? result.memberId}`} checked={retryIds.has(result.memberId)} onChange={event => { const checked = event.target.checked; setRetryIds(current => { const next = new Set(current); if (checked) next.add(result.memberId!); else next.delete(result.memberId!); return next; }); }} />}</td>
-      <td>{labels.get(result.memberId ?? '') ?? result.memberId ?? result.repositoryId ?? 'Repository'}</td><td>{result.state}</td><td>{result.destination && <strong>{result.destination}</strong>}{result.summary && <small>{result.summary}</small>}{result.error?.message ?? result.reason ?? '—'}{result.outcomeUncertain && <strong> Outcome uncertain; refresh and inspect the repository before retrying.</strong>}{result.outputTruncated && <span> Output was truncated.</span>}</td>
+      <td>{labels.get(result.memberId ?? '') ?? result.memberId ?? result.repositoryId ?? 'Repository'}</td><td>{stateLabel(result)}</td><td>{result.destination && <strong>{result.destination}</strong>}{result.summary && <small>{result.summary}</small>}{result.error?.message ?? result.reason ?? '—'}{result.outcomeUncertain && <strong> Outcome uncertain; refresh and inspect the repository before retrying.</strong>}{result.outputTruncated && <span> Output was truncated.</span>}</td>
     </tr>)}</tbody></table>
     {results.some(result => !terminal(result)) && <button disabled={busy} onClick={onCancel}>Cancel batch</button>}
     {action === 'push' && <p>Cancel stops queued pushes; already-running Git pushes may finish. Inspect remote outcomes before retrying. A retry resolves current upstreams and commits into a new preview; review any changed destinations before confirming.</p>}

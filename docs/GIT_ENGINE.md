@@ -258,6 +258,21 @@ execution remains unverified.
 
 Pull all snapshots all filtered group members; Pull selected snapshots explicit checked entries. With a branch filter, match the exact current local branch name. Without it, each repository pulls its own current branch's upstream. Do not switch branches or assume all upstream branches have the same name.
 
+Group pull with a mode (12 November 2026): `BatchRequest.pullMode` plans every
+member as a [single-repository strategy pull](#single-repository-pull-modes). The
+preview fetches each member in turn and records the exact upstream commit and
+strategy, with a one-line summary per eligible row. `already_up_to_date`,
+`diverged` (fast-forward only) and `local_path_collision` become skip reasons. Each
+batch plan is marked to abort on conflict. When a member's run returns
+`rebase_stopped` or `merge_stopped`, the batch job immediately plans and runs Abort
+rebase / Abort merge against the fresh status. It then requires the branch to be
+idle at the reviewed original HEAD. On success, the member fails with
+`pull_conflicts_aborted` ("Needs attention: …", with the original stop message in
+`details`); the rebase backup ref is retained. If the abort or that check fails,
+the member reports `outcome_uncertain`. A member is never left mid-operation by
+the batch unless that abort itself fails. Without `pullMode`, group pull keeps the
+fetch-and-fast-forward command.
+
 Preview each candidate with eligibility, current branch/HEAD/upstream, and reason if skipped: dirty, conflict/in-progress, different branch, detached/unborn, no upstream, inaccessible, unsupported, or busy. Dirty repositories are skipped for manual attention, as requested by the user; a repository whose only changes are untracked files is not treated as dirty for pull (changed 7 November 2026 at the user's request). A preview is an estimate; remote availability/divergence may only be known after fetch.
 
 Execution acquires the shared-repository mutation lock, then rechecks branch, HEAD, upstream, and status. A stale target is skipped with `precondition_changed`, never silently reinterpreted. Run up to three independent network jobs. Git's own locks remain necessary because external clients can race between checks and execution.

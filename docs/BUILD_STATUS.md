@@ -1,5 +1,46 @@
 # Build status
 
+## 2026-11-12: group pull modes with automatic conflict abort
+
+Branch `feature/group-pull-modes`, based on `8db9823` (uncommitted working tree
+at the time of these checks). The group dashboard gets a **Pull mode** selector,
+shared with the repository Pull default. `BatchRequest.pullMode` plans each
+member as a strategy pull: preview fetches, and each row shows a per-member
+summary. A member whose rebase or merge stops is aborted to its verified original
+commit and reported as `pull_conflicts_aborted` ("needs attention").
+
+Local checks on macOS (Apple silicon), Git 2.51.2:
+
+- `cargo test --locked`: all suites passed. The new `tests/group_pull_modes.rs`
+  has **4 tests**, each with hostile user `pull.rebase`, `pull.ff=only` and
+  autostash settings:
+  - rebase mode: behind fast-forwards, diverged rebases, the conflicting member
+    is aborted with HEAD, files, index and backup ref verified, dirty is skipped
+    unchanged, and up-to-date is skipped as "Nothing to pull";
+  - merge mode: diverged gets a two-parent merge, and the conflicting member is
+    aborted with no `MERGE_HEAD`;
+  - fast-forward-only mode: diverged members are skipped at preview with the
+    rebase/merge suggestion;
+  - `pullMode` is rejected for non-pull batches.
+
+  Existing batch tests pass with `pull_mode: None`.
+- `cargo clippy --all-targets --features native-smoke -- -D warnings` and
+  `cargo fmt --check`: passed.
+- `pnpm test`: **240 passed**. This includes a new GroupView test (shared saved
+  mode, request `pullMode`, preview heading and summaries, and the
+  **needs attention** state in Batch activity) and the updated pull request
+  expectation. `pnpm typecheck` and `pnpm lint`: passed.
+- Native smoke (`VITE_NATIVE_SMOKE=1 pnpm build`, then
+  `cargo build --locked --features native-smoke,tauri/custom-protocol`, then
+  `python3 scripts/native-smoke.py`): **passed, 67 checks**. The group check
+  now asserts that Pull all with the default rebase fast-forwards Clean, rebases
+  Diverged (1 ahead, 0 behind its upstream), and skips Dirty unchanged. It
+  previously expected Diverged to fail.
+
+Not verified: Windows and Linux native smoke, real remote services, conflict
+abort timing with many slow members, and hosted CI for this branch. Preview
+fetches members one at a time.
+
 ## 2026-11-12: single-repository pull modes (rebase default, merge, fast-forward only)
 
 Branch `feature/pull-modes`, based on `02b6ef1` (uncommitted working tree at
@@ -37,9 +78,14 @@ Local checks on macOS (Apple silicon), Git 2.51.2:
 - Visual check: the Vite UI at 800×580 in Chromium with a stubbed backend. The
   Pull split button, options menu and review dialog fit.
 
-Not verified: native smoke coverage, Windows and Linux runs, real remote
-services, case-insensitive path-collision behaviour for the new modes, and
-hosted CI for this branch.
+Hosted CI for PR #4 (Actions run 43136538798 at `eaab92a`) passed on macOS
+arm64, macOS x64, Windows x64 and Linux x64. The earlier run 43133914697 failed
+only on Windows, in the unrelated `Stashes.test.tsx` failed-Apply test. That test
+asserted a reload count before an effect-driven reload. `eaab92a` makes it wait.
+The PR merged as `8db9823`.
+
+Not verified: native smoke coverage, Windows and Linux native runs, real remote
+services, and case-insensitive path-collision behaviour for the new modes.
 
 ## 2026-11-12: update availability check (stage A)
 
