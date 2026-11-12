@@ -382,6 +382,7 @@ async fn pull_policy_dirty_and_stale() {
             &opened.repository_id,
             RepositoryAction::Pull {
                 status_snapshot_id: opened.status.snapshot_id.clone(),
+                mode: None,
             },
         )
         .await
@@ -400,6 +401,7 @@ async fn pull_policy_dirty_and_stale() {
             &opened.repository_id,
             RepositoryAction::Pull {
                 status_snapshot_id: status.snapshot_id,
+                mode: None,
             },
         )
         .await
@@ -417,6 +419,7 @@ async fn pull_policy_dirty_and_stale() {
             &opened.repository_id,
             RepositoryAction::Pull {
                 status_snapshot_id: status.snapshot_id,
+                mode: None,
             },
         )
         .await
@@ -429,7 +432,8 @@ async fn pull_policy_dirty_and_stale() {
             .prepare_action(
                 &opened.repository_id,
                 RepositoryAction::Pull {
-                    status_snapshot_id: status.snapshot_id
+                    status_snapshot_id: status.snapshot_id,
+                    mode: None,
                 }
             )
             .await
@@ -483,6 +487,7 @@ async fn plan_pull(engine: &GitEngine, id: &str) -> AppResult<PreparedAction> {
             id,
             RepositoryAction::Pull {
                 status_snapshot_id: status.snapshot_id,
+                mode: None,
             },
         )
         .await
@@ -751,6 +756,7 @@ async fn divergence_and_branch_changes_never_reinterpreted() {
             &opened.repository_id,
             RepositoryAction::Pull {
                 status_snapshot_id: opened.status.snapshot_id,
+                mode: None,
             },
         )
         .await
@@ -764,6 +770,7 @@ async fn divergence_and_branch_changes_never_reinterpreted() {
             &opened.repository_id,
             RepositoryAction::Pull {
                 status_snapshot_id: status.snapshot_id,
+                mode: None,
             },
         )
         .await
@@ -1133,7 +1140,8 @@ async fn dirty_submodule_and_existing_operation_are_visible() {
             .prepare_action(
                 &opened.repository_id,
                 RepositoryAction::Pull {
-                    status_snapshot_id: opened.status.snapshot_id
+                    status_snapshot_id: opened.status.snapshot_id,
+                    mode: None,
                 }
             )
             .await

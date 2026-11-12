@@ -7,6 +7,7 @@ mod file_history;
 mod history;
 mod hunks;
 mod merge;
+mod pull;
 mod rebase;
 mod ref_guard;
 mod remote_checkout;
@@ -104,6 +105,12 @@ pub struct PreparedAction {
     pub(crate) stash: Option<stash::StashPlan>,
     pub(crate) hunk: Option<hunks::HunkPlan>,
     pub(crate) tag: Option<tags::TagPlan>,
+    pub(crate) pull: Option<PullPreview>,
+}
+impl PreparedAction {
+    pub fn pull_preview(&self) -> Option<PullPreview> {
+        self.pull.clone()
+    }
 }
 impl PreparedAction {
     /// Restrict a filtered batch fetch to the HEAD observed in its preview.

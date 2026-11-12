@@ -6,6 +6,11 @@ import { decodeViewPreferences, DEFAULT_VIEW, useViewPreferences, VIEW_STORAGE_K
 beforeEach(() => localStorage.clear());
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 describe('view preference persistence', () => {
+  it('defaults pull to rebase and accepts only known pull modes', () => {
+    expect(DEFAULT_VIEW.pullMode).toBe('rebase');
+    for (const pullMode of ['rebase', 'merge', 'fastForward'] as const) expect(decodeViewPreferences(JSON.stringify({ version: 1, preferences: { pullMode } })).pullMode).toBe(pullMode);
+    expect(decodeViewPreferences(JSON.stringify({ version: 1, preferences: { pullMode: 'squash' } })).pullMode).toBe('rebase');
+  });
   it('uses defaults without writing on mount, including StrictMode', () => {
     const write = vi.spyOn(Storage.prototype, 'setItem');
     const { result } = renderHook(useViewPreferences, { wrapper: StrictMode });

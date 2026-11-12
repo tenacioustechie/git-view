@@ -318,3 +318,15 @@
   .changes-composer textarea { height:50px; min-height:44px; }
   .changes-composer small { font-size:10px; }
 }
+
+/* Pull split control: the main button pulls with the default mode; the chevron chooses a mode. */
+.pull-split { display:flex; align-items:center; }
+.pull-split>button { border-top-right-radius:0; border-bottom-right-radius:0; }
+.pull-split .pull-options .toolbar-popover-trigger { border-top-left-radius:0; border-bottom-left-radius:0; padding-left:4px; padding-right:4px; }
+.toolbar-popover.pull-options .toolbar-popover-panel { width:260px; }
+.pull-options .toolbar-popover-panel>button { justify-content:space-between; gap:8px; }
+.pull-default { font-size:10px; color:var(--muted); border:1px solid var(--border); border-radius:4px; padding:1px 5px; }
+.pull-options-note { margin:4px 10px 8px; font-size:11px; line-height:1.45; color:var(--muted); }
+.pull-preview { margin:10px 0; padding:10px 12px; border:1px solid var(--border); border-radius:6px; background:var(--bg); }
+.pull-preview label { display:flex; align-items:center; gap:8px; font-weight:600; }
+.pull-preview p { margin:8px 0 0; }

@@ -1,5 +1,46 @@
 # Build status
 
+## 2026-11-12: single-repository pull modes (rebase default, merge, fast-forward only)
+
+Branch `feature/pull-modes`, based on `02b6ef1` (uncommitted working tree at
+the time of these checks). Repository **Pull** now fetches during preview, shows
+a review with the fetched counts and a **Pull mode** selector, then integrates
+the pinned upstream commit by fast-forward, guided rebase (default) or merge.
+Group pull is unchanged (fast-forward only). Design and safety rules are in
+[Git behavior](GIT_ENGINE.md#single-repository-pull-modes).
+
+Local checks on macOS (Apple silicon), Git 2.51.2:
+
+- `cargo test --locked`: all suites passed. The new `tests/git_pull_modes.rs`
+  has **9 tests**:
+  - behind-only fast-forward in all three modes, fetched during preview, keeping
+    untracked and ignored files;
+  - nothing to pull, and divergence refused in fast-forward-only mode;
+  - diverged rebase: linear result, backup ref, journal cleared, while user
+    `pull.rebase`, `pull.ff=only`, autostash and `mergeOptions=--squash`
+    settings are present;
+  - diverged merge commit and its message;
+  - rebase conflict stop then Continue with ignored files present;
+  - rebase conflict Abort restoring the original HEAD;
+  - merge conflict reported as `merge_stopped`, then Abort merge;
+  - untracked and ignored files at an incoming path refused before any change;
+  - tracked edits blocking, and an upstream moved after preview refused at
+    execution.
+
+  The existing batch pull, rebase and merge suites pass unchanged.
+- `cargo clippy --all-targets --features native-smoke -- -D warnings` and
+  `cargo fmt --check`: passed.
+- `pnpm test`: **239 passed**, including the 4 new `PullModes` tests (default
+  rebase, saved default from the options menu, re-plan from the review selector,
+  and the blocked-divergence message) and a `pullMode` preference decode test.
+  `pnpm typecheck` and `pnpm lint`: passed.
+- Visual check: the Vite UI at 800×580 in Chromium with a stubbed backend. The
+  Pull split button, options menu and review dialog fit.
+
+Not verified: native smoke coverage, Windows and Linux runs, real remote
+services, case-insensitive path-collision behaviour for the new modes, and
+hosted CI for this branch.
+
 ## 2026-11-12: update availability check (stage A)
 
 Branch `feature/update-check`, based on `1008d83` (uncommitted working tree at
@@ -38,8 +79,12 @@ Local checks on macOS (Apple silicon) against this working tree:
   returning an available update; the **Update available** button, menu, release
   notes and checkbox fit without overlap.
 
-Not verified: Windows and Linux builds and live checks, proxy environments, and
-the browser hand-off on Windows/Linux. Hosted CI has not run for this branch.
+Hosted CI for PR #3 at `02b6ef1` (Actions run 43125099580) passed on macOS
+arm64, macOS x64, Windows x64 and Linux x64, including the new rustls/ring TLS
+build on Windows. The PR merged as `114a23f`.
+
+Not verified: live checks on Windows and Linux, proxy environments, and the
+browser hand-off on Windows/Linux.
 
 ## 2026-11-07: pull allowed with untracked-only changes; 0.2.1 release preparation
 

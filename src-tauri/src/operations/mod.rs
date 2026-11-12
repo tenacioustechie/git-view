@@ -135,6 +135,7 @@ impl Operations {
                 let destination = prepared.destination.clone();
                 let rebase_preview = prepared.rebase.as_ref().and_then(|plan| plan.preview());
                 let tag_preview = prepared.tag.as_ref().map(|plan| plan.preview());
+                let pull_preview = prepared.pull_preview();
                 let mut state = self.state.lock().await;
                 state.plans.retain(|_, p| {
                     p.created.elapsed() < Duration::from_secs(300) || p.operation_id.is_some()
@@ -161,6 +162,7 @@ impl Operations {
                     destination,
                     rebase_preview,
                     tag_preview,
+                    pull_preview,
                 }
             }
         }
@@ -223,7 +225,8 @@ impl Operations {
                 operation.output_truncated = outcome.output_truncated;
             }
             Err(error) => {
-                operation.state = if error.code == "rebase_stopped" {
+                operation.state = if error.code == "rebase_stopped" || error.code == "merge_stopped"
+                {
                     JobState::Stopped
                 } else if error.code == "canceled" {
                     JobState::Canceled
@@ -361,7 +364,7 @@ impl Operations {
                             _ => return Err(AppError::new("invalid_head", "Group switching requires an attached, existing source branch. Inspect this repository individually.")),
                         }
                         RepositoryAction::SwitchBranch { status_snapshot_id: status.snapshot_id, local_ref: format!("refs/heads/{target}") }
-                    } else if request.action == "pull" { RepositoryAction::Pull { status_snapshot_id:status.snapshot_id } } else {
+                    } else if request.action == "pull" { RepositoryAction::Pull { status_snapshot_id:status.snapshot_id, mode: None } } else {
                         let remotes = self.engine.list_remotes(&repository_id).await?;
                         let remote = remotes.iter().find(|r|r.default_fetch).ok_or_else(||AppError::new("no_remote", "Choose a remote in the repository screen."))?;
                         RepositoryAction::Fetch {remote_id:remote.id.clone()}

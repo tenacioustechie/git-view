@@ -468,6 +468,11 @@ pub enum RepositoryAction {
     },
     Pull {
         status_snapshot_id: String,
+        /// `None` keeps the original fetch-and-fast-forward pull used by group
+        /// batches. `Some` fetches the upstream during preview, then integrates
+        /// the exact fetched commit with the chosen strategy.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        mode: Option<PullMode>,
     },
     Push {
         status_snapshot_id: String,
@@ -639,11 +644,39 @@ pub enum RepositoryActionPlan {
         rebase_preview: Option<RebasePreview>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         tag_preview: Option<TagPreview>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pull_preview: Option<PullPreview>,
     },
     Blocked {
         reason: String,
         error: Option<AppError>,
     },
+}
+/// How a single-repository pull integrates a diverged upstream. A branch that
+/// is only behind is fast-forwarded in every mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PullMode {
+    Rebase,
+    Merge,
+    FastForward,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PullPreview {
+    pub mode: PullMode,
+    /// What will actually run: `fastForward`, `merge`, or `rebase`.
+    pub strategy: PullMode,
+    pub branch: String,
+    pub head_oid: String,
+    pub upstream_ref: String,
+    pub upstream_oid: String,
+    pub remote: String,
+    /// Upstream commits not on the branch.
+    pub incoming: u32,
+    /// Branch commits not on the upstream.
+    pub local: u32,
+    pub fetched_at: String,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

@@ -167,7 +167,7 @@ type RepositoryAction =
   | { kind: 'stageHunk' | 'unstageHunk'; diffSnapshotId: SnapshotId; fileId: FileId; hunkId: string }
   | { kind: 'commit'; statusSnapshotId: SnapshotId; message: string }
   | { kind: 'fetch'; remoteId: string }
-  | { kind: 'pull'; statusSnapshotId: SnapshotId }
+  | { kind: 'pull'; statusSnapshotId: SnapshotId; mode?: 'rebase' | 'merge' | 'fastForward' }
   | { kind: 'push'; statusSnapshotId: SnapshotId; remoteId: string; destinationRef: string; setUpstream: boolean }
   | { kind: 'createBranch'; statusSnapshotId: SnapshotId; name: string; startOid: Oid; switchAfterCreate: boolean }
   | { kind: 'createTag'; commitSnapshotId: SnapshotId; targetOid: Oid; name: string; message: string }
@@ -382,6 +382,15 @@ shared repository lock. It never replaces a ref or publishes the tag.
 Use backend-held preflight tokens for branch/remote operations. Index and worktree observations can race with outside clients; the UI must never promise total exclusion. Report Git's final outcome and refresh. A hook may legitimately alter content during commit.
 
 `plan_batch` accepts project ID/revision, candidate member IDs, action (`fetch`, `pull`, `push` or `switchBranch`), and optional exact current-branch filter. `switchBranch` requires `targetBranch`, one literal existing local branch name (not a full ref or revision expression); other actions reject a supplied target. The backend owns eligibility and returns a plan ID plus all candidate rows with eligible/skipped reason and displayed destination. Switch plans echo `targetBranch`, and eligible candidates include a `summary` with reviewed source and target commits. The plan retains resolved repository identities and preconditions for five minutes; execution still revalidates. Replan after expiry or project edits. Do not make the renderer the sole source of eligibility.
+
+A `pull` with `mode` fetches the upstream remote while planning and returns
+`pullPreview` (`mode`, the `strategy` that will run, `branch`, `headOid`,
+`upstreamRef`, `upstreamOid`, `remote`, `incoming`, `local`, `fetchedAt`). A rebase
+strategy also returns `rebasePreview`. Blocked codes include `already_up_to_date`,
+`diverged` (fast-forward-only), `local_path_collision` and `rebase_unavailable`.
+A conflicting merge-strategy pull fails with `merge_stopped` and the operation state
+`stopped`, as `rebase_stopped` does. Without `mode`, pull keeps the original batch
+semantics below.
 
 Pull (single-repository and batch) rejects or skips a repository with `dirty` only for staged, unstaged or conflicted entries or a dirty submodule; untracked-only worktrees remain eligible while `RepositoryStatus.dirty` stays `true`. When Git refuses a fast-forward because an incoming path would overwrite an untracked file, the operation fails with `untracked_would_be_overwritten`, a message naming up to five paths, and Git's redacted output in `details`; HEAD and the files are unchanged. A translated Git message falls back to `git_failed`.
 

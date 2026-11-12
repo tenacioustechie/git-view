@@ -14,6 +14,33 @@ impl GitEngine {
         repository_id: &str,
         action: RepositoryAction,
     ) -> AppResult<PreparedAction> {
+        // A strategy pull fetches during preview, then plans against the fresh
+        // snapshot so execution integrates exactly the reviewed upstream commit.
+        if let RepositoryAction::Pull {
+            status_snapshot_id,
+            mode: Some(mode),
+        } = &action
+        {
+            let fresh = self
+                .fetch_for_pull(repository_id, status_snapshot_id)
+                .await?;
+            return self
+                .prepare_action_now(
+                    repository_id,
+                    RepositoryAction::Pull {
+                        status_snapshot_id: fresh,
+                        mode: Some(*mode),
+                    },
+                )
+                .await;
+        }
+        self.prepare_action_now(repository_id, action).await
+    }
+    async fn prepare_action_now(
+        &self,
+        repository_id: &str,
+        action: RepositoryAction,
+    ) -> AppResult<PreparedAction> {
         let repo = self.repository(repository_id).await?;
         let initial_config = self.config_fingerprint(&repo).await?;
         let observed = self.observe(&repo).await?;
@@ -53,6 +80,7 @@ impl GitEngine {
         let mut stash = None;
         let mut hunk = None;
         let mut tag = None;
+        let mut pull = None;
         let finish_squash = matches!(action, RepositoryAction::Commit { .. })
             && status.git_state == GitState::SquashMerge;
         let snapshot_id = match &action {
@@ -61,7 +89,9 @@ impl GitEngine {
             RepositoryAction::Commit {
                 status_snapshot_id, ..
             }
-            | RepositoryAction::Pull { status_snapshot_id }
+            | RepositoryAction::Pull {
+                status_snapshot_id, ..
+            }
             | RepositoryAction::Push {
                 status_snapshot_id, ..
             }
@@ -148,7 +178,35 @@ impl GitEngine {
                 ]);
                 destination = Some(remote.name.clone());
             }
-            RepositoryAction::Pull { .. } => {
+            RepositoryAction::Pull {
+                mode: Some(mode), ..
+            } => {
+                let integration = self.prepare_pull_integration(&repo, status, *mode).await?;
+                target_ref = Some((
+                    integration.preview.upstream_ref.clone(),
+                    integration.preview.upstream_oid.clone(),
+                ));
+                destination = Some(integration.destination);
+                if integration.preview.strategy == PullMode::Rebase {
+                    let (prepared, command, description) = self
+                        .prepare_rebase(&repo, status, &action)
+                        .await
+                        .map_err(|mut error| {
+                            error
+                                .message
+                                .push_str(" You can choose Pull with merge instead.");
+                            error
+                        })?;
+                    rebase = Some(prepared);
+                    args = command;
+                    summary = Some(description);
+                } else {
+                    args = integration.args;
+                    summary = Some(integration.summary);
+                }
+                pull = Some(integration.preview);
+            }
+            RepositoryAction::Pull { mode: None, .. } => {
                 // Untracked files alone do not block a fast-forward pull: Git
                 // aborts without changes if an incoming path would overwrite one.
                 let counts = &status.counts;
@@ -777,6 +835,7 @@ impl GitEngine {
             stash,
             hunk,
             tag,
+            pull,
             action,
             args,
             input,
@@ -938,7 +997,32 @@ impl GitEngine {
                 error.retryable=true;
             }
             error
-        })?;
+        });
+        let output = match output {
+            Ok(output) => output,
+            Err(mut error) => {
+                // A pull merge that stops on conflicts is resumable through the
+                // ordinary merge guidance, like a stopped rebase.
+                if plan
+                    .pull
+                    .as_ref()
+                    .is_some_and(|p| p.strategy == PullMode::Merge)
+                    && error.code != "lock_conflict"
+                {
+                    if let Ok(after) = self.observe(&plan.repository).await {
+                        let status = after.status.unwrap();
+                        if status.git_state == GitState::Merge {
+                            error.code = "merge_stopped".into();
+                            error.message = format!(
+                                "Merge stopped with {} conflicted file(s). Resolve them, stage the results, then choose Continue merge, or Abort merge to restore the branch.",
+                                status.counts.conflicted
+                            );
+                        }
+                    }
+                }
+                return Err(error);
+            }
+        };
         if let RepositoryAction::SwitchBranch { local_ref, .. } = &plan.action {
             let observed = self.observe(&plan.repository).await.map_err(|error| AppError::new("outcome_uncertain", format!("Switch completed, but the resulting repository state could not be verified. Refresh and inspect before retrying. {}", error.message)))?;
             let expected = plan.target_ref.as_ref().map(|(_, oid)| oid);
@@ -952,7 +1036,7 @@ impl GitEngine {
         }
         if matches!(
             plan.action,
-            RepositoryAction::Fetch { .. } | RepositoryAction::Pull { .. }
+            RepositoryAction::Fetch { .. } | RepositoryAction::Pull { mode: None, .. }
         ) {
             self.state
                 .lock()

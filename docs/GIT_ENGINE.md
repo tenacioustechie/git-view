@@ -42,7 +42,8 @@ Get changed paths from NUL-delimited metadata rather than patch headers. Use ind
 | Stage/unstage hunk (A4) | Backend-issued complete text block, exact index/worktree/config/attribute snapshot, index-only mutation, stale rejection and post-hook result inspection |
 | Commit | Nonblank message; staged content for normal commit; message through stdin; retain draft on failure, refresh actual index/worktree, no automatic rollback; normal hooks/signing |
 | Fetch | Explicit remote selection; default upstream remote, else `origin`, else the sole remote; otherwise request a choice; no automatic prune or recursive submodule fetch |
-| Pull | Attached branch, upstream, no staged/unstaged/conflicted entries or dirty submodules (untracked files allowed), no ongoing operation; explicit fast-forward-only, rebase disabled, autostash disabled |
+| Pull (group batch) | Attached branch, upstream, no staged/unstaged/conflicted entries or dirty submodules (untracked files allowed), no ongoing operation; explicit fast-forward-only, rebase disabled, autostash disabled |
+| Pull (single repository) | Same preconditions plus one remote-tracking upstream; preview fetches the upstream remote, then integrates the exact fetched commit: fast-forward when only behind, otherwise the chosen rebase or merge (fast-forward-only mode refuses divergence); autostash disabled |
 | Push | Show resolved remote and destination ref; push current branch to that one ref explicitly; explicitly disable follow-tags and recursive submodule push; no mirror/force; first push chooses remote/ref and optional upstream |
 | Create/switch branch | Validate name and resolve target; initial policy requires clean status and no ongoing operation; backend rechecks HEAD |
 | Create annotated tag | Bind an exact commit-detail snapshot/OID; validate the absent local tag ref, annotation, identity and signing configuration; allow dirty files but require idle operation state; never force or publish; verify the annotated object and peeled target |
@@ -107,6 +108,50 @@ reason, and backend capabilities for cherry-pick, ordinary merge, and squash
 review. Conflict completion follows Git index state, not a search for text
 markers. Missing original context is displayed as unknown.
 
+## Single-repository pull modes
+
+Added 12 November 2026. `RepositoryAction::Pull` carries an optional `mode`
+(`rebase`, `merge`, `fastForward`). Without a mode (group batches), pull keeps
+the fetch-and-fast-forward command above. With a mode:
+
+1. **Preview fetches.** The status snapshot is checked, then `git fetch
+   --no-prune --no-recurse-submodules -- <upstream remote>` runs under the
+   repository lock. A fresh snapshot is taken; HEAD must be unchanged. The
+   upstream is the branch's `%(upstream)` remote-tracking ref, which must be under
+   `refs/remotes/` and come from exactly one `branch.<name>.merge`.
+2. **Plan.** The tracking ref is resolved to a commit and pinned as the action's
+   `target_ref`. If the branch already contains it, the plan is blocked
+   (`already_up_to_date`). If HEAD is an ancestor, the strategy is fast-forward in
+   every mode. Otherwise `fastForward` is blocked (`diverged`), and `merge` or
+   `rebase` is used.
+3. **Execute.** The tracking ref must still resolve to the pinned commit, and
+   the status fingerprint and Git config must be unchanged. No second fetch
+   happens.
+
+Every strategy passes `-c branch.<name>.mergeOptions= -c merge.autoStash=false
+-c merge.directoryRenames=false -c submodule.recurse=false`.
+
+- **Fast-forward:** `merge --ff-only --no-autostash -- <oid>`. Paths changed
+  between HEAD and the upstream commit are checked first; an untracked or ignored
+  file at one of those paths refuses the plan (`local_path_collision`). This
+  closes the ignored-file overwrite gap that the batch `git pull` path still has.
+- **Merge:** `merge --no-edit --no-autostash --no-ff --no-squash --commit -m
+  "Merge remote-tracking branch '<remote>/<branch>'" -- <oid>`. Paths changed
+  between the merge base and the upstream are protected the same way. A conflict
+  leaves an ordinary merge (`MERGE_HEAD`), reported as `merge_stopped`
+  (operation state `stopped`), and uses Continue merge / Abort merge.
+- **Rebase:** the guided rebase engine is started with the tracking ref as
+  `onto`. Its journal records `pull: true`. For such rebases, untracked files are
+  allowed; the blanket refusal of ignored files is replaced by the existing check
+  of every path in the onto tree and each replayed commit; and
+  `merge.directoryRenames=false` is passed to start, Continue and Skip so files
+  cannot be moved to unnamed paths. All other guided-rebase limits, backups,
+  recovery and stop handling apply unchanged. Plain **Rebase branch…** is
+  unchanged: it still requires a fully clean worktree with no ignored files.
+
+Known gap: Git can write conflict-side files such as `path~HEAD` during file/
+directory conflicts; those names are not pre-checked.
+
 ## Guided rebase
 
 The first rebase workflow takes an exact local or fetched remote ref and a clean
@@ -116,7 +161,8 @@ replacement refs are rejected. A non-interactive `git rebase --merge --onto`
 uses the reviewed target/base OIDs, with autostash and automatic other-ref
 updates disabled. `--reapply-cherry-picks --empty=stop` makes duplicates and
 becomes-empty commits available for explicit review. Normal hooks and signing
-remain active. Pull still never rebases automatically.
+remain active. Single-repository **Pull with rebase** reuses this engine; see
+[Single-repository pull modes](#single-repository-pull-modes).
 
 Before Git starts, the engine creates a unique backup under
 `refs/git-view/rebase-backups/` and writes `git-view-rebase.json` in the
