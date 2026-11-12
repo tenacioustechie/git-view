@@ -24,7 +24,9 @@ Unified and Side-by-side; working/history previews also offer hunk navigation.
 historical file, with explicit revision scope and current/previous rename paths.
 **Blame** shows committed line attribution and opens the attributed commit's
 patch. A selected commit can create a reviewed annotated local tag without
-publishing it. Working-file entry points explicitly read recorded HEAD, not local edits.
+publishing it. The app-bar **Updates** menu checks GitHub for a newer published
+release (automatically at startup and daily unless turned off) and opens its
+download page. Working-file entry points explicitly read recorded HEAD, not local edits.
 These changes
 are not yet in the collected native packages.
 See [Feature status](docs/FEATURE_STATUS.md) for what is implemented and what remains.

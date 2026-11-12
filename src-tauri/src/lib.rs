@@ -6,6 +6,7 @@ pub mod launch;
 #[cfg(feature = "native-smoke")]
 mod native_smoke;
 pub mod operations;
+pub mod updates;
 use tauri::{Emitter, Manager};
 pub fn run() {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -79,6 +80,7 @@ pub fn run() {
         catalog,
         operations,
         launches,
+        updates: updates::Updates::default(),
         #[cfg(feature = "native-smoke")]
         smoke,
     };
@@ -125,6 +127,7 @@ pub fn run() {
             }
         }))
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
         .manage(state)
         .setup(|app| {
             app.state::<commands::AppState>()
@@ -165,7 +168,9 @@ pub fn run() {
         commands::get_launch_request,
         commands::ack_launch_request,
         commands::list_rewrites,
-        commands::discover_repositories
+        commands::discover_repositories,
+        commands::check_for_update,
+        commands::open_update_page
     ]);
     #[cfg(feature = "native-smoke")]
     let builder = builder.invoke_handler(tauri::generate_handler![
@@ -201,6 +206,8 @@ pub fn run() {
         commands::ack_launch_request,
         commands::list_rewrites,
         commands::discover_repositories,
+        commands::check_for_update,
+        commands::open_update_page,
         native_smoke::native_smoke_context,
         native_smoke::native_smoke_focus,
         native_smoke::native_smoke_discovery_case,

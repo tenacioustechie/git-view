@@ -10,6 +10,8 @@ import { ToolbarPopover } from './ToolbarPopover';
 import { Icon } from './Icon';
 import { KeyboardShortcuts } from './KeyboardShortcuts';
 import { useRecentWorkspaces, type RecentWorkspace } from './useRecentWorkspaces';
+import { UpdatesMenu } from './UpdatesMenu';
+import { useUpdates } from './useUpdates';
 import './app.css';
 
 type DiscoveryRoute = { key: string; root?: string; depth?: number };
@@ -24,6 +26,7 @@ export function App() {
   const opening = useRef(false);
   const navigationVersion = useRef(0);
   const { items: recent, warning: recentWarning, remember, clear: clearRecent } = useRecentWorkspaces();
+  const updates = useUpdates();
   const acceptRepository = useCallback((repo: RepositoryOpen) => {
     navigationVersion.current++;
     setRepository(repo); setDiscovery(null); setError(null);
@@ -141,6 +144,7 @@ export function App() {
           {recent.length > 0 && <><div className="popover-separator" /><button title="Forget this list only; no projects or repository files are deleted" onClick={() => { close(); clearRecent(); }}>Clear recent</button></>}
         </>}</ToolbarPopover>
       </nav>
+      <UpdatesMenu updates={updates} />
       <KeyboardShortcuts />
       {project && repository && <button className="project-back" onClick={back}>Back to {project.name}</button>}
     </header>

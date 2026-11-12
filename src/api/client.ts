@@ -38,4 +38,6 @@ export const api = {
   getLaunchRequest: () => invoke<T.LaunchRequest | null>('get_launch_request'),
   ackLaunchRequest: (requestId: string) => invoke<void>('ack_launch_request', { requestId }),
   listRewrites: (repositoryId: string) => invoke<T.RewriteRecord[]>('list_rewrites', { repositoryId }),
+  checkForUpdate: () => invoke<T.UpdateCheck>('check_for_update'),
+  openUpdatePage: () => invoke<void>('open_update_page'),
 };

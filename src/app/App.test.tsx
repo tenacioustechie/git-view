@@ -8,7 +8,7 @@ import { RECENT_STORAGE_KEY } from './useRecentWorkspaces';
 import { App } from './App';
 import { open } from '@tauri-apps/plugin-dialog';
 
-vi.mock('../api/client', () => ({ api: { getLaunchRequest: vi.fn(), ackLaunchRequest: vi.fn(), openRepository: vi.fn(), openProject: vi.fn() }, errorMessage: String }));
+vi.mock('../api/client', () => ({ api: { getLaunchRequest: vi.fn(), ackLaunchRequest: vi.fn(), openRepository: vi.fn(), openProject: vi.fn(), checkForUpdate: vi.fn(), openUpdatePage: vi.fn() }, errorMessage: String }));
 vi.mock('@tauri-apps/plugin-dialog', () => ({ open: vi.fn(), save: vi.fn() }));
 vi.mock('../features/groups/GroupView', () => ({ GroupView: ({ project, onProjectChange, onOpenRepository }: { project: Project; onProjectChange: (next: Project) => void; onOpenRepository: (next: RepositoryOpen) => void }) => <div>Project fixture
   <button onClick={() => onProjectChange({ ...project, name: 'Renamed project' })}>Mock project refresh</button>

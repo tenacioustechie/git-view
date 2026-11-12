@@ -1,5 +1,46 @@
 # Build status
 
+## 2026-11-12: update availability check (stage A)
+
+Branch `feature/update-check`, based on `1008d83` (uncommitted working tree at
+the time of these checks). Adds an app-bar **Updates** menu: automatic checks
+(default on, at startup + 5 s and daily), manual check, per-version skip, and
+**Update Git View…**, which opens the validated GitHub release page through
+`tauri-plugin-opener`. The backend (`src-tauri/src/updates.rs`) requests
+`releases/latest` with a 20 s timeout and 1 MB response cap, ignores drafts and
+pre-releases, compares semantic versions, and only opens the release URL from the
+last successful check. Native smoke builds never check.
+
+New dependencies, chosen so no existing locked crate version changed (tauri
+stays 2.11.5, wry 0.55.1): `reqwest` 0.13 (rustls without the default
+`aws-lc-rs` provider, http2, system proxy), `rustls` 0.23 with `ring`, `semver` 1,
+and `tauri-plugin-opener` pinned `~2.5.3` (2.7.x requires a newer tauri).
+
+Local checks on macOS (Apple silicon) against this working tree:
+
+- `pnpm typecheck`, `pnpm lint`, `pnpm build`: passed.
+- `pnpm test`: **234 tests passed** in 25 files, including 5 new `UpdatesMenu`
+  tests (startup delay, daily interval, highlight, skip/unskip persistence,
+  automatic off, manual up-to-date/error reporting, browser-open failure).
+- `cargo fmt --check` and `cargo clippy --all-targets --features native-smoke
+  -- -D warnings`: passed.
+- `cargo test --locked`: all suites passed; 6 new `updates` unit tests (version
+  ordering, draft/prerelease handling, tag and URL validation, payload parsing,
+  note truncation, open-URL gating). One new ignored test,
+  `updates::tests::live_latest_release_check`, passed when run explicitly with
+  `-- --ignored`; it reached GitHub and found the published 0.2.0 release.
+
+- `scripts/macos-build.sh --skip-deps`: built an unsigned `Git View.app` from
+  this working tree; it launched. Interacting with the native window was not
+  automated (no Accessibility permission), so the in-app live check and browser
+  hand-off were not observed in the packaged app.
+- Visual check: Vite UI at 800×580 in Chromium with a stubbed Tauri backend
+  returning an available update; the **Update available** button, menu, release
+  notes and checkbox fit without overlap.
+
+Not verified: Windows and Linux builds and live checks, proxy environments, and
+the browser hand-off on Windows/Linux. Hosted CI has not run for this branch.
+
 ## 2026-11-07: pull allowed with untracked-only changes; 0.2.1 release preparation
 
 The version is `0.2.1` in the package, Cargo manifest/lockfile and Tauri

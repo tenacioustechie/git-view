@@ -195,3 +195,16 @@ export interface DiscoveryIssue { path: string; reason: string }
 export interface DiscoveryResult { rootPath: string; depth: number; candidates: DiscoveryCandidate[]; issues: DiscoveryIssue[]; truncated: boolean; visitedDirectories: number }
 export interface DiffRequest { repositoryId: string; snapshotId: string; fileId: string; context: 'staged' | 'unstaged' | 'commit' }
 export interface RewriteRecord { recoveryId: string; phase: string; branch: string; originalHead: string; replacementHead: string | null; baseOid: string; treeOid: string; backupRef: string; replacementRef: string | null; commitOids: string[]; message: string; createdAt: string; error: string | null; canRecover: boolean }
+
+export interface UpdateCheck {
+  currentVersion: string;
+  /** Null when no published release exists yet. */
+  latestVersion: string | null;
+  available: boolean;
+  releaseName: string | null;
+  releaseUrl: string | null;
+  publishedAt: string | null;
+  notes: string | null;
+  notesTruncated: boolean;
+  checkedAt: string;
+}

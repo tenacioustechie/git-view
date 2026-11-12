@@ -9,6 +9,7 @@ pub struct AppState {
     pub catalog: Catalog,
     pub operations: Operations,
     pub launches: LaunchQueue,
+    pub updates: crate::updates::Updates,
     #[cfg(feature = "native-smoke")]
     pub smoke: Option<crate::native_smoke::Fixture>,
 }
@@ -282,4 +283,20 @@ pub async fn list_rewrites(
     repository_id: String,
 ) -> AppResult<Vec<RewriteRecord>> {
     state.engine.list_rewrites(&repository_id).await
+}
+#[tauri::command]
+pub async fn check_for_update(
+    state: State<'_, AppState>,
+) -> AppResult<crate::updates::UpdateCheck> {
+    let result = crate::updates::check(env!("CARGO_PKG_VERSION")).await?;
+    state.updates.remember(&result);
+    Ok(result)
+}
+#[tauri::command]
+pub fn open_update_page(app: tauri::AppHandle, state: State<'_, AppState>) -> AppResult<()> {
+    use tauri_plugin_opener::OpenerExt;
+    let url = state.updates.release_url()?;
+    app.opener()
+        .open_url(url, None::<&str>)
+        .map_err(|e| AppError::new("open_failed", format!("Could not open your browser: {e}")))
 }
