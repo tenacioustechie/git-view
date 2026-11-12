@@ -1,6 +1,8 @@
 # Git View user guide
 
-Reviewed 7 November 2026 for pull with untracked-only changes on branch
+Reviewed 12 November 2026 for the app-bar **Updates** menu (update
+availability check) on branch `feature/update-check` (based on `1008d83`);
+previously reviewed 7 November 2026 for pull with untracked-only changes on branch
 `fix/pull-with-untracked-files` (based on `40fb5d3`); previously reviewed 22 October 2026 for version 0.2.0 and the selected-commit local tag
 workflow on source baseline `33a937f`, including the automatic packaging and
 draft-release workflow, configured-upstream group push based on progressive-status
@@ -16,6 +18,7 @@ packages, and platform limitations.
 ## Contents
 
 - [Start the app](#start-the-app)
+- [Check for Git View updates](#check-for-git-view-updates)
 - [Open a repository](#open-a-repository)
 - [Create a group with folder discovery](#create-a-group-with-folder-discovery)
 - [Create and edit project files](#create-and-edit-project-files)
@@ -104,6 +107,37 @@ The wrappers are local to this checkout and are not installed on PATH. To launch
 from another directory, use the wrapper's full path; relative arguments resolve
 against your terminal's current directory. Rebuild after source changes to avoid
 launching an older release executable.
+
+## Check for Git View updates
+
+**Updates** in the top app bar, beside **Shortcuts**, tells you when a newer
+Git View release is published. It does not download or install anything:
+**Update Git View…** opens the release page in your browser, where you
+download and install the package for your system as you did originally.
+
+- **Automatic checks** are on by default. About five seconds after the app starts,
+  and once a day while it stays open, Git View asks GitHub for the latest
+  published release of `tenacioustechie/git-view`. The request carries only a
+  `Git-View/<version>` user agent; no repository, project, or path information is
+  sent. Draft and pre-release versions are ignored.
+- When a newer version exists, the menu button changes to **Update available**
+  with a dot. Open it to see the new and current versions, the release name and
+  date, and the **Release notes**.
+- **Update Git View…** opens the release page. Quit Git View before running the
+  new installer or replacing **Git View.app**.
+- **Skip this version** removes the highlight for that version only. The update
+  stays visible in the menu, and **Stop skipping** restores the highlight. A
+  later version is highlighted again.
+- **Check for updates** checks immediately, even when automatic checks are off.
+  The menu then says whether you are up to date and when it checked, or why the
+  check failed.
+- Clear **Check automatically** to stop all scheduled checks. Git View then
+  contacts GitHub only when you choose **Check for updates**.
+
+The automatic-check setting and skipped version are saved in the app webview's
+local storage. Failed automatic checks are shown only inside the menu and retried
+at the next scheduled check. The in-app updater that installs and restarts for
+you is planned separately; see [Feature status](FEATURE_STATUS.md).
 
 ## Open a repository
 
@@ -1143,6 +1177,8 @@ acceptance remain outstanding.
 | Preview or history snapshot expired | Refresh, inspect current state, and create a new preview/search. |
 | Hook, signing, identity, or credential failure | Correct the installed Git configuration, then retry. Read the operation error; do not assume the action completed. |
 | Operation canceled or outcome uncertain | Refresh and inspect local/remote state before retrying; cancellation does not undo completed work. |
+| Update check failed | Open **Updates** to read the reason. Check your network or proxy, or wait if GitHub is limiting requests, then choose **Check for updates**. You can always download releases from the project's GitHub Releases page. |
+| **Update Git View…** did not open a browser | The menu shows the error. Make sure a default browser is set, or open the project's GitHub Releases page yourself. |
 | External project edit conflicts with a draft | Save the draft separately with **Save edits as**, or **Reload project** to use the disk version. |
 
 Not yet available: individual-line staging, syntax highlighting, uncommitted-content blame, automatic

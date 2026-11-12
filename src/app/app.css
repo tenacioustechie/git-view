@@ -41,3 +41,20 @@ kbd { font:11px ui-monospace,monospace; white-space:nowrap; border:1px solid var
 .recent-path { color:var(--muted); font-size:11px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .recent-empty,.recent-notice { color:var(--muted); font-size:12px; line-height:1.5; margin:4px 10px 12px; }
 .recent-notice { color:var(--danger); }
+
+/* Updates menu: sits at the right of the app bar, before Shortcuts. */
+.app-header .app-updates { margin-left:auto; }
+.app-header .app-updates+.keyboard-shortcuts { margin-left:0; }
+.app-header .app-updates.has-update .toolbar-popover-trigger { color:var(--accent); font-weight:600; }
+.update-dot { width:7px; height:7px; border-radius:50%; background:var(--accent); flex-shrink:0; }
+.toolbar-popover.app-updates .toolbar-popover-panel { width:340px; }
+.update-status { padding:0 10px 6px; font-size:12px; line-height:1.5; }
+.update-status p { margin:0 0 6px; }
+.update-meta { display:block; color:var(--muted); font-size:11px; }
+.update-error { color:var(--danger); overflow-wrap:anywhere; }
+.update-notes { margin:0 10px 8px; font-size:12px; }
+.update-notes summary { cursor:pointer; color:var(--muted); }
+.update-notes pre { max-height:180px; overflow:auto; margin:6px 0 0; padding:8px; font-size:11px; background:var(--bg); border:1px solid var(--border); border-radius:4px; }
+.toolbar-popover .toolbar-popover-panel>button.update-primary { font-weight:600; color:var(--accent); }
+.update-automatic { display:flex; align-items:flex-start; gap:8px; padding:8px 10px 6px; font-size:13px; }
+.update-automatic input { margin-top:3px; }

@@ -377,6 +377,15 @@ platform limits, and the need for downloaded-package acceptance before a person
 publishes the draft. Pull requests, `main` pushes, and manual runs cannot create
 a release and do not receive `contents: write` permission.
 
+Publishing the draft is also what makes a version visible to the app's
+**Updates** menu: installed copies ask GitHub for the latest *published*,
+non-prerelease release (`/repos/tenacioustechie/git-view/releases/latest`) and
+compare its `v<version>` tag with their own version. Drafts and pre-releases are
+never offered. Publish only after downloaded-package acceptance; once published,
+installed apps with automatic checks on will show **Update available** within a
+day. The release `html_url` must stay under
+`https://github.com/tenacioustechie/git-view/releases/` or the app rejects it.
+
 ### What the workflow does not currently do
 
 - It does not run `scripts/native-smoke.py` or the interactive Windows native

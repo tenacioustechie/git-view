@@ -187,4 +187,4 @@ M2 discovery walks the chosen root to the chosen depth, recognizes `.git` direct
 
 ## Out of initial scope
 
-Cloud accounts, PR review, hosted repository browsing, automatic repository cloning, telemetry, a terminal emulator, automatic updater, submodule lifecycle management, worktree creation, arbitrary interactive rebase, force push, hard reset, and discard UI. Existing worktrees are valid repository entries; submodule state is displayed, and the submodule can be opened explicitly as its own repository.
+Cloud accounts, PR review, hosted repository browsing, automatic repository cloning, telemetry, a terminal emulator, silent background installation of updates, submodule lifecycle management, worktree creation, arbitrary interactive rebase, force push, hard reset, and discard UI. Existing worktrees are valid repository entries; submodule state is displayed, and the submodule can be opened explicitly as its own repository.

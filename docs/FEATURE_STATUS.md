@@ -1,6 +1,8 @@
 # Feature status
 
-Reviewed 7 November 2026 for pull with untracked-only changes (branch
+Reviewed 12 November 2026 for the update availability check (branch
+`feature/update-check`, based on `1008d83`); previously reviewed 7 November 2026
+for pull with untracked-only changes (branch
 `fix/pull-with-untracked-files`, based on `40fb5d3`); previously reviewed 22 October 2026, including the implemented selected-commit tag workflow,
 the complete hosted packaging matrix,
 resolved Windows loader/Git 2.56 compatibility, and the automatic packaging and
@@ -37,6 +39,7 @@ refer to the delivered runbook workflows on tested platforms.
 
 | Area | Implemented | Outstanding in the product plan |
 | --- | --- | --- |
+| Updates | App-bar **Updates** menu: automatic check of the latest published GitHub Release at startup and daily (on by default, can be turned off), manual check, **Update Git View…** opening the validated release page, per-version skip | In-app download/install/relaunch with `tauri-plugin-updater` for macOS, Windows NSIS and Linux AppImage (stage B; requires an updater signing key and `latest.json` release asset); `.deb` installs keep the release-page flow; optional pre-release channel |
 | Launch | Repository/nested-path CLI, JSON project CLI, discovery CLI, help/version, local wrappers, one-window forwarding with navigation guards | Installed PATH integration, further installation polish, additional windows, group templates |
 | History | Virtualized paged graph, persistent selected-row highlight, parent continuity, refs, branch/tag scopes, message/body and author/email search, full/prefix commit-ID search, snapshot paging | Advanced revision-query UI |
 | Tags | Local/fetched tag refs, History scopes and commit badges; reviewed annotated local-tag creation at an exact selected commit, with configured signing respected, dirty-file preservation and no implicit publication | Explicit tag publication, lightweight tags, replacement/deletion and broader management are deferred; remaining platform acceptance is tracked in [Create tag design](TAG_DESIGN.md) and Build status |
@@ -249,6 +252,10 @@ was rebuilt; installed apps and collected packages remain unchanged.
   four-platform hosted matrix is verified; tag-triggered draft creation remains
   unverified. Downloaded-package acceptance,
   signing/notarization and native GUI/installer acceptance also remain open.
+- The update check is unit/component-tested, and an explicitly run Rust test
+  reached GitHub successfully on macOS; it is not covered by native smoke runs (which never
+  contact the network). Proxy environments, Windows/Linux live checks and the
+  browser hand-off on each platform remain unverified.
 - Remote operations are tested against disposable local remotes; real remote-service
   authentication remains unverified.
 - Complete screen-reader/Tab traversal and long-group scroll restoration still
@@ -279,7 +286,7 @@ current Windows 11 verification checkpoint.
 ## Explicitly outside initial scope
 
 Cloud accounts, PR review, hosted repository browsing, automatic cloning,
-telemetry, terminal emulator, automatic updater, submodule lifecycle management,
+telemetry, terminal emulator, silent background installation of updates, submodule lifecycle management,
 worktree creation, arbitrary interactive rebase, force push, hard reset, and
 discard UI remain outside initial scope. Existing worktrees are supported;
 submodule state can be displayed and its repository opened separately.

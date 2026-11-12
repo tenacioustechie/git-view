@@ -94,6 +94,7 @@ are never retried implicitly. In-flight pushes may complete after cancellation.
 | Conflicts | Show files; resolve externally; stage/continue/abort where supported | A full three-way editor is a separate milestone |
 | Default UI | React; compact three-pane desktop layout; system light/dark theme | Prioritizes readable history and dense group status |
 | Installation | Local unsigned Mac build first; native CI for other OSes | Signing credentials and remote CI access are not established |
+| Updates | Notify-and-link update check first (stage A), then signed in-app install with `tauri-plugin-updater` (stage B), with `.deb` staying on the release page; automatic checks on by default, user-disableable | Decided with the user 12 November 2026 (option C). Checks use only published GitHub Releases, so publishing a reviewed draft remains the release gate; installs never happen without an explicit user action |
 | Offline use | History, status, diffs, and local actions work offline | Network operations fail independently and remain retryable |
 
 ## Environment observed during planning
