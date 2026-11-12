@@ -62,7 +62,7 @@ Install the pinned dependencies with `pnpm install --frozen-lockfile`. Run `pnpm
 | [Overnight build](docs/OVERNIGHT.md) | Dependencies, subagent ownership, checkpoints, and kickoff prompt |
 | [Acceptance](docs/ACCEPTANCE.md) | Meaningful tests, platform checks, and morning handoff criteria |
 
-Git View uses the installed Git and operating system webview. Normal hooks, signing, and credential helpers remain in effect. Pull is explicitly fast-forward-only and skips dirty repositories; it never automatically stashes or rebases.
+Git View uses the installed Git and operating system webview. Normal hooks, signing, and credential helpers remain in effect. Repository Pull fetches, shows a review, then rebases local commits onto the upstream by default (or merges, or fast-forwards only, as chosen); group pull is fast-forward-only. Pull skips repositories with tracked changes and never stashes or pushes.
 
 Local launcher examples:
 

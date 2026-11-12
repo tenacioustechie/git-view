@@ -19,6 +19,10 @@ struct RebaseJournal {
     base_oid: String,
     commits: Vec<String>,
     backup_ref: String,
+    /// Started by Pull with rebase: untracked and unrelated ignored files are
+    /// allowed, and directory-rename detection stays off for every step.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pull: bool,
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -259,7 +263,15 @@ impl GitEngine {
         status: &RepositoryStatus,
         action: &RepositoryAction,
     ) -> AppResult<(RebasePlan, Vec<OsString>, String)> {
-        if let RepositoryAction::StartRebase { onto_ref, .. } = action {
+        let start = match action {
+            RepositoryAction::StartRebase { onto_ref, .. } => Some((onto_ref.clone(), false)),
+            RepositoryAction::Pull { mode: Some(_), .. } => {
+                Some((self.pull_target(repo, status).await?.tracking_ref, true))
+            }
+            _ => None,
+        };
+        if let Some((onto_ref, pull)) = start {
+            let onto_ref = &onto_ref;
             let (branch, head) = match &status.head {
                 Head::Branch { name, oid } => (format!("refs/heads/{name}"), oid.clone()),
                 _ => {
@@ -268,8 +280,17 @@ impl GitEngine {
                     ))
                 }
             };
-            if status.git_state != GitState::Idle || status.dirty || status.submodule_dirty {
-                return Err(error("Start rebase with a clean index and worktree, including untracked files and submodules, and no Git operation in progress."));
+            let unclean = if pull {
+                super::pull::tracked_dirty(status)
+            } else {
+                status.dirty || status.submodule_dirty
+            };
+            if status.git_state != GitState::Idle || unclean {
+                return Err(error(if pull {
+                    "Pull with rebase requires no staged, modified or conflicted files and no Git operation in progress."
+                } else {
+                    "Start rebase with a clean index and worktree, including untracked files and submodules, and no Git operation in progress."
+                }));
             }
             if !((onto_ref.starts_with("refs/heads/") || onto_ref.starts_with("refs/remotes/"))
                 && !onto_ref.ends_with("/HEAD")
@@ -395,19 +416,23 @@ impl GitEngine {
             self.protect_materialized_paths(repo, &paths).await?;
             // Directory rename detection can relocate files beyond the named tree paths.
             // Reject ignored material conservatively until that case has a full path model.
-            let ignored = self
-                .runner
-                .read(
-                    &repo.root,
-                    &[
-                        "ls-files",
-                        "--others",
-                        "--ignored",
-                        "--exclude-standard",
-                        "-z",
-                    ],
-                )
-                .await?;
+            // Pull disables that detection, so the named-path check above suffices.
+            let ignored = if pull {
+                Vec::new()
+            } else {
+                self.runner
+                    .read(
+                        &repo.root,
+                        &[
+                            "ls-files",
+                            "--others",
+                            "--ignored",
+                            "--exclude-standard",
+                            "-z",
+                        ],
+                    )
+                    .await?
+            };
             if !ignored.is_empty() {
                 return Err(error("Move ignored files outside the worktree before rebasing; directory renames could overwrite them."));
             }
@@ -422,6 +447,7 @@ impl GitEngine {
                 onto_oid: onto_oid.clone(),
                 base_oid: base_oid.clone(),
                 commits,
+                pull,
             };
             let commit_count = descriptions.len();
             let preview = RebasePreview {
@@ -432,10 +458,11 @@ impl GitEngine {
                 base_oid: base_oid.clone(),
                 commits: descriptions,
             };
-            let args = runner::args(&[
-                "--no-replace-objects",
-                "-c",
-                "submodule.recurse=false",
+            let mut args = runner::args(&["--no-replace-objects", "-c", "submodule.recurse=false"]);
+            if pull {
+                args.extend(runner::args(&["-c", "merge.directoryRenames=false"]));
+            }
+            args.extend(runner::args(&[
                 "rebase",
                 "--merge",
                 "--no-fork-point",
@@ -449,9 +476,21 @@ impl GitEngine {
                 "--onto",
                 &onto_oid,
                 &base_oid,
-            ]);
-            Ok((RebasePlan { journal, step: Step::Start, preview: Some(preview) }, args,
-                format!("Rebase {} onto {} at {}. Replay {} linear commits; their IDs will change. A normal push may reject previously published commits. A backup ref is created. No fetch or push is performed.", branch, onto_ref, onto_oid, commit_count)))
+            ]));
+            let description = if pull {
+                format!("Pull with rebase: replay {commit_count} local commit(s) of {branch} onto the fetched {onto_ref} at {onto_oid}. Their IDs will change, and a backup ref is created. Conflicts stop for Continue rebase, Skip commit or Abort rebase. Nothing is pushed.")
+            } else {
+                format!("Rebase {} onto {} at {}. Replay {} linear commits; their IDs will change. A normal push may reject previously published commits. A backup ref is created. No fetch or push is performed.", branch, onto_ref, onto_oid, commit_count)
+            };
+            Ok((
+                RebasePlan {
+                    journal,
+                    step: Step::Start,
+                    preview: Some(preview),
+                },
+                args,
+                description,
+            ))
         } else {
             let context = status
                 .operation_context
@@ -484,24 +523,26 @@ impl GitEngine {
                     paths.extend(self.tree_paths(repo, commit).await?);
                 }
                 self.protect_materialized_paths(repo, &paths).await?;
-                if !self
-                    .runner
-                    .read(
-                        &repo.root,
-                        &[
-                            "ls-files",
-                            "--others",
-                            "--ignored",
-                            "--exclude-standard",
-                            "-z",
-                        ],
-                    )
-                    .await?
-                    .is_empty()
+                if !journal.pull
+                    && !self
+                        .runner
+                        .read(
+                            &repo.root,
+                            &[
+                                "ls-files",
+                                "--others",
+                                "--ignored",
+                                "--exclude-standard",
+                                "-z",
+                            ],
+                        )
+                        .await?
+                        .is_empty()
                 {
                     return Err(error("Move ignored files outside the worktree before continuing or skipping; a later replay could overwrite them."));
                 }
             }
+            let pull = journal.pull;
             let source = context.source_oids.first().cloned().unwrap_or_default();
             let description = match step {
                 Step::Continue => format!("Continue replaying {source} on {}. Use Git's current message, hooks, and signing. The rebase may stop again.", journal.branch),
@@ -515,13 +556,25 @@ impl GitEngine {
                     step,
                     preview: None,
                 },
-                runner::args(&[
-                    "--no-replace-objects",
-                    "-c",
-                    "submodule.recurse=false",
-                    "rebase",
-                    flag,
-                ]),
+                if pull {
+                    runner::args(&[
+                        "--no-replace-objects",
+                        "-c",
+                        "submodule.recurse=false",
+                        "-c",
+                        "merge.directoryRenames=false",
+                        "rebase",
+                        flag,
+                    ])
+                } else {
+                    runner::args(&[
+                        "--no-replace-objects",
+                        "-c",
+                        "submodule.recurse=false",
+                        "rebase",
+                        flag,
+                    ])
+                },
                 description,
             ))
         }
@@ -590,7 +643,11 @@ impl GitEngine {
             };
             if rebase.step == Step::Start
                 && metadata_dir(repo).is_none()
-                && !status.dirty
+                && !(if rebase.journal.pull {
+                    super::pull::tracked_dirty(&status)
+                } else {
+                    status.dirty
+                })
                 && matches!(&status.head, Head::Branch { name, oid }
                     if format!("refs/heads/{name}") == rebase.journal.branch
                     && oid == &rebase.journal.original_head)

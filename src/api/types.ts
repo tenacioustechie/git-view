@@ -97,7 +97,7 @@ export type RepositoryAction =
   | { kind: 'stageHunk' | 'unstageHunk'; diffSnapshotId: SnapshotId; fileId: FileId; hunkId: string }
   | { kind: 'commit'; statusSnapshotId: SnapshotId; message: string }
   | { kind: 'fetch'; remoteId: string }
-  | { kind: 'pull'; statusSnapshotId: SnapshotId }
+  | { kind: 'pull'; statusSnapshotId: SnapshotId; mode?: PullMode }
   | { kind: 'push'; statusSnapshotId: SnapshotId; remoteId: string; destinationRef: string; setUpstream: boolean }
   | { kind: 'createBranch'; statusSnapshotId: SnapshotId; name: string; startOid: Oid; switchAfterCreate: boolean }
   | { kind: 'createTag'; commitSnapshotId: SnapshotId; targetOid: Oid; name: string; message: string }
@@ -117,7 +117,7 @@ export type RepositoryAction =
   | { kind: 'recoverCombine'; statusSnapshotId: SnapshotId; recoveryId: string };
 
 export type RepositoryActionPlan =
-  | { kind: 'eligible'; planId: string; expiresAt: string; summary: string; destination: string | null; rebasePreview?: { branch: string; originalHead: Oid; ontoRef: string; ontoOid: Oid; baseOid: Oid; commits: { oid: Oid; subject: string }[] }; tagPreview?: { name: string; fullRef: string; targetOid: Oid; subject: string; annotated: true; signing: 'configured' | 'unsigned' } }
+  | { kind: 'eligible'; planId: string; expiresAt: string; summary: string; destination: string | null; rebasePreview?: { branch: string; originalHead: Oid; ontoRef: string; ontoOid: Oid; baseOid: Oid; commits: { oid: Oid; subject: string }[] }; tagPreview?: { name: string; fullRef: string; targetOid: Oid; subject: string; annotated: true; signing: 'configured' | 'unsigned' }; pullPreview?: PullPreview }
   | { kind: 'blocked'; reason: string; error: AppError | null };
 
 export interface DiffHunk {
@@ -207,4 +207,20 @@ export interface UpdateCheck {
   notes: string | null;
   notesTruncated: boolean;
   checkedAt: string;
+}
+
+/** How a single-repository pull integrates a diverged upstream; a branch that is only behind always fast-forwards. */
+export type PullMode = 'rebase' | 'merge' | 'fastForward';
+export interface PullPreview {
+  mode: PullMode;
+  /** What will actually run. */
+  strategy: PullMode;
+  branch: string;
+  headOid: Oid;
+  upstreamRef: string;
+  upstreamOid: Oid;
+  remote: string;
+  incoming: number;
+  local: number;
+  fetchedAt: string;
 }

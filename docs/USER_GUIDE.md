@@ -1,8 +1,9 @@
 # Git View user guide
 
-Reviewed 12 November 2026 for the app-bar **Updates** menu (update
-availability check) on branch `feature/update-check` (based on `1008d83`);
-previously reviewed 7 November 2026 for pull with untracked-only changes on branch
+Reviewed 12 November 2026 for repository **Pull** modes (rebase, merge,
+fast-forward only) on branch `feature/pull-modes` (based on `02b6ef1`), and for
+the app-bar **Updates** menu (update availability check) on branch
+`feature/update-check` (based on `1008d83`); previously reviewed 7 November 2026 for pull with untracked-only changes on branch
 `fix/pull-with-untracked-files` (based on `40fb5d3`); previously reviewed 22 October 2026 for version 0.2.0 and the selected-commit local tag
 workflow on source baseline `33a937f`, including the automatic packaging and
 draft-release workflow, configured-upstream group push based on progressive-status
@@ -787,16 +788,60 @@ hook/external changes are reported for inspection without an automatic rollback.
 
 - **Fetch:** choose a remote in the toolbar selector, choose **Fetch**, review the preview, and run it.
   Fetch updates remote-tracking information without merging into the current branch.
-- **Pull:** choose **Pull**, review the configured upstream, and run it. A badge
-  shows the last-known behind count when nonzero; it can be stale until Fetch. Pull uses
-  the current branch's upstream, which may differ from the toolbar's remote
-  selection. It requires fast-forward-compatible history and no staged, unstaged,
-  or conflicted files or dirty submodules. Untracked files do not block Pull and are
-  kept; if an incoming file would overwrite one, Git stops the pull without changing
-  the branch or the file.
+- **Pull:** see [Pull a repository](#pull-a-repository) below.
 - **Push:** choose a remote in the toolbar selector, open **Push**, and check **Destination ref**
   (for example, `refs/heads/main`). Optionally select **Set upstream**. Choose
   **Preview push**, inspect the destination, then run the action.
+
+### Pull a repository
+
+**Pull** fetches the current branch's upstream (which may differ from the
+toolbar's remote selection), then shows a review before anything changes. Its
+badge shows the last-known behind count; the review shows the counts after
+fetching.
+
+Pull has three modes. Choose one from the chevron beside **Pull**, or from
+**Pull mode** in the review. The mode you choose becomes the default for the
+**Pull** button; it starts as **Pull with rebase**. Your Git `pull.rebase`,
+`pull.ff` and autostash settings do not change what Git View does.
+
+| Mode | Branch only behind | Branch and upstream have both moved |
+| --- | --- | --- |
+| **Pull with rebase** (default) | Fast-forward | Your local commits are replayed on top of the upstream with new IDs, using the [guided rebase](#rebase-a-branch) safeguards |
+| **Pull with merge** | Fast-forward | A merge commit, `Merge remote-tracking branch 'origin/main'`, joins the two histories |
+| **Pull fast-forward only** | Fast-forward | Stops without changes and suggests rebase or merge |
+
+1. Choose **Pull** (or a mode from its chevron). Git View fetches the upstream
+   remote; this updates remote-tracking refs only.
+2. Read the review: the fetched upstream, how many new and local commits there
+   are, and what will happen. For a rebase, the review lists every local commit
+   that will be replayed. Change **Pull mode** to see a different plan; this
+   fetches and plans again.
+3. Choose **Fast-forward**, **Merge upstream**, or **Rebase onto upstream**.
+   Git View integrates exactly the upstream commit shown in the review. If the
+   upstream moves again before you confirm, the run is refused; pull again.
+
+If there is nothing to pull, the review is replaced by a message saying the
+branch already includes the upstream.
+
+**Conflicts.** A rebase that conflicts stops with the usual rebase guidance:
+resolve the files, **Stage resolution**, then **Continue rebase**, **Skip
+commit** or **Abort rebase** (Abort rebase restores the original branch from its
+backup). A merge that
+conflicts stops with the ordinary merge guidance: resolve and stage, then
+**Continue merge**, or **Abort merge**. Activity shows such a pull as
+`stopped`, not `failed`.
+
+**What blocks a pull.** Staged, modified or conflicted files, a dirty submodule,
+an operation in progress, a detached HEAD, or a branch without one
+remote-tracking upstream. Untracked and ignored files do not block it, unless
+one sits at a path the pull would write. Then the review is refused and names
+the file; move it and pull again. Pull with rebase also has the guided rebase's
+limits: at most 100 local commits, no merge commits among them, and no shallow
+clone. When one of those applies, the message suggests **Pull with merge**.
+
+Pull never stashes, never pushes, and never force-updates anything. Group
+**Pull all** and **Pull selected** are unchanged: they remain fast-forward only.
 
 The repository Push form is a normal single-repository push. Groups also offer
 **Push group upstreams**, described above. There is no force-push control.
@@ -1173,7 +1218,10 @@ acceptance remain outstanding.
 | Project member unavailable | Use **Locate**, save the corrected path, or check filesystem access. Removing it only changes project membership. |
 | Pull skipped as dirty | Review staged, unstaged, and conflicted files and dirty submodules. Commit or otherwise resolve them before previewing another pull. Untracked files alone do not cause this skip. |
 | Pull stopped: incoming commits would overwrite untracked files | The incoming commits add a file at the path of an untracked file (on macOS and Windows, also when only letter case differs). Nothing was changed. The message names up to five of the files (repository **Activity** shows Git's full output). Move, rename, or delete them, then preview Pull again. |
-| Missing upstream or non-fast-forward pull | Inspect branch/upstream state. Configure the intended upstream or reconcile history explicitly with Git; pull does not do this automatically. |
+| Missing upstream | Configure the intended upstream with Git, for example by pushing with **Set upstream**, then pull again. |
+| Pull fast-forward only says the branch has diverged | Choose **Pull with rebase** or **Pull with merge** from the chevron beside **Pull**. Group pulls remain fast-forward only; pull that repository on its own. |
+| Pull refused: a local path would be overwritten | An untracked or ignored file is at a path the incoming commits write. Move or delete it, then pull again. |
+| Pull with rebase is unavailable | The local commits include a merge, exceed 100 commits, or the clone is shallow. Use **Pull with merge** instead. |
 | Preview or history snapshot expired | Refresh, inspect current state, and create a new preview/search. |
 | Hook, signing, identity, or credential failure | Correct the installed Git configuration, then retry. Read the operation error; do not assume the action completed. |
 | Operation canceled or outcome uncertain | Refresh and inspect local/remote state before retrying; cancellation does not undo completed work. |

@@ -503,6 +503,7 @@ async fn resulting_tracking_is_used_by_existing_pull_and_push() {
             &id,
             RepositoryAction::Pull {
                 status_snapshot_id: status.snapshot_id,
+                mode: None,
             },
         )
         .await
