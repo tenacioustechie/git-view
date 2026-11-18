@@ -1,6 +1,6 @@
 # Build status
 
-## 2026-11-12: 0.3.0 release preparation
+## 2026-11-12: 0.3.0 release preparation and publication
 
 Branch `release/0.3.0`, based on `9f79deb` (main after PR #5). The version is
 `0.3.0` in the package, Cargo manifest/lockfile and Tauri configuration;
@@ -9,8 +9,25 @@ release-helper tests passed. No code changed since `9f79deb`, whose hosted
 matrix (run 43142905112) passed on all four platforms. 0.3.0 contains the
 **Updates** menu (PR #3), repository Pull modes (PR #4) and group Pull modes
 (PR #5). The `v0.2.1` draft was never published, so 0.3.0 also carries its
-untracked-only pull fix. The hosted matrix and tag-triggered draft release for
-`v0.3.0` are the release build evidence; their results are not recorded here.
+untracked-only pull fix.
+
+PR #6 hosted run 43203066046: Linux, Windows and macOS arm64 passed; macOS x64
+failed once in the frontend test "retains combined message after execution
+failure and reopening the panel" (`RepositoryView.test.tsx` got the default
+merge message instead of the retained one), then passed on rerun of the failed
+job. The change only touched version fields and docs, so this is treated as an
+intermittent test; it is not yet fixed. PR #6 merged as `8c2290d`.
+
+Tag `v0.3.0` (annotated, on `8c2290d`), hosted run 43208639698: all four
+**Test and package** jobs and **Create reviewed-release draft** succeeded. The
+draft carried the macOS arm64/x64 DMGs, Windows x64 setup EXE, Linux x64
+AppImage and DEB, four per-platform manifests and `SHA256SUMS.txt`. Release notes
+(new features, the 0.2.1 fix, install/signing notes and testing limits) were
+written and the release was published as **Latest** on 17 November 2026. The
+downloaded packages were not GUI- or installer-tested on each OS; the new pull
+modes were exercised natively on macOS only. The unpublished `v0.2.1` draft
+release was deleted on 18 November 2026; its tag is kept, and its fix ships in
+0.3.0.
 
 ## 2026-11-12: group pull modes with automatic conflict abort
 
