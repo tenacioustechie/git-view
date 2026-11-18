@@ -1,5 +1,30 @@
 # Build status
 
+## 2026-11-18: combine message editor kept mounted during refresh (flaky test fix)
+
+Branch `fix/combine-editor-refresh`, based on `eae0e2e`. The test "retains
+combined message after execution failure and reopening the panel" failed once on
+macOS x64 in PR #6 (run 43203066046). Cause: **Combine commits** loads history
+twice on opening (once on mount, again after a status refresh), and each load
+replaced the whole panel, including **Combined commit message**, with the
+loading line. If the second load was slow, the test's edit went to the removed
+editor and the default message came back. In the app, a refresh could likewise
+remove the editor while someone was typing. Making that second `getHistory` call
+300 ms slower reproduced the CI failure exactly. Now only the first load shows
+the loading line; later refreshes keep the editor mounted.
+
+Local checks on macOS (Apple silicon):
+
+- With the same 300 ms delay injected, the original test passes.
+- New `CombineCommits.test.tsx` case: the editor is the same element during a
+  pending refresh, accepts typing, and keeps the text after the refresh and after
+  remounting. It fails without the fix.
+- `pnpm typecheck`, `pnpm lint`: passed. `pnpm test -- --maxWorkers=2`:
+  **241 passed** across 26 files. `git diff --check`: clean.
+
+No user guide change: the guide does not describe the loading line or refresh
+behavior.
+
 ## 2026-11-12: 0.3.0 release preparation and publication
 
 Branch `release/0.3.0`, based on `9f79deb` (main after PR #5). The version is

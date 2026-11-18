@@ -24,6 +24,9 @@ export function CombineCommits({ repositoryId, status, active, refreshVersion = 
   const [message, setMessage] = useState(messages.get(repositoryId) ?? '');
   const [edited, setEdited] = useState(messages.has(repositoryId));
   const [loading, setLoading] = useState(true);
+  // Only the first load replaces the panel; later refreshes keep the editor mounted
+  // so a status or record refresh cannot discard typing or move focus.
+  const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [more, setMore] = useState(false);
   const headOid = status.head.kind === 'branch' ? status.head.oid : null;
@@ -33,7 +36,7 @@ export function CombineCommits({ repositoryId, status, active, refreshVersion = 
     Promise.all([api.getHistory(repositoryId, 'HEAD'), api.listRewrites(repositoryId)]).then(([history, rewrites]) => {
       if (disposed) return;
       setCommits(history.commits); setRecords(rewrites); setMore(history.nextCursor !== null);
-    }).catch(cause => { if (!disposed) setError(errorMessage(cause)); }).finally(() => { if (!disposed) setLoading(false); });
+    }).catch(cause => { if (!disposed) setError(errorMessage(cause)); }).finally(() => { if (!disposed) { setLoading(false); setLoaded(true); } });
     return () => { disposed = true; };
   // A failed rewrite can create a journal without changing HEAD/index/worktree,
   // so refresh recovery records even when the Git status snapshot is identical.
@@ -52,7 +55,7 @@ export function CombineCommits({ repositoryId, status, active, refreshVersion = 
     <p>Replace a consecutive sequence ending at the current branch HEAD with one commit. The final tree stays the same. A backup keeps the original history.</p>
     <p className="repository-notice">These commits may already be published. Remote-tracking information cannot prove otherwise. Rewriting changes commit IDs; no force push is performed.</p>
     {error && <p role="alert">{error}</p>}
-    {loading ? <p role="status">Loading current branch history and recovery records…</p> : <>
+    {loading && !loaded ? <p role="status">Loading current branch history and recovery records…</p> : <>
       <p><strong>Current branch:</strong> {status.head.kind === 'branch' ? status.head.name : 'No attached branch'}<br /><strong>Original HEAD:</strong> <code>{headOid ?? 'Unavailable'}</code></p>
       <label>Newest commits to combine<input aria-label="Newest commits to combine" type="number" min={2} max={commits.length} value={Number.isNaN(count) ? '' : count} onChange={event => setCount(event.target.value === '' ? NaN : Number(event.target.value))} /></label>
       {more && <small>Choose from the first {commits.length} commits of the current branch. This list is independent of the history scope.</small>}
