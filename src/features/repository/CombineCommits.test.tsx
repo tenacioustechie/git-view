@@ -63,4 +63,21 @@ describe('combine selection and recovery', () => {
     expect(screen.getByText(record.backupRef)).toBeTruthy();
     expect(api.listRewrites).toHaveBeenCalledTimes(2);
   });
+  it('keeps the message editor mounted and editable while a refresh is still loading', async () => {
+    const view = render(<CombineCommits repositoryId="refresh-editor" status={status} active={false} refreshVersion={0} onPlan={vi.fn()} onClose={vi.fn()} />);
+    const editor = await screen.findByLabelText('Combined commit message');
+    let finish: (history: Awaited<ReturnType<typeof api.getHistory>>) => void = () => {};
+    vi.mocked(api.getHistory).mockReturnValue(new Promise(resolve => { finish = resolve; }));
+    view.rerender(<CombineCommits repositoryId="refresh-editor" status={{ ...status, snapshotId: 'refreshed-status' }} active={false} refreshVersion={1} onPlan={vi.fn()} onClose={vi.fn()} />);
+    expect(api.getHistory).toHaveBeenCalledTimes(2);
+    expect(screen.getByLabelText('Combined commit message')).toBe(editor);
+    fireEvent.change(editor, { target: { value: 'Typed during refresh' } });
+    finish({ snapshotId: 'head-history', commits, nextCursor: null });
+    await waitFor(() => expect(screen.queryByText('No combine operations recorded for this repository.')).toBeTruthy());
+    expect(screen.getByLabelText('Combined commit message')).toBe(editor);
+    expect((editor as HTMLTextAreaElement).value).toBe('Typed during refresh');
+    view.unmount();
+    render(<CombineCommits repositoryId="refresh-editor" status={status} active={false} onPlan={vi.fn()} onClose={vi.fn()} />);
+    expect(((await screen.findByLabelText('Combined commit message')) as HTMLTextAreaElement).value).toBe('Typed during refresh');
+  });
 });
